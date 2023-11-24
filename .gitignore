@@ -1,0 +1,8 @@
+# gitignore
+__init__.py
+./.ipynb_checkpoints
+.ipynb_checkpoints
+__pycache__/
+
+notebooks/
+checkpoints/
