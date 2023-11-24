@@ -32,7 +32,6 @@ Please open an issue if you have a bug, feature request or have an idea to impro
 
 ## Contact
 For further information please contact:
-mohammad.alasawedah@eurac.edu
-
-mliaqat@eurac.edu
+- mohammad.alasawedah@eurac.edu
+- mliaqat@eurac.edu
 
