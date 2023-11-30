@@ -9,7 +9,7 @@ A python package aims to exploit state-of-the-art timeseries forcasting for hydr
 This package is currently under development. To download it, you'll need to clone the repository.
 
 ```
-git clone git@gitlab.inf.unibz.it:REMSEN/intertwin-hython.git
+git clone https://github.com/interTwin-eu/hython.git
 ```
 
 ## Usage
