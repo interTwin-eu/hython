@@ -1,4 +1,5 @@
 checkpoints/
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -153,11 +154,3 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
-# gitignore
-__init__.py
-./.ipynb_checkpoints
-.ipynb_checkpoints
-__pycache__/
-
-notebooks/
-checkpoints/
