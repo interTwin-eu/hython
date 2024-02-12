@@ -9,7 +9,7 @@ A python package aims to exploit state-of-the-art timeseries forcasting for hydr
 This package is currently under development. To download it, you'll need to clone the repository.
 
 ```
-git clone https://github.com/interTwin-eu/hython.git
+git clone git@gitlab.inf.unibz.it:REMSEN/intertwin-hython.git
 ```
 
 ## Usage
@@ -18,6 +18,13 @@ Please review the workflow notebook for a demonstration of the expected inputs, 
 
 ## Support
 Please open an issue if you have a bug, feature request or have an idea to improve the package.
+
+## TODO
+[] Implement three types of model validation: space, time and spacetime validation 
+[] Develop stratified sampler
+[] Plotting functions to visualize model performance
+[] 
+
 
 ## Roadmap
 1. More preprocessing options: normalization, handling NaNs, ..
@@ -32,6 +39,7 @@ Please open an issue if you have a bug, feature request or have an idea to impro
 
 ## Contact
 For further information please contact:
-1. mohammad.alasawedah@eurac.edu
-2. mliaqat@eurac.edu
 
+mohammadhussein.alasawedah@eurac.edu
+
+iacopofederico.ferrario@eurac.edu
