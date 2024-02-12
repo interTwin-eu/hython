@@ -77,90 +77,49 @@ def preprocess(
 
     return Xd.compute().values,Xs.compute().values, Y.compute().values, DIMS, META
 
-
-def apply_missing_policy(Xd: np.ndarray, Xs: np.ndarray, Y: np.ndarray, 
-                         policy_missing: dict[dict] = None) -> np.ndarray:
-    
-    if isinstance(Xd, np.ndarray):
-        print("Applying missing value policy...")
-        if ps := policy_missing.get("static"):
-            if (psr := ps.get("replace")) is not None:
-                Xs = np.where(np.isnan(Xs), psr, Xs)
-        if pd := policy_missing.get("dynamic"):
-            if (pdr := pd.get("replace")) is not None:
-                Xd = np.where(np.isnan(Xd), pdr, Xd)
-        if pt := policy_missing.get("target"):
-            if (ptr := pt.get("replace")) is not None:
-                Y = np.where(np.isnan(Y), ptr, Y)
-        print("...done")
-    elif isinstance(Xd, dask.array.core.Array):
-        from dask.array import isnan, where
-        if ps := policy_missing.get("static"):
-            if (psr := ps.get("replace")) is not None:
-                Xs = where(isnan(Xs), psr, Xs)
-        if pd := policy_missing.get("dynamic"):
-            if (pdr := pd.get("replace")) is not None:
-                Xd = where(isnan(Xd), pdr, Xd)
-        if pt := policy_missing.get("target"):
-            if (ptr := pt.get("replace")) is not None:
-                Y = where(isnan(Y), ptr, Y)
-        print("...done")
-    else:
-        print("Applying missing value policy...")
-        if ps := policy_missing.get("static"):
-            if (psr := ps.get("replace")) is not None:
-                Xs = Xs.where(~isnan(Xs), psr)
-        if pd := policy_missing.get("dynamic"):
-            if (pdr := pd.get("replace")) is not None:
-                Xd = Xd.where(~isnan(Xd), pdr)
-        if pt := policy_missing.get("target"):
-            if (ptr := pt.get("replace")) is not None:
-                Y = Y.where(~isnan(Y), ptr)
-        print("...done")
-    return Xd, Xs, Y
-
-
-
-def apply_normalization(a, type = "time", how='standard', m=None, std=None):
+def scale(a, how, axis, m1, m2):
+    if how == 'standard':
+        if m1 is None or m2 is None:
+            m1, m2 = np.nanmean(a, axis=axis), np.nanstd(a, axis=axis)
+            
+            m2[m2 == 0] = 1
+            
+            return (a - np.expand_dims(m1, axis = axis) )/ np.expand_dims(m2, axis = axis), m1, m2
+        else:
+            return (a - np.expand_dims(m2, axis = axis))/np.expand_dims(m2, axis = axis)
+    elif how == 'minmax':
+        if m1 is None or m2 is None:
+            m1, m2 = np.nanmin(a, axis=axis), np.nanmax(a, axis=axis)
+            return (a - m1)/(m2 - m1), m1, m2
+        else:
+            return (a - m1)/(m2 - m1)
+                
+def apply_normalization(a, type = "time", how='standard', m1=None, m2=None):
     """Assumes array of 
     dynamic: (gridcell, time, dimension)
     static: (gridcell, dimension)
 
     Parameters
     ----------
-    x : _type_
+    a : 
         _description_
     type : str, optional
         , by default "space"
     how : str, optional
         _description_, by default 'standard'
-    m : _type_, optional
+    m1 : _type_, optional
         _description_, by default None
-    std : _type_, optional
+    m2 : _type_, optional
         _description_, by default None
     """
-
-    def scale(a, how, axis, m, std):
-        if how == 'standard':
-            if m is None or std is None:
-                m, std = np.nanmean(a, axis=axis), np.nanstd(a, axis=axis)
-                
-                std[std == 0] = 1
-                
-                return (a - np.expand_dims(m, axis = axis) )/ np.expand_dims(std, axis = axis), m, std
-            else:
-                return (a - np.expand_dims(m, axis = axis))/np.expand_dims(std, axis = axis)
-        elif how == 'minmax':
-            mmin, mmax = np.nanmin(a, axis=axis), np.nanmax(a, axis=axis)
-            return (a - mmin)/(mmax- mmin), mmin, mmax
-
     if type == "time":
-        return scale(a, how = how, axis = 1, m = m, std = std)
+        return scale(a, how = how, axis = 1, m1 = m1, m2 = m2)
     elif type == "space": 
-        return scale(a, how = how, axis = 0, m = m, std = std)
+        return scale(a, how = how, axis = 0, m1 = m1,  m2 = m2)
+    elif type == "spacetime":
+         return scale(a, how = how, axis = (0, 1), m1 = m1, m2 = m2)
     else:
-         return scale(a, how = how, axis = (0, 1), m = m, std = std)
-
+        raise NotImplementedError(f"Type {how} not implemented")
 
 
 
