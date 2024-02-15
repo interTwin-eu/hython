@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=40.8.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = 'hython'
+authors = [
+    {name = "Mohammad Alasawedah", email = "mohammadhussein.alasawedah@eurac.edu"},
+    {name = "Iacopo Ferrario", email = "iacopofederico.ferrario@eurac.edu"},
+]
+version = '0.0.1'
+license = {file = "LICENCE"}
+readme = 'README.md'
+requires-python = '>=3.9'
+dependencies = [
+    'torch>=2.0.0',
+    'numpy>=1.25.0',
+    'xarray'
+]
+
+[project.optional-dependencies]
+dev = ["ruff","pytest"]
+io = ["netCDF4", "h5netcdf", "scipy", "zarr", "fsspec", "cftime", "pooch", "rasterio"]
+viz = ["matplotlib", "geopandas"]
+complete = ["hython[dev,viz,io]"]
+
+[tool.setuptools]
+packages = ["hython"]
+
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q -v"
+testpaths = [
+    "tests"
+]

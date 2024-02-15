@@ -4,7 +4,6 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 
-import dask
 import xarray as xr
 from hython.sampler import AbstractSampler
 

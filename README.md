@@ -15,8 +15,13 @@ The package should supports the **surrogate training**, **parameter learning** a
 ## Installation
 This package is currently under development.
 
-```
-git clone git@gitlab.inf.unibz.it:REMSEN/intertwin-hython.git
+
+```bash
+git clone https://github.com/interTwin-eu/hython.git
+
+cd ./hython
+
+pip install .
 
 ```
 
