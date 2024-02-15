@@ -50,7 +50,7 @@ Planned strategies:
 
 * Spatio-temporal validation consisting in (at least) three options: space, time and spacetime. 
 
-This feature generates training and validation sets that allow testing how well the model is performing in extrapolating in different dimensions.
+This feature generates (spatially, temporally or spatiotemporally) disjointed training and validation subsets for testing how well the model is performing in extrapolation tasks.
 
 
 * Simulation of river discharge
