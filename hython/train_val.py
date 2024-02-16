@@ -24,17 +24,13 @@ def loss_batch(loss_func, output, target, opt=None):
 
 
 # Define the metric_epoch function
-def metric_epoch(metric_func, output, target):
-
-    if target.shape[-1] == 1:
-        target = np.squeeze(target)
-        output = np.squeeze(output)
-
-    return metric_func(output, target)
+def metric_epoch(metric_func, y_pred, y_true, target_names):
+    metrics = metric_func(y_pred, y_true, target_names) 
+    return metrics
 
 
 # Define the loss_epoch function
-def loss_epoch(model, loss_func, metric_func, dataset_dl, device, opt=None, ts_idx= None, seq_length = None):
+def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, opt=None, ts_idx= None, seq_length = None):
     running_loss = 0
     len_data = len(dataset_dl.dataset)
 
@@ -80,7 +76,7 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, device, opt=None, ts_i
     loss = running_loss / float(len_data)
 
     # average metric value
-    metric = metric_epoch(metric_func, epoch_targets, epoch_preds)
+    metric = metric_epoch(metric_func, epoch_targets, epoch_preds, target_names)
     
     return loss, metric
 
@@ -92,6 +88,7 @@ def train_val(model, params):
     ts_range = params["ts_range"]
     loss_func = params["loss_func"]
     metric_func = params["metric_func"]
+    target_names = params["target_names"]
     opt = params["optimizer"]
     train_dl = params["train_dl"]
     val_dl = params["val_dl"]
@@ -118,7 +115,7 @@ def train_val(model, params):
     
         model.train()
         train_loss, train_metric = loss_epoch(
-            model, loss_func, metric_func, train_dl, device, opt, ts_idx, seq_length
+            model, loss_func, metric_func, train_dl, target_names, device, opt, ts_idx, seq_length
         )
 
         loss_history["train"].append(train_loss)
@@ -127,7 +124,7 @@ def train_val(model, params):
         model.eval()
         with torch.no_grad():
             val_loss, val_metric = loss_epoch(
-                model, loss_func, metric_func, val_dl, device, ts_idx= ts_idx, seq_length = seq_length
+                model, loss_func, metric_func, val_dl, target_names, device, ts_idx= ts_idx, seq_length = seq_length
             )
 
         loss_history["val"].append(val_loss)
