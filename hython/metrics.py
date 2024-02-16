@@ -20,7 +20,7 @@ def mse_metric(y_pred, y_true, target_names):
     """
     metrics = {}
     for idx, target in enumerate(target_names):
-        metric_epoch = mean_squared_error(y_pred[:,idx], y_true[:,idx], squared=True) #y_true[:,idx], y_pred[:,idx]
+        metric_epoch = mean_squared_error(y_pred[:,idx], y_true[:,idx], squared=True) 
         metrics[target] = metric_epoch
     
     return metrics
