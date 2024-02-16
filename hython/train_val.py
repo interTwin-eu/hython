@@ -98,7 +98,8 @@ def train_val(model, params):
 
     loss_history = {"train": [], "val": []}
 
-    metric_history = {"train": [], "val": []}
+    metric_history = {f'train_{t}': [] for t in target_names}
+    metric_history.update({f'val_{t}': [] for t in target_names})
 
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = float("inf")
@@ -119,7 +120,7 @@ def train_val(model, params):
         )
 
         loss_history["train"].append(train_loss)
-        metric_history["train"].append(train_metric)
+        for t in target_names: metric_history[f'train_{t}'].append(train_metric[t])
 
         model.eval()
         with torch.no_grad():
@@ -128,7 +129,7 @@ def train_val(model, params):
             )
 
         loss_history["val"].append(val_loss)
-        metric_history["val"].append(val_metric)
+        for t in target_names: metric_history[f'val_{t}'].append(val_metric[t])
 
         if val_loss < best_loss:
             best_loss = val_loss
