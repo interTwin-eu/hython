@@ -1,7 +1,8 @@
-import torch
-from torch import nn
+from sklearn.metrics import mean_squared_error
 
-class RMSELoss(nn.Module):
+
+
+class RMSEMetric(nn.Module):
     def __init__(self):
         super(RMSELoss, self).__init__()
         
