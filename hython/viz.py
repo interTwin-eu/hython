@@ -24,20 +24,21 @@ def plot_sampler(da_bkg, meta, meta_valid):
     for i in static_meta_valid.idx_sampled_1d:
         tmp_valid[vv.gridcell_valid == i] = True
     
-    df = vv.where(tmp).drop(["layer","spatial_ref"]).to_dataframe().dropna().reset_index()
+    df = vv.where(tmp).to_dataframe().dropna().reset_index()
     
-    df_valid = vv.where(tmp_valid).drop(["layer","spatial_ref"]).to_dataframe().dropna().reset_index()
+    df_valid = vv.where(tmp_valid).to_dataframe().dropna().reset_index()
     
     gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(x=df.lon, y=df.lat), crs=4326)
     
     gdf_valid = gpd.GeoDataFrame(df_valid, geometry=gpd.points_from_xy(x=df_valid.lon, y=df_valid.lat), crs=4326)
     
-    fig, ax = plt.subplots(1,1, figsize=(15, 15))
+    fig, ax = plt.subplots(1,1, figsize=(6, 6))
     da_bkg.plot(ax = ax, add_colorbar=False, alpha = 0.5, cmap="terrain")
-    gdf.plot(ax=ax, color="red", markersize=80, label="training")
-    gdf_valid.plot(ax=ax, color="black", markersize=80, label = "validation")
-    ax.set_xlim([6, 7.5])
-    ax.set_ylim([45.5, 46.5])
+    gdf.plot(ax=ax, color="red", markersize=10, label="training")
+    gdf_valid.plot(ax=ax, color="black", markersize=10, label = "validation")
+    plt.legend()
+    #ax.set_xlim([6, 7.5])
+    #ax.set_ylim([45.5, 46.5])
     
     
     return fig,ax
