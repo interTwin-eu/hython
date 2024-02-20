@@ -1,0 +1,8 @@
+[deps]
+FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+GraphIO = "aa1b3936-2fda-51b9-ab35-c553d3a640a2"
+GraphMakie = "1ecd5474-83a3-4783-bb4f-06765db800d2"
+GraphNeuralNetworks = "cffab07f-9bc2-4db1-8861-388f63bf7694"
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+Wflow = "d48b7d99-76e7-47ae-b1d5-ff0c1cf9a818"
