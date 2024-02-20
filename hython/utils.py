@@ -2,6 +2,8 @@ import numpy as np
 import xarray as xr
 import torch
 
+from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
+
 from typing import Any
 from numpy.typing import NDArray
 
@@ -63,10 +65,17 @@ def reshape_to_2Dspatial(a, lat_size, lon_size, time_size, feat_size, coords= No
     return tmp
 
 
-def reconstruct_from_missing(a, original_shape, missing_location_idx):
+def reconstruct_from_missing(a: NDArray, original_shape: tuple, missing_location_idx: NDArray) -> NDArray:
+    """Re-insert missing values where they were removed, based on the missing_location_idx
 
-    # original_shape # gridcell, time, dims (100, 10, 3)
+    Args:
+        a (NDArray): The array without missing values.
+        original_shape (tuple): The array shape before the missing values were removed.
+        missing_location_idx (NDArray): The location (grid cell ids) of missing values
 
+    Returns:
+        NDArray: A new array filled with missing values
+    """
     a_new = np.empty(original_shape)
 
     fill = np.full(
@@ -94,3 +103,29 @@ def reconstruct_from_missing(a, original_shape, missing_location_idx):
 
     return a_new
 
+
+
+def prepare_for_plotting(y_target: NDArray, y_pred: NDArray, shape: tuple[int], coords: DataArrayCoordinates | DatasetCoordinates):
+    
+    lat, lon, time = shape
+    n_feat = y_target.shape[-1]
+    
+    y = reshape_to_2Dspatial(
+            y_target,
+            lat,
+            lon,
+            time,
+            n_feat)
+     
+    yhat = reshape_to_2Dspatial(
+            y_pred,
+            lat,
+            lon,
+            time,
+            n_feat)
+    
+    y = to_xr(y[...,0], coords = coords)
+    yhat = to_xr(yhat[...,0], coords = coords)
+    
+    return y, yhat
+    

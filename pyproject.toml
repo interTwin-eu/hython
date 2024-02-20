@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff","pytest"]
 io = ["netCDF4", "h5netcdf", "scipy", "zarr", "fsspec", "cftime", "pooch", "rasterio"]
-viz = ["matplotlib", "geopandas"]
+viz = ["matplotlib", "geopandas", "geoviews", "hvplot"]
 complete = ["hython[dev,viz,io]"]
 
 [tool.setuptools]
