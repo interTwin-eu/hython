@@ -121,3 +121,41 @@ def apply_normalization(a, type = "time", how='standard', m1=None, m2=None):
 
 
 
+def split_time(a, slice):
+    return a[:,:,slice]
+
+
+def split_space(a, sampler):
+    return sampler.sampling(a)
+
+
+
+def split_time_and_space(a, 
+                         validation_type, 
+                         temporal_train_slice = None, 
+                         temporal_val_slice = None, 
+                         spatial_train_sampler = None,
+                         spatial_val_sampler = None):
+    # split time
+    if validation_type == "space" or validation_type == "spacetime":
+        a_train = split_space(a, spatial_train_sampler)[0]
+        a_val = split_space(a, spatial_val_sampler)[0]
+    
+    if validation_type == "time":
+        a_train = split_time(a, temporal_train_slice)
+        a_val = split_time(a, temporal_val_slice)
+
+    if validation_type == "spacetime":
+        a_train = split_time(a_train, temporal_train_slice)
+        a_val = split_time(a_val, temporal_val_slice)   
+
+    orig_shape = a.shape
+    train_shape = a_train.shape 
+    val_shape = a_val.shape
+    print(f"""Approach {validation_type}: \n
+          Original dataset: (lat {orig_shape[0]}, lon {orig_shape[1]} , time {orig_shape[2]} , feature {orig_shape[3]}) \n
+          Train dataset: (lat {train_shape[0]}, lon {train_shape[1]} , time {train_shape[2]} , feature {train_shape[3]}) \n
+          Validation dataset: (lat {val_shape[0]}, lon {val_shape[1]} , time {val_shape[2]} , feature {val_shape[3]})""")
+        
+    return a_train, a_val
+    

@@ -10,6 +10,33 @@ from typing import Any, Tuple, List
 from numpy.typing import NDArray
 
 
+from torch.utils.data import Sampler
+
+class SpaceSampler(Sampler):
+    
+    def __init__(self, data_source, num_samples= 10, generator = None, sampling_indices = None):
+        
+        self.data_source = data_source
+        self._num_samples = num_samples
+        self.generator = generator
+        self.sampling_indices = sampling_indices
+        
+    @property
+    def num_samples(self) -> int:
+        # dataset size might change at runtime
+        if self._num_samples is None:
+            return len(self.data_source)
+        return self._num_samples
+
+    def __iter__(self):
+        n = len(self.data_source)
+        #yield from torch.randint(high=n, size=(self.num_samples % 32,), dtype=torch.int64, generator=generator).tolist()
+        yield from self.sampling_indices
+    
+    def __len__(self) -> int:
+        return self.num_samples
+
+
 @dataclass
 class SamplerMetaData:
     """Store metadata to restructure original grid from the sampled grid
