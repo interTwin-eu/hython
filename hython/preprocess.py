@@ -18,8 +18,7 @@ def preprocess(
             dynamic_name: List,
             static_name: List, 
             target_name: List,
-            sampler: AbstractSampler = None,
-            return_sampler_meta: bool = False
+            sampler: AbstractSampler = None
               ) -> List[np.ndarray]:
 
     DIMS = {

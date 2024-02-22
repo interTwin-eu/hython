@@ -97,7 +97,7 @@ class RegularIntervalSampler(AbstractSampler):
 
         grid_idx = np.arange(0, ishape * jshape, 1).reshape(ishape, jshape)
 
-        idx_sampled = grid_idx[irange[:,None], jrange].flatten()
+        idx_sampled = grid_idx[irange[:,None], jrange].flatten() # broadcasting
 
         if isinstance(grid, np.ndarray):
             samples = grid[irange[:, None], jrange]
