@@ -1,5 +1,5 @@
 """ 
-Todo
+TODO
 
 - Handling the return of sampling metadata in function split_time_and_space 
 - The sampling indices are passed to the data loader

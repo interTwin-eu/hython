@@ -121,6 +121,7 @@ def apply_normalization(a, type = "time", how='standard', m1=None, m2=None):
 
 
 
+# TODO add splitting by dates
 def split_time(a, slice):
     return a[:,:,slice]
 

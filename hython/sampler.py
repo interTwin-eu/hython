@@ -30,7 +30,6 @@ class SpaceSampler(Sampler):
 
     def __iter__(self):
         n = len(self.data_source)
-        #yield from torch.randint(high=n, size=(self.num_samples % 32,), dtype=torch.int64, generator=generator).tolist()
         yield from self.sampling_indices
     
     def __len__(self) -> int:
