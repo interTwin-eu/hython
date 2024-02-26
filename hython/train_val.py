@@ -85,6 +85,7 @@ def train_val(model, params):
     num_epochs = params["num_epochs"]
     seq_length = params["seq_length"]
     temporal_sampling_size = params["temporal_sampling_size"]
+    temporal_sampling_type = params["temporal_sampling_size"]
     ts_range = params["ts_range"]
     loss_func = params["loss_func"]
     metric_func = params["metric_func"]
@@ -104,15 +105,21 @@ def train_val(model, params):
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = float("inf")
 
+    if temporal_sampling_type == "static":
+        ts_idx = np.random.randint(0, 
+                                ts_range  - seq_length 
+                               , temporal_sampling_size)
+    
     for epoch in range(num_epochs):
         current_lr = get_lr(opt)
         
         print(f"Epoch {epoch}/{num_epochs - 1}, current lr={current_lr}")
         
         # every epoch generate a new set of random time indices (sampling the timeseries)
-        ts_idx = np.random.randint(0, 
-                                ts_range  - seq_length 
-                               , temporal_sampling_size)
+        if temporal_sampling_type == "dynamic":
+            ts_idx = np.random.randint(0, 
+                                    ts_range  - seq_length 
+                                   , temporal_sampling_size)
     
         model.train()
         train_loss, train_metric = loss_epoch(
