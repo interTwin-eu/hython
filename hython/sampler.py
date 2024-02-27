@@ -37,11 +37,16 @@ class SpaceSampler(Sampler):
 
 
 @dataclass
-class SamplerMetaData:
+class SamplerResult:
     """Store metadata to restructure original grid from the sampled grid
     """
-    idx_orig_2d: NDArray
+    idx_grid_2d: NDArray
     idx_sampled_1d: NDArray 
+    idx_sampled_1d_nomissing: NDArray | None
+    sampled_grid: NDArray | None
+
+    def __repr__(self):
+        return f'SamplerResult(\n - id_grid_2d: {self.idx_grid_2d.shape} \n - idx_sampled_1d: {self.idx_sampled_1d.shape} \n - idx_sampled_1d_nomissing: {self.idx_sampled_1d_nomissing.shape})'
 
 
 class AbstractSampler(ABC):
@@ -59,9 +64,9 @@ class AbstractSampler(ABC):
     #     for attr in req_attrs:
     #         if not hasattr(self, attr):
     #             raise AttributeError(f"Missing attribute: '{attr}'")
-        
+    
     @abstractmethod
-    def sampling(self, grid: NDArray | xr.DataArray | xr.Dataset) -> Tuple[NDArray, SamplerMetaData]:
+    def sampling_idx(self, grid: NDArray | xr.DataArray | xr.Dataset) -> SamplerResult:
         """Sample the original grid. Must be instantiated by a concrete class that implements the sampling approach.
 
         Args:
@@ -72,6 +77,8 @@ class AbstractSampler(ABC):
         """
         
         pass
+    
+        
 
 class RegularIntervalSampler(AbstractSampler):
 
@@ -88,7 +95,7 @@ class RegularIntervalSampler(AbstractSampler):
         if origin[0] != origin[1]:
             raise NotImplementedError("Different x,y origins not yet implemented!")
 
-    def sampling(self, grid):
+    def sampling_idx(self, grid, missing_mask = None, return_grid = False): # remove missing is a 2D mask
         
         """Sample a N-dimensional array by regularly-spaced points along the spatial axes. 
 
@@ -124,16 +131,29 @@ class RegularIntervalSampler(AbstractSampler):
         grid_idx = np.arange(0, ishape * jshape, 1).reshape(ishape, jshape)
 
         idx_sampled = grid_idx[irange[:,None], jrange].flatten() # broadcasting
+        
+        if missing_mask is not None:
+            idx_nan = grid_idx[missing_mask]
+            
+            idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
+        else: 
+            idx_sampled_1d_nomissing = missing_mask
 
-        if isinstance(grid, np.ndarray):
-            samples = grid[irange[:, None], jrange]
-        elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
-            samples = grid.isel(lat=irange, lon=jrange)
+        if return_grid:
+            if isinstance(grid, np.ndarray):
+                sampled_grid = grid[irange[:, None], jrange]
+            elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+                sampled_grid = grid.isel(lat=irange, lon=jrange)
+            else:
+                pass
         else:
-            pass
+            sampled_grid = None
         
-        
-        return samples, SamplerMetaData(idx_orig_2d = grid_idx, idx_sampled_1d = idx_sampled)
+                
+        return SamplerResult(   idx_grid_2d = grid_idx, 
+                                idx_sampled_1d = idx_sampled, 
+                                idx_sampled_1d_nomissing = idx_sampled_1d_nomissing,
+                                sampled_grid = sampled_grid )
 
 
 

@@ -1,5 +1,6 @@
 import copy
 import torch
+import matplotlib.pyplot as plt
 import numpy as np
 
 # get the current learning rate
@@ -81,11 +82,11 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, 
     return loss, metric
 
 
-def train_val(model, params):
+def train_val(model, params, plot= False):
     num_epochs = params["num_epochs"]
     seq_length = params["seq_length"]
     temporal_sampling_size = params["temporal_sampling_size"]
-    temporal_sampling_type = params["temporal_sampling_size"]
+    temporal_sampling_epoch = params["temporal_sampling_idx_change_with_epoch"]
     ts_range = params["ts_range"]
     loss_func = params["loss_func"]
     metric_func = params["metric_func"]
@@ -105,21 +106,23 @@ def train_val(model, params):
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = float("inf")
 
-    if temporal_sampling_type == "static":
-        ts_idx = np.random.randint(0, 
-                                ts_range  - seq_length 
-                               , temporal_sampling_size)
+    if not temporal_sampling_epoch:
+        ts_idx = np.random.randint(0,ts_range  - seq_length, temporal_sampling_size)
     
+    if plot:
+        fig, axs = plt.subplots(2, 1, figsize=(15,5))
+        a1, = axs[0].plot([0],[0])
+        a2, = axs[1].plot([0],[0])
+    
+    e = [0]
     for epoch in range(num_epochs):
         current_lr = get_lr(opt)
         
         print(f"Epoch {epoch}/{num_epochs - 1}, current lr={current_lr}")
         
         # every epoch generate a new set of random time indices (sampling the timeseries)
-        if temporal_sampling_type == "dynamic":
-            ts_idx = np.random.randint(0, 
-                                    ts_range  - seq_length 
-                                   , temporal_sampling_size)
+        if temporal_sampling_epoch:
+            ts_idx = np.random.randint(0, ts_range  - seq_length, temporal_sampling_size)
     
         model.train()
         train_loss, train_metric = loss_epoch(
@@ -154,6 +157,23 @@ def train_val(model, params):
         print(f"train loss: {train_loss}, train metric: {train_metric}")
         print(f"val loss: {val_loss}, val metric: {val_metric}")
         print("-" * 10)
+        
+        if plot:
+            for i, k in enumerate(metric_history):
+                if "vwc" in k:
+                    print(e, metric_history[k])
+                    #axs[0].plot(e, metric_history[k])
+                    a1.set_xdata(e)
+                    a1.set_ydata(metric_history[k])
+                if "actevap" in k:
+                    #axs[1].plot(e, metric_history[k])  
+                    a2.set_xdata(e)
+                    a2.set_ydata(metric_history[k])
+            fig.canvas.draw()
+            fig.canvas.flush_events()      
+            plt.show() 
+            
+            e.append(e[-1] + 1)
 
     model.load_state_dict(best_model_wts)
     

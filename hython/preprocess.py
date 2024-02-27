@@ -11,52 +11,21 @@ from typing import List
 from typing import Union, Any 
 
 
-def preprocess(
+def reshape(
             dynamic: xr.Dataset,
             static: xr.Dataset,
             target: xr.Dataset,
-            dynamic_name: List,
-            static_name: List, 
-            target_name: List,
-            sampler: AbstractSampler = None
               ) -> List[np.ndarray]:
 
-    DIMS = {
-        "orig": [ len(dynamic["lat"]), len(dynamic["lon"]), len(dynamic["time"])  ],
-    }
-
-    META = {"dyn":"", "static":"", "target":""}
-
-    # select
-    dyn_sel = dynamic[dynamic_name]
-    static_sel = static[static_name]
-    target_sel = target[target_name]
-
-    # sampling
-
-    if sampler:
-        dyn_sel, dyn_sampler_meta = sampler.sampling(dyn_sel.transpose("lat", "lon", "time"))
-        static_sel, static_sampler_meta = sampler.sampling(static_sel.transpose("lat", "lon"))
-        target_sel, target_sampler_meta = sampler.sampling(target_sel.transpose("lat", "lon", "time"))
-
-        DIMS["sampled_dims"] =  [ len(dyn_sel["lat"]), len(dyn_sel["lon"]), len(dyn_sel["time"])  ]
-
-        print("sampling reduced dims (lat, lon): from ", DIMS["orig"][:2], " to ", DIMS["sampled_dims"][:2] )
-
-        META.update({"dyn":dyn_sampler_meta,"static":static_sampler_meta, "target":target_sampler_meta})
-
-    # train_test split 
-
-
     # reshape 
-    Xd = ( dyn_sel
+    Xd = ( dynamic
         .to_dataarray(dim="feat") # cast
         .stack(cell= ["lat","lon"]) # stack 
         .transpose("cell","time","feat") 
         )
     print("dynamic: ", Xd.shape, " => (GRIDCELL, TIME, FEATURE)")
     
-    Xs = ( static_sel
+    Xs = ( static
     .drop_vars("spatial_ref")
     .to_dataarray(dim="feat")
     .stack(cell= ["lat","lon"])
@@ -64,7 +33,7 @@ def preprocess(
     )
     print("static: ", Xs.shape, " => (GRIDCELL, FEATURE)")
 
-    Y = ( target_sel
+    Y = ( target
         .to_dataarray(dim="feat")
         .stack(cell= ["lat","lon"])
         .transpose("cell","time", "feat")
@@ -72,8 +41,7 @@ def preprocess(
     print("target: ", Y.shape, " => (GRIDCELL, TIME, TARGET)")     
 
 
-
-    return Xd.compute().values,Xs.compute().values, Y.compute().values, DIMS, META
+    return Xd.compute().values,Xs.compute().values, Y.compute().values
 
 def scale(a, how, axis, m1, m2):
     if how == 'standard':
