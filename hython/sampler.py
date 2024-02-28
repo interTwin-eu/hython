@@ -43,10 +43,12 @@ class SamplerResult:
     idx_grid_2d: NDArray
     idx_sampled_1d: NDArray 
     idx_sampled_1d_nomissing: NDArray | None
+    idx_missing_1d: NDArray | None
     sampled_grid: NDArray | None
+    sampled_grid_dims: tuple
 
     def __repr__(self):
-        return f'SamplerResult(\n - id_grid_2d: {self.idx_grid_2d.shape} \n - idx_sampled_1d: {self.idx_sampled_1d.shape} \n - idx_sampled_1d_nomissing: {self.idx_sampled_1d_nomissing.shape})'
+        return f'SamplerResult(\n - id_grid_2d: {self.idx_grid_2d.shape} \n - idx_sampled_1d: {self.idx_sampled_1d.shape} \n - idx_sampled_1d_nomissing: {self.idx_sampled_1d_nomissing.shape}) \n - idx_missing_1d: {self.idx_missing_1d.shape} \n - sampled_grid_dims: {self.sampled_grid_dims}'
 
 
 class AbstractSampler(ABC):
@@ -139,21 +141,23 @@ class RegularIntervalSampler(AbstractSampler):
         else: 
             idx_sampled_1d_nomissing = missing_mask
 
-        if return_grid:
-            if isinstance(grid, np.ndarray):
-                sampled_grid = grid[irange[:, None], jrange]
-            elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
-                sampled_grid = grid.isel(lat=irange, lon=jrange)
-            else:
-                pass
+
+        if isinstance(grid, np.ndarray):
+            sampled_grid = grid[irange[:, None], jrange]
+        elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+            sampled_grid = grid.isel(lat=irange, lon=jrange)
         else:
-            sampled_grid = None
+            print("d")
+        
+        sampled_grid_dims = sampled_grid.shape # lat, lon
         
                 
         return SamplerResult(   idx_grid_2d = grid_idx, 
                                 idx_sampled_1d = idx_sampled, 
                                 idx_sampled_1d_nomissing = idx_sampled_1d_nomissing,
-                                sampled_grid = sampled_grid )
+                                idx_missing_1d = idx_nan,
+                                sampled_grid = sampled_grid,
+                                sampled_grid_dims = sampled_grid_dims)
 
 
 

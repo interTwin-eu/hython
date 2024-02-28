@@ -33,8 +33,9 @@ def metric_epoch(metric_func, y_pred, y_true, target_names):
 # Define the loss_epoch function
 def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, opt=None, ts_idx= None, seq_length = None):
     running_loss = 0
-    len_data = len(dataset_dl.dataset)
-
+    
+    spatial_sample_size = 0 
+    
     epoch_preds = None
     epoch_targets = None 
 
@@ -65,16 +66,22 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, 
                     (epoch_targets, targets_bt[:, -1].detach().cpu().numpy()), axis=0
                 )
 
-            # get loss per batch
+            # get loss per i time batch
+            #
             loss_time_batch = loss_batch(loss_func, output, targets_bt[:, -1], opt) 
 
             # update running loss
-            running_time_batch_loss += loss_time_batch * targets_bt.size(0)
+            running_time_batch_loss += loss_time_batch #* targets_bt.size(0)
 
-        running_loss += running_time_batch_loss/ len(ts_idx)
+        running_time_batch_loss /= len(ts_idx)
+        
+        # accumulate number of samples
+        spatial_sample_size += targets_b.size(0)
+
+        running_loss += running_time_batch_loss
 
     # average loss value
-    loss = running_loss / float(len_data)
+    loss = running_loss / spatial_sample_size
 
     # average metric value
     metric = metric_epoch(metric_func, epoch_targets, epoch_preds, target_names)

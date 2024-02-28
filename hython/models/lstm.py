@@ -20,9 +20,9 @@ class CustomLSTM(nn.Module):
 
         self.lstm = nn.LSTM(hidden_size , hidden_size, batch_first=True)
 
-        self.fc1 = nn.Linear(hidden_size, 64)
+        self.fc1 = nn.Linear(hidden_size, int(hidden_size/2))
 
-        self.fc2 = nn.Linear(64, output_size)
+        self.fc2 = nn.Linear(int(hidden_size/2), output_size)
 
     def forward(self, x, static_params):
 
@@ -31,8 +31,8 @@ class CustomLSTM(nn.Module):
               static_params.unsqueeze(1).repeat(1, x.size(1), 1)),
               dim=-1,
          )
-
-        l1 = torch.relu(self.fc0(x_ds))   
+        
+        l1 = self.fc0(x_ds)
 
         lstm_output, _ = self.lstm(l1)
 
