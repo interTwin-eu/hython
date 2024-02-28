@@ -56,9 +56,19 @@ def scale(a, how, axis, m1, m2):
     elif how == 'minmax':
         if m1 is None or m2 is None:
             m1, m2 = np.nanmin(a, axis=axis), np.nanmax(a, axis=axis)
-            return (a - m1)/(m2 - m1), m1, m2
+            
+            den = m2 - m1 
+            #print(den)
+            #import pdb;pdb.set_trace()
+            # if np.any(den == 0):
+            #     den[np.nonzero(den == 0)] = 1
+                
+            return (a - m1)/den, m1, m2
         else:
-            return (a - m1)/(m2 - m1)
+
+            den = m2 - m1
+            
+            return (a - m1)/den
                 
 def apply_normalization(a, type = "time", how='standard', m1=None, m2=None):
     """Assumes array of 

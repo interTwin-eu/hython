@@ -31,7 +31,6 @@ class CustomLSTM(nn.Module):
               static_params.unsqueeze(1).repeat(1, x.size(1), 1)),
               dim=-1,
          )
-        
         l1 = self.fc0(x_ds)
 
         lstm_output, _ = self.lstm(l1)

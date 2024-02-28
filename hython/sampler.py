@@ -5,10 +5,11 @@ import xarray as xr
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+
 # type hints
 from typing import Any, Tuple, List
 from numpy.typing import NDArray
-
+from xarray.core.coordinates import DatasetCoordinates
 
 from torch.utils.data import Sampler
 
@@ -45,10 +46,11 @@ class SamplerResult:
     idx_sampled_1d_nomissing: NDArray | None
     idx_missing_1d: NDArray | None
     sampled_grid: NDArray | None
-    sampled_grid_dims: tuple
+    sampled_grid_dims: tuple | None
+    xr_sampled_coords: DatasetCoordinates | None
 
     def __repr__(self):
-        return f'SamplerResult(\n - id_grid_2d: {self.idx_grid_2d.shape} \n - idx_sampled_1d: {self.idx_sampled_1d.shape} \n - idx_sampled_1d_nomissing: {self.idx_sampled_1d_nomissing.shape}) \n - idx_missing_1d: {self.idx_missing_1d.shape} \n - sampled_grid_dims: {self.sampled_grid_dims}'
+        return f'SamplerResult(\n - id_grid_2d: {self.idx_grid_2d.shape} \n - idx_sampled_1d: {self.idx_sampled_1d.shape} \n - idx_sampled_1d_nomissing: {self.idx_sampled_1d_nomissing.shape}) \n - idx_missing_1d: {self.idx_missing_1d.shape} \n - sampled_grid_dims: {self.sampled_grid_dims} \n - xr_coords: {self.xr_sampled_coords}'
 
 
 class AbstractSampler(ABC):
@@ -117,6 +119,8 @@ class RegularIntervalSampler(AbstractSampler):
             _description_
         """
 
+        xr_coords = None
+        
         if isinstance(grid, np.ndarray):
             shape = grid.shape
         elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
@@ -145,9 +149,15 @@ class RegularIntervalSampler(AbstractSampler):
         if isinstance(grid, np.ndarray):
             sampled_grid = grid[irange[:, None], jrange]
         elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+            
             sampled_grid = grid.isel(lat=irange, lon=jrange)
+
+            xr_coords = sampled_grid.isel(variable=0, drop=True).coords
+            #xr_coords.assign({"lat":xr_coords["lat"][irange]})
+            #xr_coords.assign({"lon":xr_coords["lon"][jrange]})
+            
         else:
-            print("d")
+            pass
         
         sampled_grid_dims = sampled_grid.shape # lat, lon
         
@@ -157,7 +167,8 @@ class RegularIntervalSampler(AbstractSampler):
                                 idx_sampled_1d_nomissing = idx_sampled_1d_nomissing,
                                 idx_missing_1d = idx_nan,
                                 sampled_grid = sampled_grid,
-                                sampled_grid_dims = sampled_grid_dims)
+                                sampled_grid_dims = sampled_grid_dims,
+                                xr_sampled_coords = xr_coords )
 
 
 
