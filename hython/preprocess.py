@@ -46,13 +46,12 @@ def reshape(
 def scale(a, how, axis, m1, m2):
     if how == 'standard':
         if m1 is None or m2 is None:
-            m1, m2 = np.nanmean(a, axis=axis), np.nanstd(a, axis=axis)
             
-            m2[m2 == 0] = 1
+            m1, m2 = np.nanmean(a, axis=axis), np.nanstd(a, axis=axis)
             
             return (a - np.expand_dims(m1, axis = axis) )/ np.expand_dims(m2, axis = axis), m1, m2
         else:
-            return (a - np.expand_dims(m2, axis = axis))/np.expand_dims(m2, axis = axis)
+            return (a - np.expand_dims(m1, axis = axis))/np.expand_dims(m2, axis = axis)
     elif how == 'minmax':
         if m1 is None or m2 is None:
             m1, m2 = np.nanmin(a, axis=axis), np.nanmax(a, axis=axis)

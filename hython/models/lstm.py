@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from .dropout import DropMask, createMask
 
 class CustomLSTM(nn.Module):
-    def __init__(self, model_params):
+    def __init__(self, model_params, dropout = 0.1):
         
         super(CustomLSTM, self).__init__()
 
@@ -20,23 +20,23 @@ class CustomLSTM(nn.Module):
 
         self.lstm = nn.LSTM(hidden_size , hidden_size, batch_first=True)
 
-        self.fc1 = nn.Linear(hidden_size, int(hidden_size/2))
-
-        self.fc2 = nn.Linear(int(hidden_size/2), output_size)
-
+        self.fc1 = nn.Linear(hidden_size, output_size)
+        
     def forward(self, x, static_params):
 
+        s = static_params.unsqueeze(1).repeat(1, x.size(1), 1)
+        
         x_ds = torch.cat(
              (x,
-              static_params.unsqueeze(1).repeat(1, x.size(1), 1)),
+              s),
               dim=-1,
          )
+        
         l1 = self.fc0(x_ds)
 
         lstm_output, _ = self.lstm(l1)
 
-        out =  self.fc2(torch.relu(self.fc1(lstm_output)))
-
+        out =  self.fc1(lstm_output)
 
         return out
 

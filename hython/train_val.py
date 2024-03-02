@@ -15,7 +15,7 @@ def loss_batch(loss_func, output, target, opt=None):
         target = torch.squeeze(target)
         output = torch.squeeze(output)
     
-    loss = loss_func(output, target)
+    loss = loss_func(target, output)
     if opt is not None: # evaluation
         opt.zero_grad()
         loss.backward()
@@ -72,7 +72,7 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, 
             # update running loss
             running_time_batch_loss += loss_time_batch #* targets_bt.size(0)
 
-        running_time_batch_loss /= len(ts_idx)
+        #running_time_batch_loss /= len(ts_idx)
         
         # accumulate number of samples
         spatial_sample_size += targets_b.size(0)
