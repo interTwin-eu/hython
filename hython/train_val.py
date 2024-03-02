@@ -1,5 +1,6 @@
 import copy
 import torch
+import matplotlib.pyplot as plt
 import numpy as np
 
 # get the current learning rate
@@ -14,7 +15,7 @@ def loss_batch(loss_func, output, target, opt=None):
         target = torch.squeeze(target)
         output = torch.squeeze(output)
     
-    loss = loss_func(output, target)
+    loss = loss_func(target, output)
     if opt is not None: # evaluation
         opt.zero_grad()
         loss.backward()
@@ -32,8 +33,9 @@ def metric_epoch(metric_func, y_pred, y_true, target_names):
 # Define the loss_epoch function
 def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, opt=None, ts_idx= None, seq_length = None):
     running_loss = 0
-    len_data = len(dataset_dl.dataset)
-
+    
+    spatial_sample_size = 0 
+    
     epoch_preds = None
     epoch_targets = None 
 
@@ -64,16 +66,21 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, 
                     (epoch_targets, targets_bt[:, -1].detach().cpu().numpy()), axis=0
                 )
 
-            # get loss per batch
+            # get loss per i time batch
             loss_time_batch = loss_batch(loss_func, output, targets_bt[:, -1], opt) 
 
             # update running loss
-            running_time_batch_loss += loss_time_batch * targets_bt.size(0)
+            running_time_batch_loss += loss_time_batch #* targets_bt.size(0)
 
-        running_loss += running_time_batch_loss/ len(ts_idx)
+        #running_time_batch_loss /= len(ts_idx)
+        
+        # accumulate number of samples
+        spatial_sample_size += targets_b.size(0)
+
+        running_loss += running_time_batch_loss
 
     # average loss value
-    loss = running_loss / float(len_data)
+    loss = running_loss / spatial_sample_size
 
     # average metric value
     metric = metric_epoch(metric_func, epoch_targets, epoch_preds, target_names)
@@ -85,6 +92,7 @@ def train_val(model, params):
     num_epochs = params["num_epochs"]
     seq_length = params["seq_length"]
     temporal_sampling_size = params["temporal_sampling_size"]
+    temporal_sampling_epoch = params["temporal_sampling_idx_change_with_epoch"]
     ts_range = params["ts_range"]
     loss_func = params["loss_func"]
     metric_func = params["metric_func"]
@@ -104,15 +112,18 @@ def train_val(model, params):
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = float("inf")
 
+    if not temporal_sampling_epoch:
+        ts_idx = np.random.randint(0,ts_range  - seq_length, temporal_sampling_size)
+    
     for epoch in range(num_epochs):
         current_lr = get_lr(opt)
         
         print(f"Epoch {epoch}/{num_epochs - 1}, current lr={current_lr}")
         
         # every epoch generate a new set of random time indices (sampling the timeseries)
-        ts_idx = np.random.randint(0, 
-                                ts_range  - seq_length 
-                               , temporal_sampling_size)
+        if temporal_sampling_epoch:
+            ts_idx = np.random.randint(0, ts_range  - seq_length, temporal_sampling_size)
+
     
         model.train()
         train_loss, train_metric = loss_epoch(
@@ -147,6 +158,8 @@ def train_val(model, params):
         print(f"train loss: {train_loss}, train metric: {train_metric}")
         print(f"val loss: {val_loss}, val metric: {val_metric}")
         print("-" * 10)
+        
+
 
     model.load_state_dict(best_model_wts)
     

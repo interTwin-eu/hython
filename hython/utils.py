@@ -7,7 +7,9 @@ from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
 from typing import Any
 from numpy.typing import NDArray
 
-
+def load(surrogate_input_path, wflow_model, files = ["Xd", "Xs", "Y"]):
+    loaded = np.load(surrogate_input_path / f"{wflow_model}.npz")
+    return [loaded[f] for f in files]
 
 def missing_location_idx(grid: np.ndarray |  xr.DataArray | xr.Dataset,
                            missing: Any = np.nan) -> NDArray | list:
