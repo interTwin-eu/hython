@@ -5,23 +5,20 @@ import xarray as xr
 import matplotlib.colors as colors
 
 
-def plot_sampler(da_bkg, meta, meta_valid):
+def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10 ):
     
     vv = da_bkg
     
-    static_meta = meta.get("static")
-    static_meta_valid = meta_valid.get("static")
+    vv = vv.assign_coords({"gridcell":(("lat", "lon"), meta.idx_grid_2d)})
     
-    vv = vv.assign_coords({"gridcell":(("lat", "lon"), static_meta.idx_orig_2d)})
-    
-    vv = vv.assign_coords({"gridcell_valid":(("lat", "lon"), static_meta_valid.idx_orig_2d)})
+    vv = vv.assign_coords({"gridcell_valid":(("lat", "lon"), meta_valid.idx_grid_2d)})
     
     tmp = np.zeros(vv.shape).astype(np.bool_)
-    for i in static_meta.idx_sampled_1d:
+    for i in meta.idx_sampled_1d:
         tmp[vv.gridcell == i] = True
     
     tmp_valid = np.zeros(vv.shape).astype(np.bool_)
-    for i in static_meta_valid.idx_sampled_1d:
+    for i in meta_valid.idx_sampled_1d:
         tmp_valid[vv.gridcell_valid == i] = True
     
     df = vv.where(tmp).to_dataframe().dropna().reset_index()
@@ -32,10 +29,10 @@ def plot_sampler(da_bkg, meta, meta_valid):
     
     gdf_valid = gpd.GeoDataFrame(df_valid, geometry=gpd.points_from_xy(x=df_valid.lon, y=df_valid.lat), crs=4326)
     
-    fig, ax = plt.subplots(1,1, figsize=(6, 6))
+    fig, ax = plt.subplots(1,1, figsize=figsize)
     da_bkg.plot(ax = ax, add_colorbar=False, alpha = 0.5, cmap="terrain")
-    gdf.plot(ax=ax, color="red", markersize=10, label="training")
-    gdf_valid.plot(ax=ax, color="black", markersize=10, label = "validation")
+    gdf.plot(ax=ax, color="red", markersize= markersize, label="training")
+    gdf_valid.plot(ax=ax, color="black", markersize= markersize, label = "validation")
     plt.legend()
     #ax.set_xlim([6, 7.5])
     #ax.set_ylim([45.5, 46.5])
@@ -63,11 +60,11 @@ def map_pearson(y: xr.DataArray, yhat, dim="time"):
     i = ax.imshow(p, cmap="RdBu", norm=colors.CenteredNorm())
     fig.colorbar(i, ax=ax)
 
-def map_pbias(y: xr.DataArray, yhat, dim="time"):
+def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), kwargs_imshow = {}):
     pbias = compute_pbias(y, yhat, dim)
-    fig, ax = plt.subplots(1,1)
-    i = ax.imshow(pbias, cmap="RdBu",  norm=colors.CenteredNorm())
-    fig.colorbar(i, ax=ax)
+    fig, ax = plt.subplots(1,1, figsize = figsize)
+    i = ax.imshow(pbias, cmap="RdBu", **kwargs_imshow)
+    fig.colorbar(i, ax=ax, shrink=0.5)
 
 def map_bias(y: xr.DataArray, yhat, dim ="time" ):
     bias = compute_bias(y, yhat, dim)
