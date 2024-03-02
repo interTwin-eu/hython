@@ -7,6 +7,9 @@ from torch.nn.modules.loss import _Loss
 __all__ = ["RMSELoss"]
 
 class RMSELoss(_Loss):
+
+    __name__ = "RMSE"
+    
     def __init__(
         self,
         target_weight: dict = None,
@@ -30,7 +33,12 @@ class RMSELoss(_Loss):
         Parameters:
         y_true (torch.Tensor): The true values.
         y_pred (torch.Tensor): The predicted values.
-
+        
+        Shape
+        y_true: torch.Tensor of shape (N, T).
+        y_pred: torch.Tensor of shape (N, T).
+        (256,3) means 256 samples with 3 targets. 
+        
         Returns:
         torch.Tensor: The RMSE loss.
         """
