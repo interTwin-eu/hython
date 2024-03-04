@@ -11,9 +11,25 @@ from typing import Any, Tuple, List
 from numpy.typing import NDArray
 from xarray.core.coordinates import DatasetCoordinates
 
-from torch.utils.data import Sampler
+from torch.utils.data import Sampler as TorchSampler
 
-class SpaceSampler(Sampler):
+def get_grid_idx(grid):
+    if isinstance(grid, np.ndarray):
+        shape = grid.shape
+    elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+        shape = (len(grid.lat), len(grid.lon))
+    else:
+        pass
+    
+    ishape = shape[0]# rows (y, lat)
+    jshape = shape[1] # columns (x, lon)
+
+    grid_idx = np.arange(0, ishape * jshape, 1).reshape(ishape, jshape)
+
+    return grid_idx
+
+
+class DataLoaderSpatialSampler(TorchSampler):
     
     def __init__(self, data_source, num_samples= 10, generator = None, sampling_indices = None):
         
@@ -68,7 +84,10 @@ class AbstractSampler(ABC):
     #     for attr in req_attrs:
     #         if not hasattr(self, attr):
     #             raise AttributeError(f"Missing attribute: '{attr}'")
-    
+
+    def get_grid_idx(self, grid):
+        return get_grid_idx(grid)
+        
     @abstractmethod
     def sampling_idx(self, grid: NDArray | xr.DataArray | xr.Dataset) -> SamplerResult:
         """Sample the original grid. Must be instantiated by a concrete class that implements the sampling approach.
@@ -134,7 +153,7 @@ class RegularIntervalSampler(AbstractSampler):
         irange = np.arange(iorigin, ishape, iintervals)
         jrange = np.arange(jorigin, jshape, jintervals)
 
-        grid_idx = np.arange(0, ishape * jshape, 1).reshape(ishape, jshape)
+        grid_idx = self.get_grid_idx(grid)
 
         idx_sampled = grid_idx[irange[:,None], jrange].flatten() # broadcasting
         
