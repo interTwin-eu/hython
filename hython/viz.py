@@ -33,7 +33,7 @@ def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10, cm
     da_bkg.plot(ax = ax, add_colorbar=False, alpha = 0.5, cmap=cmap)
     gdf.plot(ax=ax, color="red", markersize= markersize, label="training")
     gdf_valid.plot(ax=ax, color="black", markersize= markersize, label = "validation")
-    plt.legend()
+    plt.legend(bbox_to_anchor=(1.05, 1.05))
     #ax.set_xlim([6, 7.5])
     #ax.set_ylim([45.5, 46.5])
     

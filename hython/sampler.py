@@ -189,7 +189,10 @@ class RegularIntervalSampler(AbstractSampler):
                                 sampled_grid_dims = sampled_grid_dims,
                                 xr_sampled_coords = xr_coords )
 
-
+class ClusterSampler(AbstractSampler):
+    from minisom import MiniSom
+    
+    def 
 
 class StratifiedSampler(AbstractSampler):
     pass
