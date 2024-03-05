@@ -5,7 +5,7 @@ import xarray as xr
 import matplotlib.colors as colors
 
 
-def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10 ):
+def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10, cmap="terrain"):
     
     vv = da_bkg
     
@@ -30,7 +30,7 @@ def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10 ):
     gdf_valid = gpd.GeoDataFrame(df_valid, geometry=gpd.points_from_xy(x=df_valid.lon, y=df_valid.lat), crs=4326)
     
     fig, ax = plt.subplots(1,1, figsize=figsize)
-    da_bkg.plot(ax = ax, add_colorbar=False, alpha = 0.5, cmap="terrain")
+    da_bkg.plot(ax = ax, add_colorbar=False, alpha = 0.5, cmap=cmap)
     gdf.plot(ax=ax, color="red", markersize= markersize, label="training")
     gdf_valid.plot(ax=ax, color="black", markersize= markersize, label = "validation")
     plt.legend()
