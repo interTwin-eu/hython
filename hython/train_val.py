@@ -81,7 +81,7 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, 
 
     # average loss value
     loss = running_loss / spatial_sample_size
-
+    #import pdb;pdb.set_trace()
     # average metric value
     metric = metric_epoch(metric_func, epoch_targets, epoch_preds, target_names)
     
