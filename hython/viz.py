@@ -41,8 +41,11 @@ def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10, cm
     return fig,ax
 
 
-def compute_pbias(y: xr.DataArray, yhat, dim="time"):
-    if isinstance(y, xr.DataArray) or isinstance(yhat, xr.DataArray):
+def compute_pbias(y_in: xr.DataArray, yhat_in, dim="time", offset=0):
+    
+    y = y_in.copy() + offset
+    yhat = yhat_in.copy() + offset
+    if isinstance(y, xr.DataArray) or isinstance(yhat, xr.DataArray): 
         return 100*(( yhat - y).sum(dim=dim, skipna=False) / y.sum(dim=dim,skipna=False))
     else:
         return 100* np.sum(yhat -y, axis=2) / np.sum(y, axis=2)    
@@ -58,17 +61,17 @@ def map_pearson(y: xr.DataArray, yhat, dim="time"):
     p = xr.corr(y, yhat, dim=dim)
     fig, ax = plt.subplots(1,1)
     i = ax.imshow(p, cmap="RdBu", norm=colors.CenteredNorm())
-    fig.colorbar(i, ax=ax)
+    fig.colorbar(i, ax=ax, label="Pearson corr coeff")
 
-def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), kwargs_imshow = {}):
-    pbias = compute_pbias(y, yhat, dim)
+def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0):
+    pbias = compute_pbias(y, yhat, dim, offset=offset)
     fig, ax = plt.subplots(1,1, figsize = figsize)
     vmin = kwargs_imshow.get("vmin", False)
     if vmin:
         i = ax.imshow(pbias, cmap="RdBu", **kwargs_imshow)
     else:
         i = ax.imshow(pbias, cmap="RdBu", norm=colors.CenteredNorm(), **kwargs_imshow)
-    fig.colorbar(i, ax=ax, shrink=0.5, label="%")
+    fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}")
 
 def map_bias(y: xr.DataArray, yhat, unit = "mm", dim ="time", figsize = (10,10), kwargs_imshow = {}):
     bias = compute_bias(y, yhat, dim)
@@ -96,7 +99,7 @@ def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None, label_pr
         
         
         
-def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_pred = "LSTM", label_target = "wflow", bkg_map = None):
+def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_1 = "wflow", label_2 = "LSTM", bkg_map = None):
     time = y.time.values
     for ilat,ilon in zip(lat, lon):
         ax_dict = plt.figure(layout="constrained", figsize=(20,6)).subplot_mosaic(
@@ -108,8 +111,8 @@ def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_pred = "LSTM", la
         )
         iy = y.sel(lat = ilat,lon = ilon, method="nearest")
         iyhat = yhat.sel(lat = ilat,lon = ilon, method="nearest") 
-        ax_dict["A"].plot(time, iyhat, label = label_pred)
-        ax_dict["A"].plot(time, iy, label= label_target)
+        ax_dict["A"].plot(time, iyhat, label = label_2)
+        ax_dict["A"].plot(time, iy, label= label_1)
         ax_dict["A"].legend()
         ax_dict["B"].scatter(iy,iyhat, s=1)
         xmin = np.nanmin( np.concatenate([iy, iyhat] )) - 0.05
@@ -117,8 +120,8 @@ def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_pred = "LSTM", la
         ax_dict["B"].set_xlim(xmin, xmax)
         ax_dict["B"].set_ylim(xmin, xmax)
         ax_dict["B"].axline((0, 0), (1, 1), color="black", linestyle="dashed")
-        ax_dict["B"].set_ylabel(label_pred)
-        ax_dict["B"].set_xlabel(label_target)
+        ax_dict["B"].set_ylabel(label_2)
+        ax_dict["B"].set_xlabel(label_1)
         df = gpd.GeoDataFrame([],geometry=gpd.points_from_xy(x=[ilon], y=[ilat]))
         if bkg_map is not None:
             bkg_map.plot(ax=ax_dict["C"], add_colorbar=False, cmap="terrain")
