@@ -27,7 +27,7 @@ def get_grid_idx(grid):
     grid_idx = np.arange(0, ishape * jshape, 1).reshape(ishape, jshape)
 
     return grid_idx
-
+    
 
 class DataLoaderSpatialSampler(TorchSampler):
     
@@ -51,6 +51,7 @@ class DataLoaderSpatialSampler(TorchSampler):
     
     def __len__(self) -> int:
         return self.num_samples
+
 
 
 @dataclass
@@ -190,10 +191,7 @@ class RegularIntervalSampler(AbstractSampler):
                                 sampled_grid_dims = sampled_grid_dims,
                                 xr_sampled_coords = xr_coords )
 
-class ClusterSampler(AbstractSampler):
-    from minisom import MiniSom
-    
-    def 
+
 
 class StratifiedSampler(AbstractSampler):
     pass
