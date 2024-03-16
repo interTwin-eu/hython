@@ -83,18 +83,20 @@ def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None, label_pr
         fig, ax = plt.subplots(1,2, figsize= (20,15))
         fig.subplots_adjust(hspace=0.3)
         vmax = np.nanmax([yhat.sel(time=t),y.sel(time=t)])
+        
         l1 = ax[0].imshow(yhat.sel(time=t), vmax=vmax)
         ax[0].set_title("LSTM", fontsize=28)
-        #fig.colorbar(l1, ax=ax[0],shrink=0.5)
+        fig.colorbar(l1, ax=ax[0],shrink=0.3)
+        
         l2 = ax[1].imshow(y.sel(time=t), vmax=vmax)
         ax[1].set_title("wflow", fontsize=28)
-        fig.colorbar(l2, ax=ax[1],shrink=0.5)
+        fig.colorbar(l2, ax=ax[1],shrink=0.3)
         fig.suptitle(t, y = 0.8, fontsize=20, fontweight="bold")
         fig.tight_layout()
         
         
         
-def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_pred = "LSTM", label_target = "wflow"):
+def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_pred = "LSTM", label_target = "wflow", bkg_map = None):
     time = y.time.values
     for ilat,ilon in zip(lat, lon):
         ax_dict = plt.figure(layout="constrained", figsize=(20,6)).subplot_mosaic(
@@ -118,6 +120,9 @@ def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_pred = "LSTM", la
         ax_dict["B"].set_ylabel(label_pred)
         ax_dict["B"].set_xlabel(label_target)
         df = gpd.GeoDataFrame([],geometry=gpd.points_from_xy(x=[ilon], y=[ilat]))
-        y.mean("time").plot(ax=ax_dict["C"], add_colorbar=False)
+        if bkg_map is not None:
+            bkg_map.plot(ax=ax_dict["C"], add_colorbar=False, cmap="terrain")
+        else:
+            y.mean("time").plot(ax=ax_dict["C"], add_colorbar=False)
         df.plot(ax=ax_dict["C"], markersize=20, color="red")
         plt.title(f"lat, lon:  ({ ilat}, {ilon})")
