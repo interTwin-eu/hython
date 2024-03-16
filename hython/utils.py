@@ -88,6 +88,7 @@ def reconstruct_from_missing(a: NDArray, original_shape: tuple, missing_location
          ),
         np.nan
          )
+    print(fill.shape)
     
     if len(original_shape) > 2:
         # fill missing
