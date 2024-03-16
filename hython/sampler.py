@@ -152,7 +152,8 @@ class RegularIntervalSampler(AbstractSampler):
             
             sampled_grid = grid.isel(lat=irange, lon=jrange)
 
-            xr_coords = sampled_grid.isel(variable=0, drop=True).coords
+            #xr_coords = sampled_grid.isel(variable=0, drop=True).coords
+            xr_coords = sampled_grid.coords
             #xr_coords.assign({"lat":xr_coords["lat"][irange]})
             #xr_coords.assign({"lon":xr_coords["lon"][jrange]})
             

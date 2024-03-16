@@ -6,6 +6,7 @@ from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
 
 from typing import Any
 from numpy.typing import NDArray
+from dask.array.core import Array as DaskArray
 
 def load(surrogate_input_path, wflow_model, files = ["Xd", "Xs", "Y"]):
     loaded = np.load(surrogate_input_path / f"{wflow_model}.npz")
@@ -105,7 +106,20 @@ def reconstruct_from_missing(a: NDArray, original_shape: tuple, missing_location
 
     return a_new
 
-
+def store_as_zarr(arr: DaskArray | xr.DataArray, url, group = None, storage_options = {}, overwrite = True, chunks="auto"):
+    if isinstance(arr, DaskArray):
+        arr = arr.rechunk(chunks = chunks)
+        arr.to_zarr(url=url, storage_options=storage_options, overwrite=overwrite, component=group)
+        
+    if isinstance(arr, xr.DataArray):
+        if overwrite:
+            overwrite="w"
+        else:
+            overwrite="r"
+        arr = arr.chunk(chunks=chunks)
+        arr.to_zarr(store=url, storage_options=storage_options, mode=overwrite, group=group)
+        
+    
 
 def prepare_for_plotting(y_target: NDArray, y_pred: NDArray, shape: tuple[int], coords: DataArrayCoordinates | DatasetCoordinates):
     

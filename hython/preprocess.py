@@ -9,13 +9,16 @@ from hython.sampler import AbstractSampler
 
 from typing import List
 from typing import Union, Any 
+from dask.array.core import Array as DaskArray
 
+from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 
 def reshape(
             dynamic: xr.Dataset,
             static: xr.Dataset,
             target: xr.Dataset,
-              ) -> List[np.ndarray]:
+            return_type = "xarray"
+              ) -> List[DaskArray] | List[xr.DataArray]:
 
     # reshape 
     Xd = ( dynamic
@@ -40,27 +43,30 @@ def reshape(
         )
     print("target: ", Y.shape, " => (GRIDCELL, TIME, TARGET)")     
 
-
-    return Xd.compute().values,Xs.compute().values, Y.compute().values
+    if return_type == "xarray":
+        return Xd, Xs, Y
+    if return_type == "dask":
+        return Xd.data, Xs.data, Y.data
+    if return_type == "numpy":
+        return Xd.compute().values, Xs.compute().values, Y.compute().values
+        
 
 def scale(a, how, axis, m1, m2):
+    
     if how == 'standard':
         if m1 is None or m2 is None:
             
-            m1, m2 = np.nanmean(a, axis=axis), np.nanstd(a, axis=axis)
+            m1, m2 = nanmean(a, axis=axis), nanstd(a, axis=axis)
             
-            return (a - np.expand_dims(m1, axis = axis) )/ np.expand_dims(m2, axis = axis), m1, m2
+            return (a - expand_dims(m1, axis = axis) )/ expand_dims(m2, axis = axis), m1, m2
         else:
-            return (a - np.expand_dims(m1, axis = axis))/np.expand_dims(m2, axis = axis)
+            return (a - expand_dims(m1, axis = axis))/ expand_dims(m2, axis = axis)
+            
     elif how == 'minmax':
         if m1 is None or m2 is None:
-            m1, m2 = np.nanmin(a, axis=axis), np.nanmax(a, axis=axis)
+            m1, m2 = nanmin(a, axis=axis), nanmax(a, axis=axis)
             
             den = m2 - m1 
-            #print(den)
-            #import pdb;pdb.set_trace()
-            # if np.any(den == 0):
-            #     den[np.nonzero(den == 0)] = 1
                 
             return (a - m1)/den, m1, m2
         else:
