@@ -63,32 +63,41 @@ def map_pearson(y: xr.DataArray, yhat, dim="time"):
 def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), kwargs_imshow = {}):
     pbias = compute_pbias(y, yhat, dim)
     fig, ax = plt.subplots(1,1, figsize = figsize)
-    i = ax.imshow(pbias, cmap="RdBu", **kwargs_imshow)
-    fig.colorbar(i, ax=ax, shrink=0.5)
+    vmin = kwargs_imshow.get("vmin", False)
+    if vmin:
+        i = ax.imshow(pbias, cmap="RdBu", **kwargs_imshow)
+    else:
+        i = ax.imshow(pbias, cmap="RdBu", norm=colors.CenteredNorm(), **kwargs_imshow)
+    fig.colorbar(i, ax=ax, shrink=0.5, label="%")
 
-def map_bias(y: xr.DataArray, yhat, dim ="time" ):
+def map_bias(y: xr.DataArray, yhat, unit = "mm", dim ="time", figsize = (10,10), kwargs_imshow = {}):
     bias = compute_bias(y, yhat, dim)
-    fig, ax = plt.subplots(1,1)
-    i = ax.imshow(bias, cmap="RdBu",  norm=colors.CenteredNorm())
-    fig.colorbar(i, ax=ax)
+    fig, ax = plt.subplots(1,1,figsize = figsize)
+    i = ax.imshow(bias, cmap="RdBu",  norm=colors.CenteredNorm(), **kwargs_imshow)
+    fig.colorbar(i, ax=ax, label=unit)
 
-def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None):
+def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None, label_pred = "LSTM", label_target = "wflow"):
     ts = dates if dates else y.time.dt.date.values 
+    
     for t in dates:
         fig, ax = plt.subplots(1,2, figsize= (20,15))
         fig.subplots_adjust(hspace=0.3)
-        l1 = ax[0].imshow(yhat.sel(time=t))
+        vmax = np.nanmax([yhat.sel(time=t),y.sel(time=t)])
+        
+        l1 = ax[0].imshow(yhat.sel(time=t), vmax=vmax)
         ax[0].set_title("LSTM", fontsize=28)
-        fig.colorbar(l1, ax=ax[0],shrink=0.5)
-        l2 = ax[1].imshow(y.sel(time=t))
+        fig.colorbar(l1, ax=ax[0],shrink=0.3)
+        
+        l2 = ax[1].imshow(y.sel(time=t), vmax=vmax)
         ax[1].set_title("wflow", fontsize=28)
-        fig.colorbar(l2, ax=ax[1],shrink=0.5)
+        fig.colorbar(l2, ax=ax[1],shrink=0.3)
         fig.suptitle(t, y = 0.8, fontsize=20, fontweight="bold")
         fig.tight_layout()
         
         
         
-def ts_compare(y: xr.DataArray, yhat, lat= [], lon = []):
+def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_pred = "LSTM", label_target = "wflow", bkg_map = None):
+    time = y.time.values
     for ilat,ilon in zip(lat, lon):
         ax_dict = plt.figure(layout="constrained", figsize=(20,6)).subplot_mosaic(
         """
@@ -99,8 +108,8 @@ def ts_compare(y: xr.DataArray, yhat, lat= [], lon = []):
         )
         iy = y.sel(lat = ilat,lon = ilon, method="nearest")
         iyhat = yhat.sel(lat = ilat,lon = ilon, method="nearest") 
-        ax_dict["A"].plot(iyhat, label ="lstm")
-        ax_dict["A"].plot(iy, label="wflow")
+        ax_dict["A"].plot(time, iyhat, label = label_pred)
+        ax_dict["A"].plot(time, iy, label= label_target)
         ax_dict["A"].legend()
         ax_dict["B"].scatter(iy,iyhat, s=1)
         xmin = np.nanmin( np.concatenate([iy, iyhat] )) - 0.05
@@ -108,9 +117,12 @@ def ts_compare(y: xr.DataArray, yhat, lat= [], lon = []):
         ax_dict["B"].set_xlim(xmin, xmax)
         ax_dict["B"].set_ylim(xmin, xmax)
         ax_dict["B"].axline((0, 0), (1, 1), color="black", linestyle="dashed")
-        ax_dict["B"].set_ylabel("lstm")
-        ax_dict["B"].set_xlabel("wflow")
+        ax_dict["B"].set_ylabel(label_pred)
+        ax_dict["B"].set_xlabel(label_target)
         df = gpd.GeoDataFrame([],geometry=gpd.points_from_xy(x=[ilon], y=[ilat]))
-        y.mean("time").plot(ax=ax_dict["C"], add_colorbar=False)
+        if bkg_map is not None:
+            bkg_map.plot(ax=ax_dict["C"], add_colorbar=False, cmap="terrain")
+        else:
+            y.mean("time").plot(ax=ax_dict["C"], add_colorbar=False)
         df.plot(ax=ax_dict["C"], markersize=20, color="red")
         plt.title(f"lat, lon:  ({ ilat}, {ilon})")
