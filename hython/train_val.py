@@ -10,8 +10,11 @@ def get_lr(opt):
 
 
 # Define the Loss_batch function
-def loss_batch(loss_func, output, target, opt=None):
-    if target.shape[-1] == 1:
+def loss_batch(loss_func, output, target, opt=None, experiment = None):
+    
+    shape = target.shape
+    #import pdb;pdb.set_trace()
+    if len(shape) > 0 and shape[-1] == 1:
         target = torch.squeeze(target)
         output = torch.squeeze(output)
     
@@ -31,7 +34,7 @@ def metric_epoch(metric_func, y_pred, y_true, target_names):
 
 
 # Define the loss_epoch function
-def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, opt=None, ts_idx= None, seq_length = None):
+def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, opt=None, ts_idx= None, seq_length = None, experiment= None):
     running_loss = 0
     
     spatial_sample_size = 0 
@@ -39,6 +42,7 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, 
     epoch_preds = None
     epoch_targets = None 
 
+    
     for (
         predictors_b,
         static_params_b,
@@ -51,10 +55,16 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, 
 
             predictors_bt = predictors_b[:, t:(t + seq_length)].to(device)
             static_params_bt = static_params_b.to(device)
-            targets_bt = targets_b[:, t:(t + seq_length)].to(device)
-            
-            output = model(predictors_bt, static_params_bt)[:, -1] # take last time step
 
+            if experiment == "smet_distr_and_dis_lumped":
+                targets_bt = targets_b[:, t:(t + seq_length),1:].to(device)
+            else:
+                targets_bt = targets_b[:, t:(t + seq_length)].to(device)
+            
+            output = model(predictors_bt, static_params_bt, "lstm_smet")
+
+            output = output[:, -1] # take last time step
+            
             if epoch_preds is None:
                 epoch_preds = output.detach().cpu().numpy()
                 epoch_targets = targets_bt[:, -1].detach().cpu().numpy()
@@ -67,25 +77,69 @@ def loss_epoch(model, loss_func, metric_func, dataset_dl, target_names, device, 
                 )
 
             # get loss per i time batch
-            loss_time_batch = loss_batch(loss_func, output, targets_bt[:, -1], opt) 
+            #import pdb;pdb.set_trace()
+            if experiment == "smet_distr_and_dis_lumped":
+                loss_time_batch = loss_batch(loss_func, output, targets_bt[:, -1], opt = None)
+            else:
+                loss_time_batch = loss_batch(loss_func, output, targets_bt[:, -1], opt)
+    
 
             # update running loss
-            running_time_batch_loss += loss_time_batch #* targets_bt.size(0)
+        
+            running_time_batch_loss += loss_time_batch 
 
-        #running_time_batch_loss /= len(ts_idx)
+        running_time_batch_loss = running_time_batch_loss / len(ts_idx)
         
         # accumulate number of samples
         spatial_sample_size += targets_b.size(0)
 
+        # running_loss += running_time_batch_loss
         running_loss += running_time_batch_loss
 
-    # average loss value
-    loss = running_loss / spatial_sample_size
-    #import pdb;pdb.set_trace()
-    # average metric value
-    metric = metric_epoch(metric_func, epoch_targets, epoch_preds, target_names)
+    # exit minibatch loop
     
-    return loss, metric
+    if experiment == "smet_distr_and_dis_lumped":
+        # Discharge should be first in Y
+        #
+        
+        Xd = dataset_dl.dataset.Xd.nanmean(0).to(device)
+        Xs = dataset_dl.dataset.xs.nanmean(0).to(device)
+        
+        Y = dataset_dl.dataset.y[:,:,0].nanmean(0).to(device)
+        dis_running_time_batch = 0
+        for t in ts_idx:
+            Xd_bt = Xd[t:(t + seq_length)]
+            Y_bt = Y[t:(t+seq_length)]
+            
+            output = model(Xd_bt, Xs, "lstm_dis")
+            #import pdb;pdb.set_trace()
+            output = output[-1,-1] # last time step, one variable 
+            import pdb;pdb.set_trace()
+             
+            loss_dis_time_batch = loss_batch(loss_func, output, Y_bt[-1], opt=None, experiment = experiment)
+            
+            dis_running_time_batch += loss_dis_time_batch
+            
+        print("discharge:",dis_running_time_batch / len(ts_idx))
+        print("smet:",running_loss / spatial_sample_size)
+            
+        # average loss value
+        loss = running_loss + loss_dis_time_batch #/ len(ts_idx)
+        
+        if model.training:
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+    else:
+        # average loss value
+        loss = running_loss / spatial_sample_size 
+
+
+    # average metric value
+    #metric = metric_epoch(metric_func, epoch_targets, epoch_preds, target_names)
+    
+    return loss, [0] #metric
 
 
 def train_val(model, params):
@@ -103,6 +157,7 @@ def train_val(model, params):
     lr_scheduler = params["lr_scheduler"]
     path2weights = params["path2weights"]
     device = params["device"]
+    experiment = params.get("experiment")
 
     loss_history = {"train": [], "val": []}
 
@@ -127,20 +182,20 @@ def train_val(model, params):
     
         model.train()
         train_loss, train_metric = loss_epoch(
-            model, loss_func, metric_func, train_dl, target_names, device, opt, ts_idx, seq_length
+            model, loss_func, metric_func, train_dl, target_names, device, opt, ts_idx, seq_length, experiment = experiment
         )
 
         loss_history["train"].append(train_loss)
-        for t in target_names: metric_history[f'train_{t}'].append(train_metric[t])
+        #for t in target_names: metric_history[f'train_{t}'].append(train_metric[t])
 
         model.eval()
         with torch.no_grad():
             val_loss, val_metric = loss_epoch(
-                model, loss_func, metric_func, val_dl, target_names, device, ts_idx= ts_idx, seq_length = seq_length
+                model, loss_func, metric_func, val_dl, target_names, device, ts_idx= ts_idx, seq_length = seq_length, experiment = experiment
             )
 
         loss_history["val"].append(val_loss)
-        for t in target_names: metric_history[f'val_{t}'].append(val_metric[t])
+        #for t in target_names: metric_history[f'val_{t}'].append(val_metric[t])
 
         if val_loss < best_loss:
             best_loss = val_loss

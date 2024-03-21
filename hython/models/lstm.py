@@ -13,7 +13,7 @@ class CustomLSTM(nn.Module):
 
         input_size = model_params["input_size"]
         hidden_size = model_params["hidden_size"]
-        output_size = model_params["output_size"]
+        output_size = 1# model_params["output_size"] # -1
         number_static_predictors = model_params["number_static_predictors"]
 
         self.fc0 = nn.Linear(input_size + number_static_predictors, hidden_size)
@@ -22,7 +22,7 @@ class CustomLSTM(nn.Module):
 
         self.fc1 = nn.Linear(hidden_size, output_size)
         
-    def forward(self, x, static_params):
+    def forward(self, x, static_params, *args):
 
         s = static_params.unsqueeze(1).repeat(1, x.size(1), 1)
         
@@ -31,6 +31,8 @@ class CustomLSTM(nn.Module):
               s),
               dim=-1,
          )
+
+        #import pdb; pdb.set_trace()
         
         l1 = self.fc0(x_ds)
 
@@ -41,6 +43,59 @@ class CustomLSTM(nn.Module):
         return out
 
 
+class DisLSTM(nn.Module):
+    def __init__(self, model_params, dropout = 0.1):
+        super(DisLSTM, self).__init__()
+        
+        input_size = model_params["input_size"]
+        hidden_size = 16 #model_params["hidden_size"]
+        output_size = 1 # model_params["output_size"] - 2
+        number_static_predictors = model_params["number_static_predictors"]
+        
+        #self.fc0 = nn.Linear(input_size + number_static_predictors, hidden_size)
+        self.fc0 = nn.Linear(input_size, hidden_size)
+        
+        self.lstm = nn.LSTM(hidden_size , hidden_size, batch_first=True)
+        
+        self.fc1 = nn.Linear(hidden_size, output_size)  
+
+    def forward(self, x, static_params):
+
+        #s = static_params.unsqueeze(0).repeat(x.size(0), 1)
+        #import pdb;pdb.set_trace()
+        # x_ds = torch.cat(
+        #      (x,
+        #       s),
+        #       dim=-1,
+        #  )
+        
+        #l1 = self.fc0(x_ds)
+        l1 = self.fc0(x)
+
+        lstm_output, _ = self.lstm(l1)
+
+        out =  self.fc1(lstm_output)
+
+        return out
+
+
+class Surrogate(nn.Module):
+    
+    def __init__(self, model_params):
+        super().__init__()
+        
+        self.lstm_dis = DisLSTM(model_params)
+        self.lstm_smet = CustomLSTM(model_params)
+        
+        
+    def forward(self, x, static_params = None, model = "lstm_smet"):
+
+        if model == "lstm_smet":
+            out = self.lstm_smet(x, static_params)
+        if model == "lstm_dis":
+            out = self.lstm_dis(x, static_params)
+            
+        return out
 
 
 class CudnnLSTMlyr(nn.Module):

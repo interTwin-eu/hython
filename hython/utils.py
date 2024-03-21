@@ -52,11 +52,21 @@ def predict(Xd, Xs, model, batch_size, device):
         d = torch.Tensor(Xd[i:(i+batch_size)]).to(device)
         
         s = torch.Tensor(Xs[i:(i+batch_size)]).to(device)
+
         arr.append(
-            model(d, s).detach().cpu().numpy()
-            )
+        model(d, s).detach().cpu().numpy()
+        )     
     return np.vstack(arr)
 
+def predict_dis(Xd, Xs, model, batch_size, device, model_name=None):
+    model = model.to(device)
+
+    d = torch.Tensor(Xd).to(device)
+    s = torch.Tensor(Xs).to(device)
+
+    out = model(d, s, model_name).detach().cpu().numpy()
+
+    return out
 
 def to_xr(arr, coords, dims = ["lat", "lon", "time"]):
     return xr.DataArray(arr,
