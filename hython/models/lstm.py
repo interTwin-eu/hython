@@ -7,13 +7,17 @@ import torch.nn.functional as F
 from .dropout import DropMask, createMask
 
 class CustomLSTM(nn.Module):
-    def __init__(self, model_params, dropout = 0.1):
+    def __init__(self, model_params, dropout = 0.1, experiment = None):
         
         super(CustomLSTM, self).__init__()
 
         input_size = model_params["input_size"]
         hidden_size = model_params["hidden_size"]
-        output_size = 1# model_params["output_size"] # -1
+        output_size = model_params["output_size"]
+        if experiment == "smet_distr_and_dis_lumped":
+            #only ET and SM
+            output_size = output_size - 1
+        
         number_static_predictors = model_params["number_static_predictors"]
 
         self.fc0 = nn.Linear(input_size + number_static_predictors, hidden_size)
@@ -44,16 +48,18 @@ class CustomLSTM(nn.Module):
 
 
 class DisLSTM(nn.Module):
-    def __init__(self, model_params, dropout = 0.1):
+    def __init__(self, model_params, dropout = 0.1, connect_models=False):
         super(DisLSTM, self).__init__()
         
         input_size = model_params["input_size"]
-        hidden_size = 16 #model_params["hidden_size"]
+        if connect_models:
+            input_size = input_size + 2 # add SM and ET
+        hidden_size = model_params["hidden_size"] + 8
         output_size = 1 # model_params["output_size"] - 2
         number_static_predictors = model_params["number_static_predictors"]
         
-        #self.fc0 = nn.Linear(input_size + number_static_predictors, hidden_size)
-        self.fc0 = nn.Linear(input_size, hidden_size)
+        self.fc0 = nn.Linear(input_size + number_static_predictors, hidden_size)
+        #self.fc0 = nn.Linear(input_size, hidden_size)
         
         self.lstm = nn.LSTM(hidden_size , hidden_size, batch_first=True)
         
@@ -61,16 +67,14 @@ class DisLSTM(nn.Module):
 
     def forward(self, x, static_params):
 
-        #s = static_params.unsqueeze(0).repeat(x.size(0), 1)
-        #import pdb;pdb.set_trace()
-        # x_ds = torch.cat(
-        #      (x,
-        #       s),
-        #       dim=-1,
-        #  )
+        s = static_params.unsqueeze(0).repeat(x.size(0), 1)
+        x_ds = torch.cat(
+             (x,
+              s),
+              dim=-1,
+         )
         
-        #l1 = self.fc0(x_ds)
-        l1 = self.fc0(x)
+        l1 = self.fc0(x_ds)
 
         lstm_output, _ = self.lstm(l1)
 
@@ -81,11 +85,11 @@ class DisLSTM(nn.Module):
 
 class Surrogate(nn.Module):
     
-    def __init__(self, model_params):
+    def __init__(self, model_params, experiment = None, connect_models=True):
         super().__init__()
         
-        self.lstm_dis = DisLSTM(model_params)
-        self.lstm_smet = CustomLSTM(model_params)
+        self.lstm_dis = DisLSTM(model_params, connect_models=connect_models)
+        self.lstm_smet = CustomLSTM(model_params, experiment = experiment)
         
         
     def forward(self, x, static_params = None, model = "lstm_smet"):
