@@ -56,27 +56,51 @@ class RMSELoss(_Loss):
 
         return total_rmse_loss
     
-    
 class MSELoss(_Loss):
+
+    __name__ = "MSE"
+    
     def __init__(
         self,
-        weights: List
+        target_weight: dict = None,
     ):
-        super(RMSELoss, self).__init__()
+        """
+       Root Mean Squared Error (RMSE) loss for regression task.
+
+        Parameters:
+        target_weight: List of targets that contribute in the loss computation, with their associated weights.
+                       In the form {target: weight}
+        """
+        
+        super(MSELoss, self).__init__()        
         self.mseloss = nn.MSELoss()
-        self.weights = weights
+        self.target_weight = target_weight
         
     def forward(self, y_true, y_pred):
         """
-        Calculate the Mean Squared Error (MSE) between two tensors.
+        Calculate the Root Mean Squared Error (RMSE) between two tensors.
 
         Parameters:
         y_true (torch.Tensor): The true values.
         y_pred (torch.Tensor): The predicted values.
-
+        
+        Shape
+        y_true: torch.Tensor of shape (N, T).
+        y_pred: torch.Tensor of shape (N, T).
+        (256,3) means 256 samples with 3 targets. 
+        
         Returns:
-        torch.Tensor: The MSE loss.
+        torch.Tensor: The RMSE loss.
         """
-        mse_loss = self.mseloss(y_true, y_pred)
+        if self.target_weight is None:
+            total_mse_loss = self.mseloss(y_true, y_pred)
+        
+        else:
+            total_mse_loss = 0
+            for idx, k in enumerate(self.target_weight):
+                w = self.target_weight[k]
+                mse_loss = self.mseloss(y_true[:,idx], y_pred[:,idx])
+                loss = mse_loss * w
+                total_mse_loss += loss
 
-        return mse_loss
+        return total_mse_loss

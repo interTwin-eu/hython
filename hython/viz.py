@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import geopandas as gpd
 import xarray as xr
 import matplotlib.colors as colors
+from matplotlib.colors import BoundaryNorm, CenteredNorm
+from matplotlib.ticker import MaxNLocator
+
 
 
 def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10, cmap="terrain"):
@@ -64,14 +67,24 @@ def map_pearson(y: xr.DataArray, yhat, dim="time"):
     fig.colorbar(i, ax=ax, label="Pearson corr coeff")
 
 def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0):
-    pbias = compute_pbias(y, yhat, dim, offset=offset)
-    fig, ax = plt.subplots(1,1, figsize = figsize)
+    cmap = plt.colormaps['RdBu']
     vmin = kwargs_imshow.get("vmin", False)
+
+    pbias = compute_pbias(y, yhat, dim, offset=offset)
+    fig, ax = plt.subplots(1,1, figsize = figsize)  
+    
     if vmin:
-        i = ax.imshow(pbias, cmap="RdBu", **kwargs_imshow)
+        ticks = [l*10 for l in range(-10,11, 1)]
+        norm = BoundaryNorm(ticks, ncolors=cmap.N, clip=True)
+        norm.vmin = kwargs_imshow.pop("vmin")
+        norm.vmax = kwargs_imshow.pop("vmax")
+        i = ax.imshow(pbias, cmap=cmap, norm=norm, **kwargs_imshow)
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}", ticks = ticks )
     else:
-        i = ax.imshow(pbias, cmap="RdBu", norm=colors.CenteredNorm(), **kwargs_imshow)
-    fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}")
+        norm = CenteredNorm()
+        i = ax.imshow(pbias, cmap=cmap, norm= norm, **kwargs_imshow)
+        
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}")
 
 def map_bias(y: xr.DataArray, yhat, unit = "mm", dim ="time", figsize = (10,10), kwargs_imshow = {}):
     bias = compute_bias(y, yhat, dim)
