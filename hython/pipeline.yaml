@@ -1,0 +1,37 @@
+data_root: "/mnt/CEPH_PROJECTS/InterTwin/Wflow/models"
+checkpoint: "/mnt/CEPH_PROJECTS/InterTwin/surrogate/model_weights"
+
+pipeline:
+  class_path: itwinai.pipeline.Pipeline
+  init_args:
+    steps:
+      download-step:
+        class_path: itwin.dataloader.LSTMDataGetter
+        init_args:
+          wd: "${data_root}"
+          wflow_model: "adg1km_eobs"
+          fn_dynamic_forcings: "forcings.nc" 
+          fn_wflow_static_params: "staticmaps.nc" 
+          fn_target: "output.nc" 
+          dynamic_names: ["precip", "pet", "temp"] 
+          static_names: [ 'thetaS', 'RootingDepth', 'Kext', 'Swood'] 
+          target_names: [ "vwc", "actevap" ]
+          timeslice: ["2016-01-01","2020-12-31"] 
+          intervals: [5, 5]
+          train_origin: [0, 0] 
+          valid_origin: [3, 3] 
+
+      training-step:
+        class_path: itwin.trainer.LSTMTrainer
+        init_args:
+          wandb_project: "itwinai-use-cases_eurac"
+          epochs: 14
+          spatial_batch_size: 256
+          temporal_sampling_size: 150
+          seq_length: 365 
+          hidden_size: 32 
+          input_size: 3 
+          path2models: "${checkpoint}"
+          dynamic_names: ["precip", "pet", "temp"] 
+          static_names: [ 'thetaS', 'RootingDepth', 'Kext', 'Swood'] 
+          target_names: [ "vwc", "actevap"] 
