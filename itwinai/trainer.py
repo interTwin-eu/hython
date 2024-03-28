@@ -15,11 +15,12 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-
+from importlib import import_module
 
 class LSTMTrainer(Trainer):
     def __init__(
         self,
+        model: dict,
         dynamic_names: list, 
         static_names : list, 
         target_names : list, 
@@ -36,6 +37,7 @@ class LSTMTrainer(Trainer):
         super().__init__()
         
         self.save_parameters(**self.locals2params(locals()))
+        self.model = model
         self.spatial_batch_size     = spatial_batch_size
         self.temporal_sampling_size = temporal_sampling_size
         self.target_names           = target_names
@@ -54,12 +56,13 @@ class LSTMTrainer(Trainer):
             "target_names": target_names, 
         }
 
+        
 
     @monitor_exec
     def execute(self, dataset, train_sampler, valid_sampler ) -> None:
-
+        
         #wandb
-        wandb = WanDBLogger(**dict(project=self.wandb_project, name = self.wandb_run))
+        wandb = WanDBLogger() #**dict(project=self.wandb_project, name = self.wandb_run))
 
         #setup device
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -72,7 +75,9 @@ class LSTMTrainer(Trainer):
         logging.debug("Info: Data loaded to torch")  
 
         #model
-        model = CustomLSTM(self.model_params)
+        #model = CustomLSTM(self.model_params)
+        model_cls = getattr(import_module(self.model.get("module_path")), self.model.get("class"))
+        model = model_cls(**self.model.get("init_args"))
         model = model.to(device)
         print(model)
 

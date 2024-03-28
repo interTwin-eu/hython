@@ -3,6 +3,7 @@ checkpoint: "/mnt/CEPH_PROJECTS/InterTwin/surrogate/model_weights"
 wandb_project: "hython-itwinai"
 experiment: "test"
 
+
 pipeline:
   class_path: itwinai.pipeline.Pipeline
   init_args:
@@ -16,7 +17,7 @@ pipeline:
           fn_wflow_static_params: "staticmaps.nc" 
           fn_target: "output.nc" 
           dynamic_names: ["precip", "pet", "temp"] 
-          static_names: [ 'thetaS', 'RootingDepth', 'Kext', 'Swood'] 
+          static_names: ['thetaS', 'thetaR', 'RootingDepth', 'Swood','KsatVer', 'Sl'] 
           target_names: [ "vwc", "actevap" ]
           timeslice: ["2016-01-01","2020-12-31"] 
           intervals: [5, 5]
@@ -26,14 +27,22 @@ pipeline:
       training-step:
         class_path: trainer.LSTMTrainer
         init_args:
+          model:
+            module_path: hython.models.lstm
+            class: CustomLSTM
+            init_args:
+              input_size: 3
+              hidden_size: 32
+              output_size: 2
+              number_static_predictors: 6
           wandb_project: "${wandb_project}"
           wandb_run: "${experiment}"
           epochs: 14
           spatial_batch_size: 256
           temporal_sampling_size: 150
           seq_length: 365 
-          hidden_size: 32 
-          input_size: 3 
+          #hidden_size: 32 
+          #input_size: 3 
           path2models: "${checkpoint}"
           dynamic_names: ["precip", "pet", "temp"] 
           static_names: [ 'thetaS', 'RootingDepth', 'Kext', 'Swood'] 
