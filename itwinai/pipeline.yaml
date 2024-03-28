@@ -28,8 +28,7 @@ pipeline:
         class_path: trainer.LSTMTrainer
         init_args:
           model:
-            module_path: hython.models.lstm
-            class: CustomLSTM
+            class_path: hython.models.lstm.CustomLSTM
             init_args:
               input_size: 3
               hidden_size: 32
