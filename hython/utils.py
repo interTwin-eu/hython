@@ -1,6 +1,7 @@
 import numpy as np
 import xarray as xr
 import torch
+import cf_xarray as cfxr
 
 from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
 
@@ -107,7 +108,7 @@ def reconstruct_from_missing(a: NDArray, original_shape: tuple, missing_location
 
     return a_new
 
-def store_as_zarr(arr: DaskArray | xr.DataArray, url, group = None, storage_options = {}, overwrite = True, chunks="auto"):
+def store_as_zarr(arr: DaskArray | xr.DataArray, url, group = None, storage_options = {}, overwrite = True, chunks="auto", multi_index = None):
     if isinstance(arr, DaskArray):
         arr = arr.rechunk(chunks = chunks)
         arr.to_zarr(url=url, storage_options=storage_options, overwrite=overwrite, component=group)
@@ -118,8 +119,18 @@ def store_as_zarr(arr: DaskArray | xr.DataArray, url, group = None, storage_opti
         else:
             overwrite="r"
         arr = arr.chunk(chunks=chunks)
+        if multi_index:
+            arr = arr.to_dataset(name=group)
+            arr = cfxr.encode_multi_index_as_compress(arr, multi_index)
+            
         arr.to_zarr(store=url, storage_options=storage_options, mode=overwrite, group=group)
         
+def read_from_zarr(url, group = None, multi_index = None, engine = "xarray"):
+    if engine == "xarray":
+        ds = xr.open_dataset(url, group=group, engine="zarr")
+        if multi_index:
+            ds = cfxr.decode_compress_to_multi_index(ds, multi_index)
+        return ds
     
 
 def prepare_for_plotting(y_target: NDArray, y_pred: NDArray, shape: tuple[int], coords: DataArrayCoordinates | DatasetCoordinates):
