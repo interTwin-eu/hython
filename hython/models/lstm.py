@@ -11,11 +11,6 @@ class CustomLSTM(nn.Module):
         
         super(CustomLSTM, self).__init__()
 
-        #input_size = model_params["input_size"]
-        #hidden_size = model_params["hidden_size"]
-        #output_size = model_params["output_size"]
-        #number_static_predictors = model_params["number_static_predictors"]
-
         self.fc0 = nn.Linear(input_size + number_static_predictors, hidden_size)
 
         self.lstm = nn.LSTM(hidden_size , hidden_size, batch_first=True)

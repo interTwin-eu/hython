@@ -17,10 +17,12 @@ from torch.utils.data import DataLoader
 
 from importlib import import_module
 
+# export WANDB_BASE_URL="https://api.wandb.ai"
+
 class LSTMTrainer(Trainer):
     def __init__(
         self,
-        model: dict,
+        model: torch.nn.Module,
         dynamic_names: list, 
         static_names : list, 
         target_names : list, 
@@ -47,22 +49,14 @@ class LSTMTrainer(Trainer):
         self.seq_length             = seq_length
         self.wandb_project          = wandb_project
         self.wandb_run              = wandb_run
-
-        self.model_params={
-            "input_size": input_size, 
-            "hidden_size": hidden_size, 
-            "output_size": len(target_names), 
-            "number_static_predictors": len(static_names),
-            "target_names": target_names, 
-        }
-
         
 
     @monitor_exec
     def execute(self, dataset, train_sampler, valid_sampler ) -> None:
         
         #wandb
-        wandb = WanDBLogger() #**dict(project=self.wandb_project, name = self.wandb_run))
+        wandb = WanDBLogger(project_name=self.wandb_project, **dict(name = self.wandb_run))
+        wandb.create_logger_context()
 
         #setup device
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -75,11 +69,11 @@ class LSTMTrainer(Trainer):
         logging.debug("Info: Data loaded to torch")  
 
         #model
-        #model = CustomLSTM(self.model_params)
-        model_cls = getattr(import_module(self.model.get("module_path")), self.model.get("class"))
-        model = model_cls(**self.model.get("init_args"))
-        model = model.to(device)
+        #model_cls = getattr(import_module(self.model.get("module_path")), self.model.get("class"))
+        #model = model_cls(**self.model.get("init_args"))
+        model = self.model.to(device)
         print(model)
+
 
         #optimizer
         opt = optim.Adam(model.parameters(), lr=1e-3)
