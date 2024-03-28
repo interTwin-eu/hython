@@ -22,23 +22,23 @@ def reshape(
     # reshape 
     Xd = ( dynamic
         .to_dataarray(dim="feat") # cast
-        .stack(cell= ["lat","lon"]) # stack 
-        .transpose("cell","time","feat") 
+        .stack(gridcell= ["lat","lon"]) # stack 
+        .transpose("gridcell","time","feat") 
         )
     print("dynamic: ", Xd.shape, " => (GRIDCELL, TIME, FEATURE)")
     
     Xs = ( static
     .drop_vars("spatial_ref")
     .to_dataarray(dim="feat")
-    .stack(cell= ["lat","lon"])
-    .transpose("cell","feat")
+    .stack(gridcell= ["lat","lon"])
+    .transpose("gridcell","feat")
     )
     print("static: ", Xs.shape, " => (GRIDCELL, FEATURE)")
 
     Y = ( target
         .to_dataarray(dim="feat")
-        .stack(cell= ["lat","lon"])
-        .transpose("cell","time", "feat")
+        .stack(gridcell= ["lat","lon"])
+        .transpose("gridcell","time", "feat")
         )
     print("target: ", Y.shape, " => (GRIDCELL, TIME, TARGET)")     
 

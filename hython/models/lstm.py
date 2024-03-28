@@ -34,7 +34,7 @@ class CustomLSTM(nn.Module):
         
         l1 = self.fc0(x_ds)
 
-        lstm_output, _ = self.lstm(l1)
+        lstm_output, (h_n, c_n) = self.lstm(l1)
 
         out =  self.fc1(lstm_output)
 

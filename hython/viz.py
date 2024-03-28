@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import geopandas as gpd
 import xarray as xr
 import matplotlib.colors as colors
+from matplotlib.colors import BoundaryNorm, CenteredNorm
+from matplotlib.ticker import MaxNLocator
+
 
 
 def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10, cmap="terrain"):
@@ -50,11 +53,13 @@ def compute_pbias(y_in: xr.DataArray, yhat_in, dim="time", offset=0):
     else:
         return 100* np.sum(yhat -y, axis=2) / np.sum(y, axis=2)    
 
-def compute_bias(y: xr.DataArray, yhat, dim="time"):
-    if isinstance(y, xr.DataArray) or isinstance(yhat, xr.DataArray):
-        return ( yhat - y).sum(dim=dim, skipna=False)
+def compute_bias(y_in: xr.DataArray, yhat_in, dim="time", offset=0):
+    y = y_in.copy() + offset
+    yhat = yhat_in.copy() + offset
+    if isinstance(y, xr.DataArray) or isinstance(yhat, xr.DataArray): 
+        return (yhat - y).sum(dim=dim, skipna=False) / len(yhat)
     else:
-        return np.sum(yhat - y, axis=2)    
+        return np.sum(yhat -y, axis=2) / len(yhat)  
 
 
 def map_pearson(y: xr.DataArray, yhat, dim="time"):
@@ -63,21 +68,49 @@ def map_pearson(y: xr.DataArray, yhat, dim="time"):
     i = ax.imshow(p, cmap="RdBu", norm=colors.CenteredNorm())
     fig.colorbar(i, ax=ax, label="Pearson corr coeff")
 
-def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0):
-    pbias = compute_pbias(y, yhat, dim, offset=offset)
-    fig, ax = plt.subplots(1,1, figsize = figsize)
+def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0, return_pbias = False):
+    cmap = plt.colormaps['RdBu']
     vmin = kwargs_imshow.get("vmin", False)
-    if vmin:
-        i = ax.imshow(pbias, cmap="RdBu", **kwargs_imshow)
-    else:
-        i = ax.imshow(pbias, cmap="RdBu", norm=colors.CenteredNorm(), **kwargs_imshow)
-    fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}")
 
-def map_bias(y: xr.DataArray, yhat, unit = "mm", dim ="time", figsize = (10,10), kwargs_imshow = {}):
-    bias = compute_bias(y, yhat, dim)
-    fig, ax = plt.subplots(1,1,figsize = figsize)
-    i = ax.imshow(bias, cmap="RdBu",  norm=colors.CenteredNorm(), **kwargs_imshow)
-    fig.colorbar(i, ax=ax, label=unit)
+    pbias = compute_pbias(y, yhat, dim, offset=offset)
+    fig, ax = plt.subplots(1,1, figsize = figsize)  
+    
+    if vmin:
+        ticks = [l*10 for l in range(-10,11, 1)]
+        norm = BoundaryNorm(ticks, ncolors=cmap.N, clip=True)
+        norm.vmin = kwargs_imshow.pop("vmin")
+        norm.vmax = kwargs_imshow.pop("vmax")
+        i = ax.imshow(pbias, cmap=cmap, norm=norm, **kwargs_imshow)
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}", ticks = ticks )
+    else:
+        norm = CenteredNorm()
+        i = ax.imshow(pbias, cmap=cmap, norm= norm, **kwargs_imshow)
+        
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}")
+    if return_pbias:
+        return pbias
+
+def map_bias(y: xr.DataArray, yhat, dim="time", unit = "mm", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0, return_bias = False):
+    cmap = plt.colormaps['RdBu']
+    vmin = kwargs_imshow.get("vmin", False)
+
+    bias = compute_bias(y, yhat, dim, offset=offset)
+    fig, ax = plt.subplots(1,1, figsize = figsize)  
+    
+    if vmin:
+        ticks = [l*10 for l in range(-10,11, 1)]
+        norm = BoundaryNorm(ticks, ncolors=cmap.N, clip=True)
+        norm.vmin = kwargs_imshow.pop("vmin")
+        norm.vmax = kwargs_imshow.pop("vmax")
+        i = ax.imshow(bias, cmap=cmap, norm=norm, **kwargs_imshow)
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}", ticks = ticks )
+    else:
+        norm = CenteredNorm()
+        i = ax.imshow(bias, cmap=cmap, norm= norm, **kwargs_imshow)
+        
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}")
+    if return_bias:
+        return bias
 
 def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None, label_pred = "LSTM", label_target = "wflow"):
     ts = dates if dates else y.time.dt.date.values 
