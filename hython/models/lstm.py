@@ -7,14 +7,9 @@ import torch.nn.functional as F
 from .dropout import DropMask, createMask
 
 class CustomLSTM(nn.Module):
-    def __init__(self, model_params, dropout = 0.1):
+    def __init__(self, input_size = 3, hidden_size = 34, output_size = 2, number_static_predictors = 5, dropout = 0.1):
         
         super(CustomLSTM, self).__init__()
-
-        input_size = model_params["input_size"]
-        hidden_size = model_params["hidden_size"]
-        output_size = model_params["output_size"]
-        number_static_predictors = model_params["number_static_predictors"]
 
         self.fc0 = nn.Linear(input_size + number_static_predictors, hidden_size)
 

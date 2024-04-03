@@ -107,8 +107,8 @@ class AbstractSampler(ABC):
 class RegularIntervalSampler(AbstractSampler):
 
     def __init__(self,
-                intervals: tuple[int] = (5,5), 
-                origin: tuple[int] = (0, 0)):
+                intervals: list[int] = (5,5), 
+                origin: list[int] = (0, 0)):
         
         self.intervals = intervals
         self.origin = origin

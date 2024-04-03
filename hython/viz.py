@@ -61,6 +61,39 @@ def compute_bias(y_in: xr.DataArray, yhat_in, dim="time", offset=0):
     else:
         return np.sum(yhat -y, axis=2) / len(yhat)  
 
+def compute_kge(y_target, y_pred):
+    observed = y_target
+    simulated = y_pred
+
+    if np.any(np.isnan(observed)) or np.any(np.isnan(simulated)):
+        
+        return np.array([np.nan,np.nan,np.nan, np.nan])
+
+    r = np.corrcoef(observed, simulated)[1, 0]
+    alpha = np.std(simulated, ddof=1) /np.std(observed, ddof=1)
+    beta = np.mean(simulated) / np.mean(observed)
+    kge = 1 - np.sqrt(np.power(r-1, 2) + np.power(alpha-1, 2) + np.power(beta-1, 2))
+    return np.array([kge, r, alpha, beta ])
+
+def compute_kge_parallel(y_target, y_pred):
+    kge = xr.apply_ufunc(compute_kge, y_pred, y_target, 
+                         input_core_dims=[["time"],["time"]] , 
+                         output_core_dims= [["kge"]], 
+                         output_dtypes=[float],
+                         vectorize=True,
+                         dask="parallelized",
+                         dask_gufunc_kwargs = {"output_sizes":{"kge":4}}
+                        )
+    
+    kge = kge.assign_coords({"kge":["kge","r", "alpha", "beta"]})
+    return kge
+
+def compute_rmse(y, yhat, dim = "time"):
+    if isinstance(y, xr.DataArray) or isinstance(yhat, xr.DataArray): 
+        return np.sqrt( ( (yhat - y)**2 ).mean(dim=dim, skipna=False))
+    else:
+        return np.sqrt(np.mean( (yhat -y)**2 , axis=2))
+
 
 def map_pearson(y: xr.DataArray, yhat, dim="time"):
     p = xr.corr(y, yhat, dim=dim)
@@ -70,6 +103,7 @@ def map_pearson(y: xr.DataArray, yhat, dim="time"):
 
 def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0, return_pbias = False):
     cmap = plt.colormaps['RdBu']
+    cmap.set_bad("lightgrey")
     vmin = kwargs_imshow.get("vmin", False)
 
     pbias = compute_pbias(y, yhat, dim, offset=offset)
@@ -92,6 +126,7 @@ def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), label_1 = "w
 
 def map_bias(y: xr.DataArray, yhat, dim="time", unit = "mm", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0, return_bias = False):
     cmap = plt.colormaps['RdBu']
+    cmap.set_bad("lightgrey")
     vmin = kwargs_imshow.get("vmin", False)
 
     bias = compute_bias(y, yhat, dim, offset=offset)
@@ -111,6 +146,29 @@ def map_bias(y: xr.DataArray, yhat, dim="time", unit = "mm", figsize = (10,10), 
         fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}")
     if return_bias:
         return bias
+
+def map_rmse(y: xr.DataArray, yhat, dim="time", unit = "mm", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, return_rmse = False):
+    cmap = plt.colormaps['RdBu']
+    cmap.set_bad("lightgrey")
+    vmin = kwargs_imshow.get("vmin", False)
+
+    rmse = compute_rmse(y, yhat, dim=dim)
+    fig, ax = plt.subplots(1,1, figsize = figsize)  
+    
+    if vmin:
+        ticks = [l*10 for l in range(-10,11, 1)]
+        norm = BoundaryNorm(ticks, ncolors=cmap.N, clip=True)
+        norm.vmin = kwargs_imshow.pop("vmin")
+        norm.vmax = kwargs_imshow.pop("vmax")
+        i = ax.imshow(rmse, cmap=cmap, norm=norm, **kwargs_imshow)
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}", ticks = ticks )
+    else:
+        norm = CenteredNorm()
+        i = ax.imshow(rmse, cmap=cmap, norm= norm, **kwargs_imshow)
+        
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}")
+    if return_rmse:
+        return rmse
 
 def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None, label_pred = "LSTM", label_target = "wflow"):
     ts = dates if dates else y.time.dt.date.values 

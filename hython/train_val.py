@@ -2,6 +2,7 @@ import copy
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm.auto import tqdm
 
 # get the current learning rate
 def get_lr(opt):
@@ -115,7 +116,7 @@ def train_val(model, params):
     if not temporal_sampling_epoch:
         ts_idx = np.random.randint(0,ts_range  - seq_length, temporal_sampling_size)
     
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs)):
         current_lr = get_lr(opt)
         
         print(f"Epoch {epoch}/{num_epochs - 1}, current lr={current_lr}")
