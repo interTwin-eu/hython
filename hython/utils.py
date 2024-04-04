@@ -9,6 +9,28 @@ from typing import Any
 from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
 
+def reclass(arr, classes):
+    """Returns a 2D array with reclassified values 
+
+    Parameters
+    ----------
+    arr: NDArray | xr.DataArray
+        The input array to be reclassified
+    classes: List[int,float]
+
+    Returns
+    -------
+    """
+    if isinstance(arr, xr.DataArray):
+        for ic in range(len(classes)):
+            print(ic, len(classes)-1)
+            if ic < len(classes) - 1:
+                arr = arr.where( ~((arr >= classes[ic]) & (arr < classes[ic +1])), ic)
+            else:
+                arr = arr.where( ~(arr >= classes[ic]), ic)
+    return arr
+
+
 def load(surrogate_input_path, wflow_model, files = ["Xd", "Xs", "Y"]):
     loaded = np.load(surrogate_input_path / f"{wflow_model}.npz")
     return [loaded[f] for f in files]
