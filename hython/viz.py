@@ -5,7 +5,7 @@ import xarray as xr
 import matplotlib.colors as colors
 from matplotlib.colors import BoundaryNorm, CenteredNorm
 from matplotlib.ticker import MaxNLocator
-
+import cartopy.crs as ccrs
 
 
 def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10, cmap="terrain"):
@@ -101,31 +101,128 @@ def map_pearson(y: xr.DataArray, yhat, dim="time"):
     i = ax.imshow(p, cmap="RdBu", norm=colors.CenteredNorm())
     fig.colorbar(i, ax=ax, label="Pearson corr coeff")
 
-def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0, return_pbias = False):
-    cmap = plt.colormaps['RdBu']
-    cmap.set_bad("lightgrey")
+def map_pbias(y: xr.DataArray, yhat, dim="time", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0, return_pbias = False, ticks=None):
+    cmap = plt.colormaps['RdYlGn']
+    #cmap.set_bad("lightgrey")
     vmin = kwargs_imshow.get("vmin", False)
 
+    minx,miny,maxx,maxy = y.rio.bounds()
     pbias = compute_pbias(y, yhat, dim, offset=offset)
-    fig, ax = plt.subplots(1,1, figsize = figsize)  
+    map_proj = ccrs.PlateCarree()
+    fig = plt.figure(figsize = figsize)
+    ax = fig.add_subplot(1, 1, 1,projection=ccrs.PlateCarree())
+    ax.set_extent([minx,maxx,miny,maxy], crs=ccrs.PlateCarree())
+    ax.add_wms(wms='http://vmap0.tiles.osgeo.org/wms/vmap0', layers=['basic'])
     
     if vmin:
-        ticks = [l*10 for l in range(-10,11, 1)]
         norm = BoundaryNorm(ticks, ncolors=cmap.N, clip=True)
         norm.vmin = kwargs_imshow.pop("vmin")
         norm.vmax = kwargs_imshow.pop("vmax")
-        i = ax.imshow(pbias, cmap=cmap, norm=norm, **kwargs_imshow)
+        i = pbias.plot(ax = ax, 
+                      norm = norm, 
+                      cmap = cmap, 
+                      transform=ccrs.PlateCarree(),
+                      add_colorbar = False)
         fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}", ticks = ticks )
     else:
         norm = CenteredNorm()
-        i = ax.imshow(pbias, cmap=cmap, norm= norm, **kwargs_imshow)
-        
+        i = pbias.plot(ax = ax, 
+                      norm = norm, 
+                      cmap = cmap, 
+                      transform=ccrs.PlateCarree(),
+                      add_colorbar = False)
         fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    %     {label_2} > {label_1}")
+    plt.title("")
     if return_pbias:
         return pbias
 
+
+def map_kge(y: xr.DataArray, yhat, dim="time", unit = "", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, return_kge = False, ticks = None):
+    cmap = plt.colormaps['Greens']
+    vmin = kwargs_imshow.get("vmin", False)
+
+    minx,miny,maxx,maxy = y.rio.bounds()
+
+    kge = compute_kge_parallel(y, yhat)
+    kge = kge.chunk({"kge":1})
+    kge = kge.sel(kge="kge")
+    
+    #fig, ax = plt.subplots(1,1, figsize = figsize, projection=ccrs.PlateCarree())  
+    map_proj = ccrs.PlateCarree()
+    fig = plt.figure(figsize = figsize)
+    ax = fig.add_subplot(1, 1, 1,projection=ccrs.PlateCarree())
+    ax.set_extent([minx,maxx,miny,maxy], crs=ccrs.PlateCarree())
+    ax.add_wms(wms='http://vmap0.tiles.osgeo.org/wms/vmap0', layers=['basic'])
+    
+    if vmin:
+        norm = BoundaryNorm(ticks, ncolors=cmap.N, clip=True)
+        norm.vmin = kwargs_imshow.pop("vmin")
+        norm.vmax = kwargs_imshow.pop("vmax")
+        #i = ax.imshow(rmse, cmap=cmap, norm=norm, **kwargs_imshow)
+        i = kge.plot(ax = ax, 
+                      norm = norm, 
+                      cmap = cmap, 
+                      transform=ccrs.PlateCarree(),
+                      add_colorbar = False)
+        
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"KGE", ticks = ticks )
+    else:
+        norm = CenteredNorm()
+        i = kge.plot(ax = ax, 
+                      norm = norm, 
+                      cmap = cmap, 
+                      transform=ccrs.PlateCarree(),
+                      add_colorbar = False)
+        #i = ax.imshow(rmse, cmap=cmap, norm= norm, **kwargs_imshow)
+        
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"KGE")
+    plt.title("")
+    if return_kge:
+        return kge  
+
+def map_rmse(y: xr.DataArray, yhat, dim="time", unit = "mm", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, return_rmse = False, ticks = None):
+    cmap = plt.colormaps['RdYlGn']
+    #cmap.set_bad("lightgrey")
+    vmin = kwargs_imshow.get("vmin", False)
+
+    minx,miny,maxx,maxy = y.rio.bounds()
+
+    rmse = compute_rmse(y, yhat, dim=dim)
+    #fig, ax = plt.subplots(1,1, figsize = figsize, projection=ccrs.PlateCarree())  
+    map_proj = ccrs.PlateCarree()
+    fig = plt.figure(figsize = figsize)
+    ax = fig.add_subplot(1, 1, 1,projection=ccrs.PlateCarree())
+    ax.set_extent([minx,maxx,miny,maxy], crs=ccrs.PlateCarree())
+    ax.add_wms(wms='http://vmap0.tiles.osgeo.org/wms/vmap0', layers=['basic'])
+    
+    if vmin:
+        norm = BoundaryNorm(ticks, ncolors=cmap.N, clip=True)
+        norm.vmin = kwargs_imshow.pop("vmin")
+        norm.vmax = kwargs_imshow.pop("vmax")
+        #i = ax.imshow(rmse, cmap=cmap, norm=norm, **kwargs_imshow)
+        i = rmse.plot(ax = ax, 
+                      norm = norm, 
+                      cmap = cmap, 
+                      transform=ccrs.PlateCarree(),
+                      add_colorbar = False)
+        
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}", ticks = ticks )
+    else:
+        norm = CenteredNorm()
+        i = rmse.plot(ax = ax, 
+                      norm = norm, 
+                      cmap = cmap, 
+                      transform=ccrs.PlateCarree(),
+                      add_colorbar = False)
+        #i = ax.imshow(rmse, cmap=cmap, norm= norm, **kwargs_imshow)
+        
+        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}")
+    plt.title("")
+    if return_rmse:
+        return rmse
+
 def map_bias(y: xr.DataArray, yhat, dim="time", unit = "mm", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, offset = 0, return_bias = False):
-    cmap = plt.colormaps['RdBu']
+    cmap = plt.colormaps['RdYlGn']
     cmap.set_bad("lightgrey")
     vmin = kwargs_imshow.get("vmin", False)
 
@@ -144,31 +241,9 @@ def map_bias(y: xr.DataArray, yhat, dim="time", unit = "mm", figsize = (10,10), 
         i = ax.imshow(bias, cmap=cmap, norm= norm, **kwargs_imshow)
         
         fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}")
+    plt.title("")
     if return_bias:
         return bias
-
-def map_rmse(y: xr.DataArray, yhat, dim="time", unit = "mm", figsize = (10,10), label_1 = "wflow", label_2 = "LSTM", kwargs_imshow = {}, return_rmse = False):
-    cmap = plt.colormaps['RdBu']
-    cmap.set_bad("lightgrey")
-    vmin = kwargs_imshow.get("vmin", False)
-
-    rmse = compute_rmse(y, yhat, dim=dim)
-    fig, ax = plt.subplots(1,1, figsize = figsize)  
-    
-    if vmin:
-        ticks = [l*10 for l in range(-10,11, 1)]
-        norm = BoundaryNorm(ticks, ncolors=cmap.N, clip=True)
-        norm.vmin = kwargs_imshow.pop("vmin")
-        norm.vmax = kwargs_imshow.pop("vmax")
-        i = ax.imshow(rmse, cmap=cmap, norm=norm, **kwargs_imshow)
-        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}", ticks = ticks )
-    else:
-        norm = CenteredNorm()
-        i = ax.imshow(rmse, cmap=cmap, norm= norm, **kwargs_imshow)
-        
-        fig.colorbar(i, ax=ax, shrink=0.5, label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}")
-    if return_rmse:
-        return rmse
 
 def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None, label_pred = "LSTM", label_target = "wflow"):
     ts = dates if dates else y.time.dt.date.values 
@@ -188,8 +263,43 @@ def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None, label_pr
         fig.suptitle(t, y = 0.8, fontsize=20, fontweight="bold")
         fig.tight_layout()
         
-        
-        
+     
+def ts_plot(y: xr.DataArray, yhat, lat= [], lon = [], label_1 = "wflow", label_2 = "LSTM", bkg_map = None):
+    time = y.time.values
+    for ilat,ilon in zip(lat, lon):
+        ax_dict = plt.figure(layout="constrained", figsize=(20,5)).subplot_mosaic(
+        """
+        A
+        """,
+        height_ratios=[1]
+        )
+        iy = y.sel(lat = ilat,lon = ilon, method="nearest")
+        iyhat = yhat.sel(lat = ilat,lon = ilon, method="nearest") 
+        ax_dict["A"].plot(time, iyhat, label = label_2)
+        ax_dict["A"].plot(time, iy, label= label_1)
+        ax_dict["A"].legend()
+
+
+
+def map_points(lat= [], lon = [], bkg_map = None):
+    ax_dict = plt.figure(layout="constrained", figsize=(20,6)).subplot_mosaic(
+    """
+    A
+    """,
+    height_ratios=[1]
+    )
+    for ilat,ilon in zip(lat, lon):
+
+        df = gpd.GeoDataFrame([],geometry=gpd.points_from_xy(x=[ilon], y=[ilat]))
+        if bkg_map is not None:
+            bkg_map.plot(ax=ax_dict["A"], add_colorbar=False, cmap="terrain")
+        else:
+            y.mean("time").plot(ax=ax_dict["A"], add_colorbar=False)
+        df.plot(ax=ax_dict["A"], markersize=20, color="red")
+    plt.title("")
+    #plt.gca().set_axis_off()
+
+
 def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_1 = "wflow", label_2 = "LSTM", bkg_map = None):
     time = y.time.values
     for ilat,ilon in zip(lat, lon):
