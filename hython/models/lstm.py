@@ -17,17 +17,17 @@ class CustomLSTM(nn.Module):
 
         self.fc1 = nn.Linear(hidden_size, output_size)
         
-    def forward(self, x, static_params):
+    def forward(self, x): #, static_params):
 
-        s = static_params.unsqueeze(1).repeat(1, x.size(1), 1)
+        # s = static_params.unsqueeze(1).repeat(1, x.size(1), 1)
         
-        x_ds = torch.cat(
-             (x,
-              s),
-              dim=-1,
-         )
+        # x_ds = torch.cat(
+        #      (x,
+        #       s),
+        #       dim=-1,
+        #  )
         
-        l1 = self.fc0(x_ds)
+        l1 = self.fc0(x)#_ds)
 
         lstm_output, (h_n, c_n) = self.lstm(l1)
 
