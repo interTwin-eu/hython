@@ -1,3 +1,7 @@
+*.zarr
+*.pt
+*.zgroup
+*.zmetadata
 checkpoints/
 data/demo
 # Byte-compiled / optimized / DLL files
