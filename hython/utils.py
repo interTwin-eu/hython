@@ -3,8 +3,10 @@ import xarray as xr
 import torch
 import cf_xarray as cfxr
 
-from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
+import os, random
 
+from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
+import zarr
 from typing import Any
 from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
@@ -108,7 +110,17 @@ def reconstruct_from_missing(a: NDArray, original_shape: tuple, missing_location
 
     return a_new
 
-def store_as_zarr(arr: DaskArray | xr.DataArray, url, group = None, storage_options = {}, overwrite = True, chunks="auto", multi_index = None):
+def write_to_zarr(arr: DaskArray | xr.DataArray,
+                  url, 
+                  group = None, 
+                  storage_options = {}, 
+                  overwrite = True, 
+                  chunks="auto", 
+                  clear_zarr_storage = False,
+                  append_on_time = False,
+                  time_chunk_size = 200,
+                  multi_index = None):
+    
     if isinstance(arr, DaskArray):
         arr = arr.rechunk(chunks = chunks)
         arr.to_zarr(url=url, storage_options=storage_options, overwrite=overwrite, component=group)
@@ -118,12 +130,27 @@ def store_as_zarr(arr: DaskArray | xr.DataArray, url, group = None, storage_opti
             overwrite="w"
         else:
             overwrite="r"
-        arr = arr.chunk(chunks=chunks)
+        if chunks:
+            arr = arr.chunk(chunks=chunks)
+        shape = arr.shape
         if multi_index:
             arr = arr.to_dataset(name=group)
             arr = cfxr.encode_multi_index_as_compress(arr, multi_index)
+
+        if append_on_time:
+            fs_store = zarr.storage.FSStore(url, storage_options=storage_options, mode=overwrite)
             
-        arr.to_zarr(store=url, storage_options=storage_options, mode=overwrite, group=group)
+            if clear_zarr_storage:
+                fs_store.clear()
+            
+            # initialize
+            init = arr.isel(time=slice(0,time_chunk_size)).persist()
+            init[group].attrs.clear()
+            init.to_zarr(fs_store, consolidated = True, group=group)
+            for t in range(time_chunk_size, shape[1], time_chunk_size): # append time
+                arr.isel(time=slice(t,t+time_chunk_size)).to_zarr(fs_store, append_dim="time", consolidated=True, group=group)
+        else:
+            arr.to_zarr(store=url, storage_options=storage_options, mode=overwrite, group=group)
         
 def read_from_zarr(url, group = None, multi_index = None, engine = "xarray"):
     if engine == "xarray":
@@ -156,4 +183,38 @@ def prepare_for_plotting(y_target: NDArray, y_pred: NDArray, shape: tuple[int], 
     yhat = to_xr(yhat[...,0], coords = coords)
     
     return y, yhat
-    
+
+def get_sampler_config(surrogate_experiment_name):
+    if surrogate_experiment_name == "s0001": # 0.1 %
+        print("0.1 %")
+        intervals = [12, 12]
+        val_origin = [1 ,1 ]
+        train_origin = [0, 0]
+    elif surrogate_experiment_name == "s0010":  # 1 %
+        print("1 %")
+        intervals = [4, 4]
+        val_origin = [1, 1]
+        train_origin = [0, 0]
+    elif surrogate_experiment_name == "s00001":  # 0.01 %
+        print("0.01 %")
+        intervals = [36, 36]
+        val_origin = [1, 1]
+        train_origin = [0, 0]
+    elif surrogate_experiment_name == "s000001":  # 0.001 %
+        print("0.001 %")
+        intervals = [108, 108]
+        val_origin = [64, 64]
+        train_origin = [0, 0]
+    else:
+        raise Exception("experiment not found")
+        
+    return intervals, val_origin, train_origin
+
+def set_seed(seed):
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
