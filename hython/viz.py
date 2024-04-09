@@ -17,26 +17,28 @@ def plot_sampler(da_bkg, meta, meta_valid, figsize = (10,10), markersize= 10, cm
     vv = vv.assign_coords({"gridcell_valid":(("lat", "lon"), meta_valid.idx_grid_2d)})
     
     tmp = np.zeros(vv.shape).astype(np.bool_)
-    for i in meta.idx_sampled_1d:
+    for i in meta.idx_sampled_1d_nomissing:
         tmp[vv.gridcell == i] = True
     
     tmp_valid = np.zeros(vv.shape).astype(np.bool_)
-    for i in meta_valid.idx_sampled_1d:
+    for i in meta_valid.idx_sampled_1d_nomissing:
         tmp_valid[vv.gridcell_valid == i] = True
     
-    df = vv.where(tmp).to_dataframe().dropna().reset_index()
+    df = vv.where(tmp[::-1]).to_dataframe().dropna().reset_index()
     
-    df_valid = vv.where(tmp_valid).to_dataframe().dropna().reset_index()
+    df_valid = vv.where(tmp_valid[::-1]).to_dataframe().dropna().reset_index()
     
     gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(x=df.lon, y=df.lat), crs=4326)
     
     gdf_valid = gpd.GeoDataFrame(df_valid, geometry=gpd.points_from_xy(x=df_valid.lon, y=df_valid.lat), crs=4326)
     
     fig, ax = plt.subplots(1,1, figsize=figsize)
-    da_bkg.plot(ax = ax, add_colorbar=False, alpha = 0.5, cmap=cmap)
+    da_bkg.plot(ax = ax, add_colorbar=True, alpha = 0.3, cmap=cmap)
     gdf.plot(ax=ax, color="red", markersize= markersize, label="training")
     gdf_valid.plot(ax=ax, color="black", markersize= markersize, label = "validation")
-    plt.legend(bbox_to_anchor=(1.05, 1.05))
+    plt.legend(bbox_to_anchor=(1, 0.9), frameon = False)
+    plt.title("")
+    plt.gca().set_axis_off()
     #ax.set_xlim([6, 7.5])
     #ax.set_ylim([45.5, 46.5])
     
@@ -61,22 +63,30 @@ def compute_bias(y_in: xr.DataArray, yhat_in, dim="time", offset=0):
     else:
         return np.sum(yhat -y, axis=2) / len(yhat)  
 
-def compute_kge(y_target, y_pred):
-    observed = y_target
-    simulated = y_pred
+def compute_kge(y_true, y_pred):
 
-    if np.any(np.isnan(observed)) or np.any(np.isnan(simulated)):
+    if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)):
         
         return np.array([np.nan,np.nan,np.nan, np.nan])
 
-    r = np.corrcoef(observed, simulated)[1, 0]
-    alpha = np.std(simulated, ddof=1) /np.std(observed, ddof=1)
-    beta = np.mean(simulated) / np.mean(observed)
-    kge = 1 - np.sqrt(np.power(r-1, 2) + np.power(alpha-1, 2) + np.power(beta-1, 2))
-    return np.array([kge, r, alpha, beta ])
+    #r = np.corrcoef(observed, simulated)[1, 0]
+    #alpha = np.std(simulated, ddof=1) /np.std(observed, ddof=1)
+    #beta = np.mean(simulated) / np.mean(observed)
+    #kge = 1 - np.sqrt(np.power(r-1, 2) + np.power(alpha-1, 2) + np.power(beta-1, 2))
+
+    m1, m2 = np.mean(y_true, axis=0), np.mean(y_pred, axis=0)
+    num_r = np.sum((y_true - m1) * (y_pred - m2), axis=0)
+    den_r = np.sqrt(np.sum((y_true - m1) ** 2, axis=0)) * np.sqrt(np.sum((y_pred - m2) ** 2, axis=0))
+    r = num_r / den_r
+    beta = m2 / m1
+    gamma = (np.std(y_pred, axis=0) / m2) / (np.std(y_true, axis=0) / m1)
+    kge = 1. - np.sqrt((r - 1.) ** 2 + (beta - 1.) ** 2 + (gamma - 1.) ** 2)
+    
+    return np.array([kge, r, gamma, beta ])
 
 def compute_kge_parallel(y_target, y_pred):
-    kge = xr.apply_ufunc(compute_kge, y_pred, y_target, 
+    kge = xr.apply_ufunc(compute_kge, 
+                         y_target, y_pred, 
                          input_core_dims=[["time"],["time"]] , 
                          output_core_dims= [["kge"]], 
                          output_dtypes=[float],
@@ -264,20 +274,53 @@ def map_at_timesteps(y: xr.DataArray, yhat: xr.DataArray, dates = None, label_pr
         fig.tight_layout()
         
      
-def ts_plot(y: xr.DataArray, yhat, lat= [], lon = [], label_1 = "wflow", label_2 = "LSTM", bkg_map = None):
+def ts_plot(y: xr.DataArray, yhat, smy, smyhat, precip, temp,lat= [], lon = [], label_1 = "wflow_sbm", label_2 = "LSTM", el=None, lc=None):
     time = y.time.values
+    time2 = smy.time.values
     for ilat,ilon in zip(lat, lon):
-        ax_dict = plt.figure(layout="constrained", figsize=(20,5)).subplot_mosaic(
-        """
-        A
-        """,
-        height_ratios=[1]
-        )
+        fig,ax = plt.subplots(4,1,figsize=(20,7), gridspec_kw={'height_ratios': [1, 2, 3, 3]})
+        # ax_dict = plt.figure(layout="constrained", figsize=(20,5)).subplot_mosaic(
+        # """
+        # A
+        # """,
+        # height_ratios=[1]
+        # )
         iy = y.sel(lat = ilat,lon = ilon, method="nearest")
         iyhat = yhat.sel(lat = ilat,lon = ilon, method="nearest") 
-        ax_dict["A"].plot(time, iyhat, label = label_2)
-        ax_dict["A"].plot(time, iy, label= label_1)
-        ax_dict["A"].legend()
+
+        smiy = smy.sel(lat = ilat,lon = ilon, method="nearest")*10 # 10 mm
+        smiyhat = smyhat.sel(lat = ilat,lon = ilon, method="nearest")*10 
+        
+        # ax_dict["A"].plot(time, iyhat, label = label_2)
+        # ax_dict["A"].plot(time, iy, label= label_1)
+        # ax_dict["A"].legend()
+        ax[0].plot(time, temp, color="black", label="T")
+        ax[0].set_ylabel("T (℃)")
+        ax[0].get_xaxis().set_visible(False)
+
+        ax[1].bar(time, precip, 0.5, alpha=0.8, fill="black", color="black", label="precip")
+        ax[1].set_ylabel("Pr (mm)")
+        ax[1].get_xaxis().set_visible(False)
+        
+        ax[2].legend(loc="upper right")
+        ax[2].plot(time, iyhat, label = label_2)
+        ax[2].plot(time, iy, label= label_1, color="red")
+        ax[2].set_ylabel("ET (mm)")
+        ax[2].legend(loc="upper right",frameon=False)
+        ax[2].get_xaxis().set_visible(False)
+
+        #ax[3].legend(loc="upper right")
+        ax[3].plot(time2, smiyhat, label = label_2, color="red")
+        ax[3].plot(time2, smiy, label= label_1)
+        ax[3].set_ylabel("SM (mm)")
+        #ax[1].legend(loc="upper right",frameon=False)
+        
+        #ax2 = ax[1].twinx()
+        #ax2.bar(time,-precip, 0.5, alpha=0.8, fill="black", color="black", label="precip")
+        #ax2.set_ylabel("Precipitation (mm)")
+        #ax[1].set_legend(frameon=False)
+        fig.text(0.13,0.55, f"{el} (m a.s.l.)" )
+        fig.text(0.13,0.5, f"{lc}") 
 
 
 
@@ -288,16 +331,39 @@ def map_points(lat= [], lon = [], bkg_map = None):
     """,
     height_ratios=[1]
     )
-    for ilat,ilon in zip(lat, lon):
 
-        df = gpd.GeoDataFrame([],geometry=gpd.points_from_xy(x=[ilon], y=[ilat]))
-        if bkg_map is not None:
-            bkg_map.plot(ax=ax_dict["A"], add_colorbar=False, cmap="terrain")
-        else:
-            y.mean("time").plot(ax=ax_dict["A"], add_colorbar=False)
-        df.plot(ax=ax_dict["A"], markersize=20, color="red")
+    df = gpd.GeoDataFrame([],geometry=gpd.points_from_xy(x=lon, y=lat))
+    if bkg_map is not None:
+        #bkg_map.plot(ax=ax_dict["A"], add_colorbar=False, cmap="terrain")
+        from matplotlib.colors import ListedColormap
+        cmap = ListedColormap(["black", "gold", "lightseagreen", "purple", "blue"])
+        vmin = 0
+        vmax = 4
+
+        labels = {0:"Artificial surfaces", 1: "Agricultural areas", 2:"Forest and seminatural areas", 3:"Wetlands", 4: "Water bodies"}
+        
+        p=bkg_map.plot.imshow(
+            cmap=cmap,
+            vmin=vmin, vmax=vmax,
+            add_colorbar = True,
+            cbar_kwargs = {"shrink":0.5},
+            ax=ax_dict["A"]
+        )
+        
+        ticks = np.linspace(start=vmin+0.5, stop=vmax-0.5, num=vmax+1)
+        ilabels = [labels.get(i, "No Data") for i in range(vmax+1)]
+        p.colorbar.set_ticks(ticks, labels=ilabels)
+        
+        p.colorbar.ax.set_ylabel('', rotation=270)
+        plt.axis('off')
+        plt.title("")
+        #plt.gca().set_axis_off()
+    else:
+        y.mean("time").plot(ax=ax_dict["A"], add_colorbar=False)
+    df.plot(ax=ax_dict["A"], markersize=20, color="red")
     plt.title("")
-    #plt.gca().set_axis_off()
+    
+
 
 
 def ts_compare(y: xr.DataArray, yhat, lat= [], lon = [], label_1 = "wflow", label_2 = "LSTM", bkg_map = None):

@@ -159,7 +159,7 @@ class RegularIntervalSampler(AbstractSampler):
         idx_sampled = grid_idx[irange[:,None], jrange].flatten() # broadcasting
         
         if missing_mask is not None:
-            idx_nan = grid_idx[missing_mask]
+            idx_nan = grid_idx[missing_mask.astype(np.bool_)]
             
             idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
         else: 
