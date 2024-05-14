@@ -11,6 +11,27 @@ from typing import Any
 from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
 
+def reclass(arr, classes):
+    """Returns a 2D array with reclassified values 
+
+    Parameters
+    ----------
+    arr: NDArray | xr.DataArray
+        The input array to be reclassified
+    classes: List[int,float]
+
+    Returns
+    -------
+    """
+    if isinstance(arr, xr.DataArray):
+        for ic in range(len(classes)):
+            print(ic, len(classes)-1)
+            if ic < len(classes) - 1:
+                arr = arr.where( ~((arr >= classes[ic]) & (arr < classes[ic +1])), ic)
+            else:
+                arr = arr.where( ~(arr >= classes[ic]), ic)
+    return arr
+
 def load(surrogate_input_path, wflow_model, files = ["Xd", "Xs", "Y"]):
     loaded = np.load(surrogate_input_path / f"{wflow_model}.npz")
     return [loaded[f] for f in files]
@@ -184,24 +205,25 @@ def prepare_for_plotting(y_target: NDArray, y_pred: NDArray, shape: tuple[int], 
     
     return y, yhat
 
-def get_sampler_config(surrogate_experiment_name):
-    if surrogate_experiment_name == "s0001": # 0.1 %
-        print("0.1 %")
-        intervals = [12, 12]
-        val_origin = [1 ,1 ]
-        train_origin = [0, 0]
-    elif surrogate_experiment_name == "s0010":  # 1 %
-        print("1 %")
+
+def get_sampler_config(EXP):
+    if EXP == "s001000":    # 1 %
+        print("sampling rate 1 %")
         intervals = [4, 4]
-        val_origin = [1, 1]
+        val_origin = [2, 2]
         train_origin = [0, 0]
-    elif surrogate_experiment_name == "s00001":  # 0.01 %
-        print("0.01 %")
+    elif EXP == "s000100":    # 0.1 %
+        print("sampling rate 0.1 %")
+        intervals = [11, 11]
+        val_origin = [6 ,6 ]
+        train_origin = [0, 0]
+    elif EXP == "s000010":   # 0.01 %
+        print("sampling rate 0.01 %")
         intervals = [36, 36]
-        val_origin = [1, 1]
+        val_origin = [18, 18]
         train_origin = [0, 0]
-    elif surrogate_experiment_name == "s000001":  # 0.001 %
-        print("0.001 %")
+    elif EXP == "s000001":  # 0.001 %
+        print("sampling rate 0.001 %")
         intervals = [108, 108]
         val_origin = [64, 64]
         train_origin = [0, 0]
@@ -209,6 +231,35 @@ def get_sampler_config(surrogate_experiment_name):
         raise Exception("experiment not found")
         
     return intervals, val_origin, train_origin
+
+def save_stats(url, EXP,d_m, s_m, y_m, d_std, s_std, y_std):
+    # mean
+    if not (url / f"{EXP}_d_m.npy").exists():
+        np.save(url / f"{EXP}_d_m.npy", d_m)
+        np.save(url / f"{EXP}_s_m.npy", s_m)
+        np.save(url / f"{EXP}_y_m.npy", y_m)
+        
+        # std
+        np.save(url / f"{EXP}_d_std.npy", d_std)
+        np.save(url / f"{EXP}_s_std.npy", s_std)
+        np.save(url / f"{EXP}_y_std.npy", y_std)
+    else:
+        print("file exists")
+        return True
+        
+def read_stats(url, EXP,d_m, s_m, y_m, d_std, s_std, y_std):
+    print("reading stats from cache")
+    # mean
+    d_m = np.load(url / f"{EXP}_d_m.npy")
+    s_m = np.load(url / f"{EXP}_s_m.npy")
+    y_m = np.load(url / f"{EXP}_y_m.npy")
+    
+    # std
+    d_std = np.load(url / f"{EXP}_d_std.npy")
+    s_std = np.load(url / f"{EXP}_s_std.npy")
+    y_std = np.load(url / f"{EXP}_y_std.npy")
+
+    return d_m, s_m, y_m, d_std, s_std, y_std
 
 def set_seed(seed):
     random.seed(seed)
