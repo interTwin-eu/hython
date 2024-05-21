@@ -1,10 +1,6 @@
 import torch
 from torch import nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-from torch.nn import Parameter
-import torch.nn.functional as F
-from .dropout import DropMask, createMask
+
 
 class CuDNNLSTM(nn.Module):
     def __init__(self, input_size = 3, hidden_size = 34, output_size = 2, number_static_predictors = 5, dropout = 0.1):
@@ -37,7 +33,6 @@ class CuDNNLSTM(nn.Module):
 
 class CustomLSTM(nn.Module):
     pass
-
 
 class ConvLSTMCell(nn.Module):
 
@@ -93,7 +88,6 @@ class ConvLSTMCell(nn.Module):
         height, width = image_size
         return (torch.zeros(batch_size, self.hidden_dim, height, width, device=self.conv.weight.device),
                 torch.zeros(batch_size, self.hidden_dim, height, width, device=self.conv.weight.device))
-
 
 class ConvLSTM(nn.Module):
 
@@ -227,7 +221,5 @@ class ConvLSTM(nn.Module):
             param = [param] * num_layers
         return param
 
-
-
-class LSTMGConv:
+class LSTMGraphConv:
     pass

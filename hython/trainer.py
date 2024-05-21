@@ -136,7 +136,6 @@ class RNNTrainer(BaseTrainer):
         """Return the n steps that should be predicted"""
         return arr[:, -1]
 
-
 class BasinLumpedTrainer(RNNTrainer):
     def __init__(self, params):
         super(BasinLumpedTrainer, self).__init__(params)
@@ -230,7 +229,6 @@ class BasinDistributedTrainer(RNNTrainer):
 
     def epoch_step(self, model, device, opt = None):
         pass
-
 
 class BasinGraphTrainer(RNNTrainer):
     def __init__(self, params):
