@@ -203,3 +203,13 @@ class LumpedDataset(Dataset):
                 return self.Xd[i], self.xs[i], self.y[i] 
         else:
             return self.Xd[i], self.y[i]
+        
+
+
+class GraphDataset(Dataset):
+    """
+    Generate a graph dataset. 
+    The getitem returns a snapshot.
+
+    """
+    pass

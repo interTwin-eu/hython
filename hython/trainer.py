@@ -230,3 +230,11 @@ class BasinDistributedTrainer(RNNTrainer):
 
     def epoch_step(self, model, device, opt = None):
         pass
+
+
+class BasinGraphTrainer(RNNTrainer):
+    def __init__(self, params):
+        super(BasinGraphTrainer, self).__init__(params)
+
+    def epoch_step(self, model, device, opt = None):
+        pass
