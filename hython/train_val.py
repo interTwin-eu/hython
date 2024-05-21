@@ -3,9 +3,12 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm.auto import tqdm
-
+import os
 
 def train_val(trainer, model, epochs, optimizer, lr_scheduler, dp_weights, device):
+
+    if not os.path.exists(dp_weights):
+        os.mkdir(dp_weights)
 
     target_names = trainer.P.target_names 
     
