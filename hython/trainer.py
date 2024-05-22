@@ -48,7 +48,7 @@ class BaseTrainer:
         pass
 
     def save_weights(self, model, dp):
-        torch.save(model.state_dict(), f"{dp}/{self.exp}")
+        torch.save(model.state_dict(), f"{dp}/{self.exp}.pt")
 
 def metric_epoch(metric_func, y_pred, y_true, target_names):
     metrics = metric_func(y_pred, y_true, target_names) 
@@ -88,15 +88,16 @@ class RNNTrainer(BaseTrainer):
         else:
             dataloader = self.P.val_dataloader
 
-        running_loss = 0
-        spatial_sample_size = 0 
+        running_batch_loss = 0
+        data_points = 0 
         
         epoch_preds = None
         epoch_targets = None 
         
         for (dynamic_b, static_b, targets_b) in dataloader:
 
-            running_time_batch_loss = 0
+            batch_temporal_loss = 0
+
             for t in self.time_index: # time_index could be a subset of time indices 
                 dynamic_bt = dynamic_b[:, t:(t + self.P.seq_length)].to(device)
                 static_bt = static_b.to(device)
@@ -118,19 +119,19 @@ class RNNTrainer(BaseTrainer):
                         (epoch_targets, target.detach().cpu().numpy()), axis=0
                     )
 
-                loss_time_batch = loss_batch(self.P.loss_func, output, target, opt) 
+                batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt) 
 
-                running_time_batch_loss += loss_time_batch
+                batch_temporal_loss += batch_sequence_loss
 
-            spatial_sample_size += targets_b.size(0)
+            data_points += targets_b.size(0)
 
-            running_loss += running_time_batch_loss
+            running_batch_loss += batch_temporal_loss
 
-        loss = running_loss / spatial_sample_size
+        epoch_loss = running_batch_loss / data_points
 
         metric = metric_epoch(self.P.metric_func, epoch_targets, epoch_preds, self.P.target_names)
             
-        return loss, metric
+        return epoch_loss, metric
         
     def predict_step(self, arr):
         """Return the n steps that should be predicted"""
@@ -153,8 +154,8 @@ class BasinLumpedTrainer(RNNTrainer):
         else:
             dataloader = self.P.val_dataloader
 
-        running_loss = 0
-        spatial_sample_size = 0 
+        running_batch_loss = 0
+        data_points = 0 
         
         epoch_preds = None
         epoch_targets = None 
@@ -162,7 +163,8 @@ class BasinLumpedTrainer(RNNTrainer):
         # FORWARD DISTRIBUTED
         for (dynamic_b, static_b, targets_b) in dataloader:
 
-            running_time_batch_loss = 0
+            batch_temporal_loss = 0
+
             for t in self.time_index: # time_index could be a subset of time indices 
                 dynamic_bt = dynamic_b[:, t:(t + self.P.seq_length)].to(device)
                 static_bt = static_b.to(device)
@@ -184,15 +186,15 @@ class BasinLumpedTrainer(RNNTrainer):
                         (epoch_targets, target.detach().cpu().numpy()), axis=0
                     )
 
-                loss_time_batch = loss_batch(self.P.loss_func["distributed"], output, target, opt = None)
+                batch_sequence_loss = loss_batch(self.P.loss_func["distributed"], output, target, opt = None)
 
-                running_time_batch_loss += loss_time_batch
+                batch_temporal_loss += batch_sequence_loss
 
-            spatial_sample_size += targets_b.size(0)
+            data_points += targets_b.size(0)
 
-            running_loss += running_time_batch_loss
+            running_batch_loss += batch_temporal_loss
 
-        loss = running_loss / spatial_sample_size
+        epoch_loss = running_batch_loss / data_points
         
         # FORWARD LUMPED
         y_lumped = dataloader.dataset.get_lumped_target()
