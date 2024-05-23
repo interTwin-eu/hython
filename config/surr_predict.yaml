@@ -1,0 +1,17 @@
+# General
+
+surr_input: ""
+surr_weights: ""
+
+# === Split 
+train_time: "" # range corresponding to training period
+test_time: "" # range corresponding to test period, unseen data
+
+# === Sampler
+sampler: ""
+
+# === Model
+# Select the specific model
+model:
+  class:
+  hyperparams:

@@ -24,14 +24,12 @@ class RNNTrainParams(BaseTrainParams):
     # blabla
     target_names:str
 
-
 @dataclass
 class BasinTrainParams(RNNTrainParams):
     """The loss function should be different for each model
     """
     loss_func:dict
     metric_func:dict
-
 
 class BaseTrainer:
 
@@ -47,8 +45,8 @@ class BaseTrainer:
     def predict_step(self):
         pass
 
-    def save_weights(self, model, dp):
-        torch.save(model.state_dict(), f"{dp}/{self.exp}.pt")
+    def save_weights(self, model, fp):
+        torch.save(model.state_dict(), fp)
 
 def metric_epoch(metric_func, y_pred, y_true, target_names):
     metrics = metric_func(y_pred, y_true, target_names) 
