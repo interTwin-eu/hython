@@ -47,13 +47,6 @@ def missing_location_idx(grid: np.ndarray |  xr.DataArray | xr.Dataset,
     Returns:
         np.array | list: _description_
     """
-    
-    if isinstance(grid, np.ndarray) or isinstance(grid, torch.Tensor):
-        shape = grid.shape
-    elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
-        shape = grid.gridcell
-    else:
-        pass
 
     if isinstance(grid, np.ndarray) or isinstance(grid, torch.Tensor):
         
@@ -64,9 +57,13 @@ def missing_location_idx(grid: np.ndarray |  xr.DataArray | xr.Dataset,
     else:
         pass
 
-    return location_idx # (location, dims)
+    return location_idx # (gridcells, dims)
 
-
+def build_mask_dataarray(masks:list, names:list = None):
+    das = []
+    for mask,name, in zip(masks, names):
+        das.append(mask.rename(name))  
+    return  xr.merge(das).to_dataarray(dim="mask_layer", name="mask")
 
 def predict(Xd, Xs, model, batch_size, device):
     model = model.to(device)
@@ -81,7 +78,6 @@ def predict(Xd, Xs, model, batch_size, device):
             )
     return np.vstack(arr)
 
-
 def to_xr(arr, coords, dims = ["lat", "lon", "time"]):
     return xr.DataArray(arr,
                         dims = dims,
@@ -90,7 +86,6 @@ def to_xr(arr, coords, dims = ["lat", "lon", "time"]):
 def reshape_to_2Dspatial(a, lat_size, lon_size, time_size, feat_size, coords= None):
     tmp = a.reshape(lat_size, lon_size, time_size , feat_size)
     return tmp
-
 
 def reconstruct_from_missing(a: NDArray, original_shape: tuple, missing_location_idx: NDArray) -> NDArray:
     """Re-insert missing values where they were removed, based on the missing_location_idx
@@ -140,13 +135,17 @@ def write_to_zarr(arr: DaskArray | xr.DataArray,
                   clear_zarr_storage = False,
                   append_on_time = False,
                   time_chunk_size = 200,
-                  multi_index = None):
+                  multi_index = None,
+                  append_attrs:dict = None):
     
     if isinstance(arr, DaskArray):
         arr = arr.rechunk(chunks = chunks)
         arr.to_zarr(url=url, storage_options=storage_options, overwrite=overwrite, component=group)
         
-    if isinstance(arr, xr.DataArray):
+    if isinstance(arr, xr.DataArray) or isinstance(arr, xr.Dataset):
+
+        original_dataarray_attrs = arr.attrs 
+
         if overwrite:
             overwrite="w"
         else:
@@ -154,6 +153,10 @@ def write_to_zarr(arr: DaskArray | xr.DataArray,
         if chunks:
             arr = arr.chunk(chunks=chunks)
         shape = arr.shape
+
+        if append_attrs:
+            arr.attrs.update(append_attrs)
+
         if multi_index:
             arr = arr.to_dataset(name=group)
             arr = cfxr.encode_multi_index_as_compress(arr, multi_index)
@@ -163,11 +166,18 @@ def write_to_zarr(arr: DaskArray | xr.DataArray,
             
             if clear_zarr_storage:
                 fs_store.clear()
-            
+
+            print(arr.attrs)
+
             # initialize
             init = arr.isel(time=slice(0,time_chunk_size)).persist()
-            init[group].attrs.clear()
-            init.to_zarr(fs_store, consolidated = True, group=group)
+            #init[group].attrs.clear()
+
+            init.to_zarr(fs_store, consolidated = True, group=group, mode=overwrite)
+
+
+            print(init[group].attrs)
+
             for t in range(time_chunk_size, shape[1], time_chunk_size): # append time
                 arr.isel(time=slice(t,t+time_chunk_size)).to_zarr(fs_store, append_dim="time", consolidated=True, group=group)
         else:
@@ -180,7 +190,6 @@ def read_from_zarr(url, group = None, multi_index = None, engine = "xarray"):
             ds = cfxr.decode_compress_to_multi_index(ds, multi_index)
         return ds
     
-
 def prepare_for_plotting(y_target: NDArray, y_pred: NDArray, shape: tuple[int], coords: DataArrayCoordinates | DatasetCoordinates):
     
     lat, lon, time = shape
@@ -204,62 +213,6 @@ def prepare_for_plotting(y_target: NDArray, y_pred: NDArray, shape: tuple[int], 
     yhat = to_xr(yhat[...,0], coords = coords)
     
     return y, yhat
-
-
-def get_sampler_config(EXP):
-    if EXP == "s001000":    # 1 %
-        print("sampling rate 1 %")
-        intervals = [4, 4]
-        val_origin = [2, 2]
-        train_origin = [0, 0]
-    elif EXP == "s000100":    # 0.1 %
-        print("sampling rate 0.1 %")
-        intervals = [11, 11]
-        val_origin = [6 ,6 ]
-        train_origin = [0, 0]
-    elif EXP == "s000010":   # 0.01 %
-        print("sampling rate 0.01 %")
-        intervals = [36, 36]
-        val_origin = [18, 18]
-        train_origin = [0, 0]
-    elif EXP == "s000001":  # 0.001 %
-        print("sampling rate 0.001 %")
-        intervals = [108, 108]
-        val_origin = [64, 64]
-        train_origin = [0, 0]
-    else:
-        raise Exception("experiment not found")
-        
-    return intervals, val_origin, train_origin
-
-def save_stats(url, EXP,d_m, s_m, y_m, d_std, s_std, y_std):
-    # mean
-    if not (url / f"{EXP}_d_m.npy").exists():
-        np.save(url / f"{EXP}_d_m.npy", d_m)
-        np.save(url / f"{EXP}_s_m.npy", s_m)
-        np.save(url / f"{EXP}_y_m.npy", y_m)
-        
-        # std
-        np.save(url / f"{EXP}_d_std.npy", d_std)
-        np.save(url / f"{EXP}_s_std.npy", s_std)
-        np.save(url / f"{EXP}_y_std.npy", y_std)
-    else:
-        print("file exists")
-        return True
-        
-def read_stats(url, EXP,d_m, s_m, y_m, d_std, s_std, y_std):
-    print("reading stats from cache")
-    # mean
-    d_m = np.load(url / f"{EXP}_d_m.npy")
-    s_m = np.load(url / f"{EXP}_s_m.npy")
-    y_m = np.load(url / f"{EXP}_y_m.npy")
-    
-    # std
-    d_std = np.load(url / f"{EXP}_d_std.npy")
-    s_std = np.load(url / f"{EXP}_s_std.npy")
-    y_std = np.load(url / f"{EXP}_y_std.npy")
-
-    return d_m, s_m, y_m, d_std, s_std, y_std
 
 def set_seed(seed):
     random.seed(seed)

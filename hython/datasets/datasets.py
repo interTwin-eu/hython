@@ -4,6 +4,7 @@ import numpy.typing as npt
 from torch.utils.data import Dataset
 
 
+
 class LSTMDataset(Dataset):
 
     def __init__(self, 
@@ -55,7 +56,7 @@ class LSTMDataset(Dataset):
         else:
             self.Xd = xd
             self.y = y
-        
+    
     def __len__(self):
         """Returns examples size. If LSTM number of gridcells. If ConvLSTM number of images.
         """
@@ -205,7 +206,6 @@ class LumpedDataset(Dataset):
             return self.Xd[i], self.y[i]
         
 
-
 class GraphDataset(Dataset):
     """
     Generate a graph dataset. 
@@ -213,3 +213,14 @@ class GraphDataset(Dataset):
 
     """
     pass
+
+
+
+DATASETS = {
+    "LSTMDataset":LSTMDataset
+}
+
+
+
+def get_dataset(dataset):
+    return DATASETS.get(dataset)

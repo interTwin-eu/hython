@@ -1,42 +1,47 @@
 import torch
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from torch.utils.data import DataLoader
+from abc import ABC, abstractmethod
+from torch.nn.modules.loss import _Loss
+from hython.metrics import Metric
 
-@dataclass
+import copy
+import torch
+import numpy as np
+from tqdm.auto import tqdm
+
 class BaseTrainParams:
-    experiment:str
-    # blabla
-    loss_func:callable
-    metric_func:callable
-    # blabla
-    train_dataloader:DataLoader
-    val_dataloader:DataLoader
+    pass
 
-@dataclass
+
+
 class RNNTrainParams(BaseTrainParams):
-    # blabla
-    subsample:bool 
-    n_subsample:int
-    seq_length:int
-    # blabla
-    time_range:int
-    # blabla
-    target_names:str
+
+    def __init__(self, loss_func: _Loss, metric_func: Metric, experiment: str,
+                 temporal_subsampling: bool, temporal_subset: int, 
+                 seq_length: int, target_names: list):
+        self.loss_func = loss_func 
+        self.metric_func = metric_func 
+        self.experiment = experiment  
+        self.temporal_subsampling = temporal_subsampling
+        self.temporal_subset = temporal_subset
+        self.seq_length = seq_length
+        self.target_names = target_names
 
 @dataclass
 class BasinTrainParams(RNNTrainParams):
     """The loss function should be different for each model
     """
-    loss_func:dict
-    metric_func:dict
+    loss_func: _Loss
+    metric_func: Metric
 
-class BaseTrainer:
+class AbstractTrainer(ABC):
 
-    def __init__(self, experiment):
+    def __init__(self, experiment: str):
         self.exp = experiment
 
-    def temporal_index(self):
+    def temporal_index(self, time_range):
         pass
 
     def epoch_step(self):
@@ -45,8 +50,11 @@ class BaseTrainer:
     def predict_step(self):
         pass
 
-    def save_weights(self, model, fp):
-        torch.save(model.state_dict(), fp)
+    def save_weights(self, model, fp, onnx = False):
+        if onnx:
+            raise NotImplementedError()
+        else:
+            torch.save(model.state_dict(), fp)
 
 def metric_epoch(metric_func, y_pred, y_true, target_names):
     metrics = metric_func(y_pred, y_true, target_names) 
@@ -65,32 +73,34 @@ def loss_batch(loss_func, output, target, opt=None):
 
     return loss 
 
-class RNNTrainer(BaseTrainer):
+class RNNTrainer(AbstractTrainer):
     
-    def __init__(self, params):
-        self.P = RNNTrainParams(**params)
+    def __init__(self, params: RNNTrainParams):
+        self.P = params #RNNTrainParams(**params)
+        print(self.P)
         super(RNNTrainer, self).__init__(self.P.experiment)
         
         
-    def temporal_index(self):
+    def temporal_index(self, time_range = None):
         """Return the temporal indices of the timeseries, it may be a subset"""
-        if self.P.subsample:
-            self.time_index = np.random.randint(0, self.P.time_range  - self.P.seq_length, self.P.n_subsample)
+        
+        if time_range is not None:
+            if self.P.temporal_subsampling:
+                self.time_index = np.random.randint(0, time_range  - self.P.seq_length, self.P.temporal_subset)
+            else:
+                self.time_index = np.arange(0, time_range)
         else:
-            self.time_index = np.arange(0, self.P.time_range)
-        self.time_index
+            self.time_index = None
 
-    def epoch_step(self, model, device, opt = None):
-        if opt:
-            dataloader = self.P.train_dataloader
-        else:
-            dataloader = self.P.val_dataloader
+    def epoch_step(self, model, dataloader, device, opt = None):
 
         running_batch_loss = 0
         data_points = 0 
         
         epoch_preds = None
         epoch_targets = None 
+
+
         
         for (dynamic_b, static_b, targets_b) in dataloader:
 
@@ -236,3 +246,58 @@ class BasinGraphTrainer(RNNTrainer):
 
     def epoch_step(self, model, device, opt = None):
         pass
+
+
+def train_val(trainer, 
+              model,
+              train_loader,
+              val_loader, 
+              epochs, 
+              optimizer, 
+              lr_scheduler, 
+              dp_weights, 
+              device,
+              time_range = None):
+
+
+    target_names = trainer.P.target_names 
+    
+    loss_history = {"train": [], "val": []}    
+    metric_history = {f'train_{target}': [] for target in target_names}
+    metric_history.update({f'val_{target}': [] for target in target_names})
+    
+    best_loss = float("inf")
+    
+    for epoch in tqdm(range(epochs)):
+        
+        trainer.temporal_index(time_range) # For RNNs based models
+
+        model.train()
+        
+        train_loss, train_metric = trainer.epoch_step(model, train_loader, device, opt = optimizer)
+
+        model.eval()
+        with torch.no_grad():
+            val_loss, val_metric = trainer.epoch_step(model, val_loader, device, opt= None)
+        
+        lr_scheduler.step(val_loss)
+
+        loss_history["train"].append(train_loss)
+        loss_history["val"].append(val_loss)
+ 
+        for target in target_names: 
+            metric_history[f'train_{target}'].append(train_metric[target])
+            metric_history[f'val_{target}'].append(val_metric[target])
+
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_model_weights = copy.deepcopy(model.state_dict())
+            trainer.save_weights(model, dp_weights)
+            print("Copied best model weights!")
+
+        print(f"train loss: {train_loss}")
+        print(f"val loss: {val_loss}")
+
+    model.load_state_dict(best_model_weights)
+            
+    return model, loss_history, metric_history

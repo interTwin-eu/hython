@@ -1,6 +1,22 @@
 from sklearn.metrics import mean_squared_error
 import numpy as np
 
+
+class Metric:
+    pass
+
+class MSEMetric(Metric):
+    
+    def __init__(self, target_names: list[str]):
+        self.target_names = target_names
+
+
+
+    def __call__(self, y_pred, y_true, target_names):
+        return mse_metric(y_pred, y_true, target_names)
+
+
+
 def mse_metric(y_pred, y_true, target_names):
     """
     Root Mean Squared Error (RMSE) metric for regression task.
