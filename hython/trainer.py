@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from torch.utils.data import DataLoader
 from abc import ABC, abstractmethod
 from torch.nn.modules.loss import _Loss
-from hython.metrics import Metric
+from hython.hython.metrics import Metric
 
 import copy
 import torch
