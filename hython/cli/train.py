@@ -1,15 +1,21 @@
-from jsonargparse import CLI
+"""Description
 
-from torch import nn
+"""
+
+from jsonargparse import CLI # type: ignore
+
+from torch.utils.data import DataLoader # type: ignore
+import torch.optim as optim # type: ignore
+from torch.optim.lr_scheduler import ReduceLROnPlateau # type: ignore
+from torch import nn # type: ignore
+
 from hython.models import *
 from hython.datasets.datasets import get_dataset
 from hython.sampler import *
 from hython.normalizer import Normalizer
 from hython.trainer import *
 from hython.utils import read_from_zarr, missing_location_idx, set_seed
-from hython.train_val import train_val
-import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from hython.trainer import train_val
 
 
 def train(
@@ -93,8 +99,6 @@ def train(
         .mask.sel(mask_layer=mask_names)
         .any(dim="mask_layer")
     )
-
-    print(masks)
 
     # NORMALIZE
 

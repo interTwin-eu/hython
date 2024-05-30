@@ -1,10 +1,8 @@
+import os, random
 import numpy as np
 import xarray as xr
 import torch
 import cf_xarray as cfxr
-
-import os, random
-
 from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
 import zarr
 from typing import Any

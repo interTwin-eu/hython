@@ -1,7 +1,4 @@
 import numpy as np
-
-from dask.array.core import Array as DaskArray
-
 from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 
 

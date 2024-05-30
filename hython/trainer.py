@@ -1,21 +1,16 @@
-import torch
+import torch # type: ignore
 import numpy as np
-from dataclasses import dataclass, field
-from torch.utils.data import DataLoader
-from abc import ABC, abstractmethod
-from torch.nn.modules.loss import _Loss
-from hython.hython.metrics import Metric
-
+from abc import ABC
+from torch.nn.modules.loss import _Loss # type: ignore
+from hython.metrics import Metric
 import copy
-import torch
-import numpy as np
 from tqdm.auto import tqdm
 
 
 class BaseTrainParams:
     pass
 
-
+# TODO: consider dataclass
 class RNNTrainParams(BaseTrainParams):
     def __init__(
         self,
@@ -34,15 +29,6 @@ class RNNTrainParams(BaseTrainParams):
         self.temporal_subset = temporal_subset
         self.seq_length = seq_length
         self.target_names = target_names
-
-
-@dataclass
-class BasinTrainParams(RNNTrainParams):
-    """The loss function should be different for each model"""
-
-    loss_func: _Loss
-    metric_func: Metric
-
 
 class AbstractTrainer(ABC):
     def __init__(self, experiment: str):
@@ -84,7 +70,15 @@ def loss_batch(loss_func, output, target, opt=None):
 
 
 class RNNTrainer(AbstractTrainer):
+
     def __init__(self, params: RNNTrainParams):
+        """Train architecture that 
+
+        Parameters
+        ----------
+        params : RNNTrainParams
+            
+        """
         self.P = params  # RNNTrainParams(**params)
         print(self.P)
         super(RNNTrainer, self).__init__(self.P.experiment)
@@ -273,16 +267,16 @@ def train_val(
     device,
     time_range=None,
 ):
-    target_names = trainer.P.target_names
 
     loss_history = {"train": [], "val": []}
-    metric_history = {f"train_{target}": [] for target in target_names}
-    metric_history.update({f"val_{target}": [] for target in target_names})
+    metric_history = {f"train_{target}": [] for target in trainer.P.target_names}
+    metric_history.update({f"val_{target}": [] for target in trainer.P.target_names})
 
     best_loss = float("inf")
 
     for epoch in tqdm(range(epochs)):
-        trainer.temporal_index(time_range)  # For RNNs based models
+
+        trainer.temporal_index(time_range)  # This has effect only if the trainer overload the method (i.e. for RNN)
 
         model.train()
 
@@ -301,7 +295,7 @@ def train_val(
         loss_history["train"].append(train_loss)
         loss_history["val"].append(val_loss)
 
-        for target in target_names:
+        for target in trainer.P.target_names:
             metric_history[f"train_{target}"].append(train_metric[target])
             metric_history[f"val_{target}"].append(val_metric[target])
 

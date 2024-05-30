@@ -1,24 +1,18 @@
-import torch
 import numpy as np
 import xarray as xr
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-
-# type hints
 from typing import Any, Tuple, List
 from numpy.typing import NDArray
 from xarray.core.coordinates import DatasetCoordinates
 
 from torch.utils.data import Sampler as TorchSampler
-from torch.utils.data import RandomSampler
-from torch.utils.data import SubsetRandomSampler, SequentialSampler
-
-from hython.utils import missing_location_idx
+from torch.utils.data import SubsetRandomSampler
 
 
-def get_grid_idx(shape=None, grid=None):
+def compute_grid_indices(shape=None, grid=None):
     if grid is not None:
         if isinstance(grid, np.ndarray):
             shape = grid.shape
@@ -34,15 +28,10 @@ def get_grid_idx(shape=None, grid=None):
 
     return grid_idx
 
-
-def torch_dataset_to_xygrid(dataset):
-    return
-
-
 @dataclass
 class SamplerResult:
-    """Store metadata to restructure original grid from the sampled grid"""
-
+    """Metadata"""
+    # TODO: rename and check if all of them are still necessary
     idx_grid_2d: NDArray
     idx_sampled_1d: NDArray
     idx_sampled_1d_nomissing: NDArray | None
@@ -54,17 +43,17 @@ class SamplerResult:
     def __repr__(self):
         return f"SamplerResult(\n - id_grid_2d: {self.idx_grid_2d.shape} \n - idx_sampled_1d: {self.idx_sampled_1d.shape} \n - idx_sampled_1d_nomissing: {self.idx_sampled_1d_nomissing.shape}) \n - idx_missing_1d: {self.idx_missing_1d.shape} \n - sampled_grid_dims: {self.sampled_grid_dims} \n - xr_coords: {self.xr_sampled_coords}"
 
-
+# === DOWNSAMPLERS ===============================
 class AbstractDownSampler(ABC):
     def __init__(self):
-        """Pass parametes required by the sampling approach"""
+        """Pass parametes required by the downsampling approach"""
         pass
 
-    def get_grid_idx(self, shape=None, grid=None):
+    def compute_grid_indices(self, shape=None, grid=None):
         if shape is not None:
-            return get_grid_idx(shape=shape)
+            return compute_grid_indices(shape=shape)
         elif grid is not None:
-            return get_grid_idx(grid=grid)
+            return compute_grid_indices(grid=grid)
         else:
             raise Exception("Provide either shape or grid")
 
@@ -82,7 +71,6 @@ class AbstractDownSampler(ABC):
         """
 
         pass
-
 
 class RegularIntervalDownSampler(AbstractDownSampler):
     def __init__(self, intervals: list[int] = (5, 5), origin: list[int] = (0, 0)):
@@ -144,9 +132,9 @@ class RegularIntervalDownSampler(AbstractDownSampler):
         jrange = np.arange(jorigin, jshape, jintervals)
 
         if shape is not None:
-            grid_idx = self.get_grid_idx(shape=shape)
+            grid_idx = self.compute_grid_indices(shape=shape)
         else:
-            grid_idx = self.get_grid_idx(grid=grid)
+            grid_idx = self.compute_grid_indices(grid=grid)
 
         idx_sampled = grid_idx[irange[:, None], jrange].flatten()  # broadcasting
 
@@ -181,7 +169,6 @@ class RegularIntervalDownSampler(AbstractDownSampler):
             xr_sampled_coords=xr_coords,
         )
 
-
 class NoDownsampling(AbstractDownSampler):
     def __init__(self, replacement: bool):
         pass
@@ -189,27 +176,6 @@ class NoDownsampling(AbstractDownSampler):
     def sampling_idx(
         self, shape, missing_mask=None, grid=None
     ):  # remove missing is a 2D mask
-        """Sample a N-dimensional array by regularly-spaced points along the spatial axes.
-
-        Parameters
-        ----------
-        grid : np.ndarray
-            Spatial axes should be the first 2 dimensions, i.e. (lat, lon) or (y, x)
-        intervals : tuple[int], optional
-            Sampling intervals in CRS distance, by default (5,5).
-            5,5 in a 1 km resolution grid, means sampling every 5 km in x and y directions.
-        origin : tuple[int], optional
-            _description_, by default (0, 0)
-
-        Returns
-        -------
-        np.ndarray
-            _description_
-
-        Returns all indices but the missing values
-        Prepare for SubsetRandomSampler
-        In case no missing then RandomSampler
-        """
 
         xr_coords = None
         sampled_grid = None
@@ -231,9 +197,9 @@ class NoDownsampling(AbstractDownSampler):
         jrange = np.arange(0, jshape, 1)
 
         if shape is not None:
-            grid_idx = self.get_grid_idx(shape=shape)
+            grid_idx = self.compute_grid_indices(shape=shape)
         else:
-            grid_idx = self.get_grid_idx(grid=grid)
+            grid_idx = self.compute_grid_indices(grid=grid)
 
         idx_sampled = grid_idx[irange[:, None], jrange].flatten()  # broadcasting
 
@@ -266,7 +232,14 @@ class NoDownsampling(AbstractDownSampler):
             xr_sampled_coords=xr_coords,
         )
 
+DOWNSAMPLERS = {
+    # The class returns indices overloading the method "sampling_idx" of the abstract class
+    # then returns a torch sampler (SubsetRandomSample or SubsetSequentialSample)
+    "regular": RegularIntervalDownSampler,  
+    "default": NoDownsampling,
+}
 
+# === SAMPLER ===============================================================
 class SubsetSequentialSampler:
     r"""Samples elements sequentially, always in the same order.
 
@@ -283,12 +256,7 @@ class SubsetSequentialSampler:
     def __len__(self) -> int:
         return len(self.indices)
 
-
-CLASS_METHODS = {
-    "regular": RegularIntervalDownSampler,  # method to get indices through method "sampling_idx", then use SubsetRandomSample or SubsetSequentialSample
-    "default": NoDownsampling,
-}
-
+# === SAMPLER BUILDER =========================================================
 
 class SamplerBuilder(TorchSampler):
     def __init__(
@@ -304,18 +272,20 @@ class SamplerBuilder(TorchSampler):
             # downsampling
             self.method = downsampling_method
             self.method_kwargs = downsampling_method_kwargs
-            self.method_class = CLASS_METHODS.get(self.method, False)
+            self.method_class = DOWNSAMPLERS.get(self.method, False)
         else:
             # no downsampling
             self.method = "default"
-            self.method_class = CLASS_METHODS.get(self.method, False)
+            self.method_class = DOWNSAMPLERS.get(self.method, False)
 
         self.sampling = sampling
         self.sampling_kwargs = sampling_kwargs
         self.processing = processing
 
     def initialize(self, shape=None, mask_missing=None, grid=None, torch_dataset=None):
-        """ """
+        """Initialize the class
+        
+        """
 
         self.mask_missing = mask_missing
 
