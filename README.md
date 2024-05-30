@@ -27,7 +27,22 @@ pip install .
 ```
 
 ## Usage
+
+### Demo Jupyter Notebooks 
+
 Please review the workflow notebook for a demonstration of the expected inputs, outputs, and how to use the package.
+
+### Command Line Interface
+
+```bash
+
+python preprocess.py --config preprocessing.yaml
+
+python train.py --config training.yaml
+
+python evaluate.py --config evaluating.yaml
+
+```
 
 ## Support
 Please open an issue if you have a bug, feature request or have an idea to improve the package.
@@ -35,7 +50,6 @@ Please open an issue if you have a bug, feature request or have an idea to impro
 ## Design
 
 Class diagram
-
 
 ## Roadmap
 
