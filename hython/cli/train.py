@@ -14,56 +14,72 @@ from hython.datasets.datasets import get_dataset
 from hython.sampler import *
 from hython.normalizer import Normalizer
 from hython.trainer import *
-from hython.utils import read_from_zarr, missing_location_idx, set_seed
+from hython.utils import read_from_zarr, missing_location_idx, set_seed, generate_model_name
 from hython.trainer import train_val
 
 
 def train(
-    # wflow model folder containing forcings, static parameters and outputs
-    wflow_model: str,
-    # paths to inputs and outputs
+    
+    # preprocessed inputs
+    surr_input: str,
     dir_surr_input: str,
+    
+    # output name experiment + surr_model_output
+    surr_model_output: str,
+    experiment: str, 
+
+    # output directories
     dir_surr_output: str,
     dir_stats_output: str,
-    dir_temporary_stuff: str,
+    
     # variables name
     static_names: list,
     dynamic_names: list,
     target_names: list,
+
+    # masks
     mask_names: list,  # the layers that should mask out values from the training
+    
     # train and test periods
     train_temporal_range: list,
     test_temporal_range: list,
+    
     # training parameters
     epochs: int,
     batch: int,
     seed: int,
     device: str,
+    
     # train and test samplers
     train_sampler_builder: SamplerBuilder,
     test_sampler_builder: SamplerBuilder,
+    
     # torch dataset
     dataset: str,
+    
     # NN model
     model: nn.Module,
-    #
+    
+    # Trainer 
     trainer: AbstractTrainer,  # TODO: Metric function should be a class
-    #
+    
+    # Normalizer
     normalizer_static: Normalizer,
     normalizer_dynamic: Normalizer,
     normalizer_target: Normalizer,
 ):
+    
     set_seed(seed)
 
-    file_surr_input = f"{dir_surr_input}/{wflow_model}.zarr"
+    file_surr_input = f"{dir_surr_input}/{surr_input}"
 
     device = torch.device(device)
 
     train_temporal_range = slice(*train_temporal_range)
     test_temporal_range = slice(*test_temporal_range)
 
-    print(train_temporal_range)
-    # SPLIT TRAIN
+    # === READ TRAIN ===========================================================
+    
     Xd = (
         read_from_zarr(url=file_surr_input, group="xd", multi_index="gridcell")
         .sel(time=train_temporal_range)
@@ -81,7 +97,8 @@ def train(
     SHAPE = Xd.attrs["shape"]
     TIME_RANGE = Xd.shape[1]
 
-    # SPLIT TEST
+    # === READ TEST ===================================================================
+    
     Y_test = (
         read_from_zarr(url=file_surr_input, group="y", multi_index="gridcell")
         .sel(time=test_temporal_range)
@@ -93,14 +110,14 @@ def train(
         .xd.sel(feat=dynamic_names)
     )
 
-    # MASK
+    # === MASK ============================================================================
     masks = (
         read_from_zarr(url=file_surr_input, group="mask")
         .mask.sel(mask_layer=mask_names)
         .any(dim="mask_layer")
     )
 
-    # NORMALIZE
+    # === NORMALIZE ============================================================================
 
     # TODO: avoid input normalization, compute stats and implement normalization of mini-batches
 
@@ -117,7 +134,9 @@ def train(
     Xd_test = normalizer_dynamic.normalize(Xd_test)
     Y_test = normalizer_target.normalize(Y_test)
 
-    # DATASET TODO: better way to convert xarray to torch tensor
+    # === DATASET ========================================================================
+    
+    # TODO: find better way to convert xarray to torch tensor
     # LOOK: https://github.com/xarray-contrib/xbatcher
     train_dataset = get_dataset(dataset)(
         torch.Tensor(Xd.values), torch.Tensor(Y.values), torch.Tensor(Xs.values)
@@ -128,7 +147,7 @@ def train(
         torch.Tensor(Xs.values),
     )
 
-    # SAMPLER
+    # === SAMPLER ========================================================================
 
     train_sampler_builder.initialize(
         shape=SHAPE, mask_missing=masks.values, torch_dataset=train_dataset
@@ -140,18 +159,20 @@ def train(
     train_sampler = train_sampler_builder.get_sampler()
     test_sampler = test_sampler_builder.get_sampler()
 
-    # dataloader
+    # === DATALOADER =====================================================================
+    
     train_loader = DataLoader(train_dataset, batch_size=batch, sampler=train_sampler)
     test_loader = DataLoader(test_dataset, batch_size=batch, sampler=test_sampler)
 
-    # model
+    # === MODEL =========================================================================
     model.to(device)
     opt = optim.Adam(model.parameters(), lr=1e-3)
     lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
 
-    # build output name
+    # === TRAIN ===========================================================================
+    # TODO: build output name 
 
-    file_surr_output = f"{dir_surr_output}/test.pt"
+    file_surr_output = f"{dir_surr_output}/{experiment}_{surr_model_output}"
 
     # train
     model, loss_history, metric_history = train_val(
@@ -167,8 +188,8 @@ def train(
         TIME_RANGE,
     )
 
-    # save or plot loss and metric history
-    # trainer.load_best_and_save_weights(model)
+    # === METRICS ====================================================================
+
 
 
 if __name__ == "__main__":
