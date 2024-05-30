@@ -31,8 +31,6 @@ class Normalizer:
 
         self._get_axis()
 
-        print(self.axis)
-
         if funcs:
             return [f(arr, axis=self.axis).compute() for f in funcs]
 
@@ -42,11 +40,9 @@ class Normalizer:
     def normalize(self, arr, fp=None):
         # get stats, if stats was not computed yet
         if self.stats_iscomputed is False:
-            print("computing")
             self.computed_stats = self.compute_stats(arr)
 
         if fp is not None:
-            print("loading precomputed stats")
             self.read_stats(fp)
 
         scale_func = self._scale()
@@ -54,7 +50,7 @@ class Normalizer:
         if scale_func is not None:
             return scale_func(arr, self.axis, *self.computed_stats)
         else:
-            print("bla")
+            pass
 
     def denormalize(self, arr, fp=None):
         if self.method == "standardize":
@@ -75,3 +71,6 @@ class Normalizer:
     def read_stats(self, fp):
         self.stats_iscomputed = True
         self.computed_stats = np.load(fp)
+
+    def get_stats(self):
+        return self.computed_stats

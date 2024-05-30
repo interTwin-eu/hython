@@ -10,6 +10,10 @@ from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
 
 
+def generate_model_name(surr_model_prefix, experiment, target_names, hidden_size, seed):
+    TARGET_INITIALS = "".join([i[0].capitalize() for i in target_names])
+    return f"{surr_model_prefix}_{experiment}_v{TARGET_INITIALS}_h{hidden_size}_s{seed}.pt"
+
 def reclass(arr, classes):
     """Returns a 2D array with reclassified values
 
@@ -71,24 +75,11 @@ def build_mask_dataarray(masks: list, names: list = None):
     return xr.merge(das).to_dataarray(dim="mask_layer", name="mask")
 
 
-def predict(Xd, Xs, model, batch_size, device):
-    model = model.to(device)
-    arr = []
-    for i in range(0, Xd.shape[0], batch_size):
-        d = torch.Tensor(Xd[i : (i + batch_size)]).to(device)
-
-        s = torch.Tensor(Xs[i : (i + batch_size)]).to(device)
-        arr.append(model(d, s).detach().cpu().numpy())
-    return np.vstack(arr)
-
-
 def to_xr(arr, coords, dims=["lat", "lon", "time"]):
     return xr.DataArray(arr, dims=dims, coords=coords)
 
 
-def reshape_to_2Dspatial(a, lat_size, lon_size, time_size, feat_size, coords=None):
-    tmp = a.reshape(lat_size, lon_size, time_size, feat_size)
-    return tmp
+
 
 
 def reconstruct_from_missing(
@@ -113,7 +104,6 @@ def reconstruct_from_missing(
         ),
         np.nan,
     )
-    print(fill.shape)
 
     if len(original_shape) > 2:
         # fill missing
@@ -179,7 +169,6 @@ def write_to_zarr(
             if clear_zarr_storage:
                 fs_store.clear()
 
-            print(arr.attrs)
 
             # initialize
             init = arr.isel(time=slice(0, time_chunk_size)).persist()
@@ -187,7 +176,6 @@ def write_to_zarr(
 
             init.to_zarr(fs_store, consolidated=True, group=group, mode=overwrite)
 
-            print(init[group].attrs)
 
             for t in range(time_chunk_size, shape[1], time_chunk_size):  # append time
                 arr.isel(time=slice(t, t + time_chunk_size)).to_zarr(
@@ -206,6 +194,9 @@ def read_from_zarr(url, group=None, multi_index=None, engine="xarray"):
             ds = cfxr.decode_compress_to_multi_index(ds, multi_index)
         return ds
 
+def reshape_to_2Dspatial(a, lat_size, lon_size, time_size, feat_size, coords=None):
+    tmp = a.reshape(lat_size, lon_size, time_size, feat_size)
+    return tmp
 
 def prepare_for_plotting(
     y_target: NDArray,

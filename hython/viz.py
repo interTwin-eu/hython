@@ -363,7 +363,9 @@ def map_rmse(
         )
     plt.title("")
     if return_rmse:
-        return rmse
+        return fig, ax, rmse
+    else:
+        return fig, ax
 
 
 def map_bias(
