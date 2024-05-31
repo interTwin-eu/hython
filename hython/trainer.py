@@ -110,7 +110,8 @@ class RNNTrainer(AbstractTrainer):
                 dynamic_bt = dynamic_b[:, t : (t + self.P.seq_length)].to(device)
                 static_bt = static_b.to(device)
                 targets_bt = targets_b[:, t : (t + self.P.seq_length)].to(device)
-
+                if dynamic_bt.shape[1] == 0: # TODO: fix this in sampler
+                    continue
                 output = model(dynamic_bt, static_bt)
 
                 output = self.predict_step(output)

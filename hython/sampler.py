@@ -268,6 +268,7 @@ class SamplerBuilder(TorchSampler):
         sampling_kwargs: dict = {},
         processing: str = "single-gpu",
     ):
+        self.downsampling = downsampling
         if downsampling:
             # downsampling
             self.method = downsampling_method
@@ -291,8 +292,10 @@ class SamplerBuilder(TorchSampler):
 
         self.grid = grid  # 2d grid
         self.torch_dataset = torch_dataset
-
-        self.method_instance = self.method_class(**self.method_kwargs)
+        if self.downsampling:
+            self.method_instance = self.method_class(**self.method_kwargs)
+        else:
+            self.method_instance = self.method_class(**self.sampling_kwargs)
 
         self.result = self.method_instance.sampling_idx(
             shape, self.mask_missing, self.grid
