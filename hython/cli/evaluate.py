@@ -17,7 +17,7 @@ from hython.trainer import *
 from hython.utils import read_from_zarr, missing_location_idx, set_seed, prepare_for_plotting
 from hython.evaluator import predict
 from hython.trainer import train_val
-from hython.viz import map_rmse
+from hython.viz import *
 
 import matplotlib.pyplot as plt
 
@@ -69,19 +69,19 @@ def evalute(
     valid_temporal_range = slice(*valid_temporal_range)
 
     # === READ TRAIN ============================================================= 
-    Xd = (
-        read_from_zarr(url=file_surr_input, group="xd", multi_index="gridcell")
-        .sel(time=train_temporal_range)
-        .xd.sel(feat=dynamic_names)
-    )
+    # Xd = (
+    #     read_from_zarr(url=file_surr_input, group="xd", multi_index="gridcell")
+    #     .sel(time=train_temporal_range)
+    #     .xd.sel(feat=dynamic_names)
+    # )
     Xs = read_from_zarr(url=file_surr_input, group="xs", multi_index="gridcell").xs.sel(
-        feat=static_names
-    )
-    Y = (
-        read_from_zarr(url=file_surr_input, group="y", multi_index="gridcell")
-        .sel(time=train_temporal_range)
-        .y.sel(feat=target_names)
-    )
+         feat=static_names
+     )
+    # Y = (
+    #     read_from_zarr(url=file_surr_input, group="y", multi_index="gridcell")
+    #     .sel(time=train_temporal_range)
+    #     .y.sel(feat=target_names)
+    # )
 
     # === READ VALID. ============================================================= 
 
@@ -96,9 +96,6 @@ def evalute(
         .y.sel(feat=target_names)
     )
 
-    SHAPE = Xd.attrs["shape"]
-    TIME_RANGE = Xd.shape[1]
-
     # MASK
     masks = (
         read_from_zarr(url=file_surr_input, group="mask")
@@ -110,9 +107,9 @@ def evalute(
 
     # TODO: avoid input normalization, compute stats and implement normalization of mini-batches
 
-    normalizer_dynamic.compute_stats(Xd)
-    normalizer_static.compute_stats(Xs)
-    normalizer_target.compute_stats(Y)
+    normalizer_dynamic.read_stats(f"{dir_stats_output}/{experiment}_xd.npy")
+    normalizer_static.read_stats(f"{dir_stats_output}/{experiment}_xs.npy")
+    normalizer_target.read_stats(f"{dir_stats_output}/{experiment}_y.npy")
 
     # TODO: save stats, implement caching of stats to save computation
 
@@ -128,6 +125,7 @@ def evalute(
     lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
 
     # model load precomputed weights 
+    print(f"loading model {file_surr_model}")
     model.load_state_dict(torch.load(file_surr_model))
 
     # === PREDICT =============================================================================
@@ -138,25 +136,48 @@ def evalute(
 
     y_pred = predict(Xd_valid.values, Xs.values, model, batch, device)
 
+
     y_pred = normalizer_target.denormalize(y_pred)
 
-    y_target_plot, y_pred_plot = prepare_for_plotting(y_target=Y_valid[:,:,[1]].values,
-                                                  y_pred = y_pred[:,:,[1]], 
-                                                  shape = (lat, lon, time), 
-                                                  coords  = ds_target.sel(time=valid_temporal_range).coords)
-
-
-    y_target_plot= y_target_plot.where(~masks.values[...,None])
-    y_pred_plot = y_pred_plot.where(~masks.values[...,None])
-    
+    Y_valid = normalizer_target.denormalize( Y_valid)
     # === EVALUATE ===============================================================================
 
-    eval_var = target_names[0]
-    metric = metrics.pop(eval_var)[0]
-    
-    fig, ax, rmse = map_rmse(y_target_plot, y_pred_plot, unit = "ET (mm)", figsize = (8, 8), return_rmse=True)
+    for iv, var in enumerate(target_names):
+        metrics_var = metrics.pop(var)
 
-    fig.savefig(f"{dir_eval_output}/{experiment}_{surr_model.split('.')[0]}_{metric}.png")
+
+        y_target_plot, y_pred_plot = prepare_for_plotting(y_target= Y_valid[:,:,[iv]].values,
+                                                    y_pred = y_pred[:,:,[iv]], 
+                                                    shape = (lat, lon, time), 
+                                                    coords  = ds_target.sel(time=valid_temporal_range).coords)
+
+
+        y_target_plot= y_target_plot.where(~masks.values[...,None])
+        y_pred_plot = y_pred_plot.where(~masks.values[...,None])
+
+
+
+
+        for metric in metrics_var:
+            print(metric)
+            if "rmse" in metric:
+                fig, ax, rmse = map_rmse(y_target_plot, y_pred_plot, unit = "ET (mm)", figsize = (8, 8), return_rmse=True)
+            elif "kge" in metric:
+                fig, ax, kge = map_kge(y_target_plot, y_pred_plot, figsize = (12, 12), return_kge =True, kwargs_imshow={"vmin":-0.5, "vmax":1},
+                ticks = np.linspace(-0.5, 1, 16))
+            elif "pbias" in metric:
+                fig, ax, pbias = map_pbias(y_target_plot, y_pred_plot, figsize = (12, 12), return_pbias=True, kwargs_imshow={"vmin":-100, "vmax":100}, 
+                    ticks = [l*10 for l in range(-10,11, 1)])
+            else:
+                print(f"{metric} not found")
+                continue
+
+            fig.savefig(f"{dir_eval_output}/{experiment}_{surr_model.split('.')[0]}_{var}_{metric}.png")
+
+        
+        ts_compare(y_target_plot, y_pred_plot, lat = [46.4], lon = [11.4], save=f"{dir_eval_output}/{experiment}_{surr_model.split('.')[0]}_{var}_ts_compare.png")
+        
+
 
 
 if __name__ == "__main__":

@@ -43,8 +43,8 @@ class SamplerResult:
     def __repr__(self):
         return f"SamplerResult(\n - id_grid_2d: {self.idx_grid_2d.shape} \n - idx_sampled_1d: {self.idx_sampled_1d.shape} \n - idx_sampled_1d_nomissing: {self.idx_sampled_1d_nomissing.shape}) \n - idx_missing_1d: {self.idx_missing_1d.shape} \n - sampled_grid_dims: {self.sampled_grid_dims} \n - xr_coords: {self.xr_sampled_coords}"
 
-# === DOWNSAMPLERS ===============================
-class AbstractDownSampler(ABC):
+# === SAMPLERS ===============================================================
+class AbstractDataSampler(ABC):
     def __init__(self):
         """Pass parametes required by the downsampling approach"""
         pass
@@ -72,8 +72,8 @@ class AbstractDownSampler(ABC):
 
         pass
 
-class RegularIntervalDownSampler(AbstractDownSampler):
-    def __init__(self, intervals: list[int] = (5, 5), origin: list[int] = (0, 0)):
+class RegularIntervalSampler(AbstractDataSampler):
+    def __init__(self, intervals: list[int], origin: list[int]):
         self.intervals = intervals
         self.origin = origin
 
@@ -169,8 +169,8 @@ class RegularIntervalDownSampler(AbstractDownSampler):
             xr_sampled_coords=xr_coords,
         )
 
-class NoDownsampling(AbstractDownSampler):
-    def __init__(self, replacement: bool):
+class DefaultSampler(AbstractDataSampler):
+    def __init__(self):
         pass
 
     def sampling_idx(
@@ -232,14 +232,11 @@ class NoDownsampling(AbstractDownSampler):
             xr_sampled_coords=xr_coords,
         )
 
-DOWNSAMPLERS = {
-    # The class returns indices overloading the method "sampling_idx" of the abstract class
-    # then returns a torch sampler (SubsetRandomSample or SubsetSequentialSample)
-    "regular": RegularIntervalDownSampler,  
-    "default": NoDownsampling,
+SAMPLERS = {
+    "downsampling_regular": RegularIntervalSampler,  
+    "default": DefaultSampler,
 }
 
-# === SAMPLER ===============================================================
 class SubsetSequentialSampler:
     r"""Samples elements sequentially, always in the same order.
 
@@ -261,29 +258,21 @@ class SubsetSequentialSampler:
 class SamplerBuilder(TorchSampler):
     def __init__(
         self,
-        downsampling: bool = False,
-        downsampling_method: str = "regular",
-        downsampling_method_kwargs: dict = {},
-        sampling: str = "random",
-        sampling_kwargs: dict = {},
+        sampling_method: str = "regular",
+        sampling_method_kwargs: dict = {},
+        minibatch_sampling: str = "random",
         processing: str = "single-gpu",
     ):
-        self.downsampling = downsampling
-        if downsampling:
-            # downsampling
-            self.method = downsampling_method
-            self.method_kwargs = downsampling_method_kwargs
-            self.method_class = DOWNSAMPLERS.get(self.method, False)
-        else:
-            # no downsampling
-            self.method = "default"
-            self.method_class = DOWNSAMPLERS.get(self.method, False)
+    
+        self.sampling_method = sampling_method
+        self.sampling_method_kwargs = sampling_method_kwargs
+        self.method_class = SAMPLERS.get(self.sampling_method, False)
 
-        self.sampling = sampling
-        self.sampling_kwargs = sampling_kwargs
+        self.minibatch_sampling = minibatch_sampling 
+
         self.processing = processing
 
-    def initialize(self, shape=None, mask_missing=None, grid=None, torch_dataset=None):
+    def initialize(self, shape=None, mask_missing=None, grid=None):
         """Initialize the class
         
         """
@@ -291,11 +280,8 @@ class SamplerBuilder(TorchSampler):
         self.mask_missing = mask_missing
 
         self.grid = grid  # 2d grid
-        self.torch_dataset = torch_dataset
-        if self.downsampling:
-            self.method_instance = self.method_class(**self.method_kwargs)
-        else:
-            self.method_instance = self.method_class(**self.sampling_kwargs)
+
+        self.method_instance = self.method_class(**self.sampling_method_kwargs)
 
         self.result = self.method_instance.sampling_idx(
             shape, self.mask_missing, self.grid
@@ -312,9 +298,9 @@ class SamplerBuilder(TorchSampler):
 
     def get_sampler(self):
         if self.processing == "single-gpu":
-            if self.sampling == "random":
+            if self.minibatch_sampling == "random":
                 return SubsetRandomSampler(self.indices)
-            elif self.sampling == "sequential":
+            elif self.minibatch_sampling == "sequential":
                 return SubsetSequentialSampler(self.indices)
         if self.processing == "multi-gpu":
             raise NotImplementedError()

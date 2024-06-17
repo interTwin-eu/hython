@@ -230,7 +230,9 @@ def map_pbias(
         )
     plt.title("")
     if return_pbias:
-        return pbias
+        return fig, ax, pbias
+    else:
+        return fig, ax
 
 
 def map_kge(
@@ -292,7 +294,9 @@ def map_kge(
         fig.colorbar(i, ax=ax, shrink=0.5, label=f"KGE")
     plt.title("")
     if return_kge:
-        return kge
+        return fig, ax, kge
+    else:
+        return fig, ax
 
 
 def map_rmse(
@@ -556,7 +560,7 @@ def map_points(lat=[], lon=[], bkg_map=None):
 
 
 def ts_compare(
-    y: xr.DataArray, yhat, lat=[], lon=[], label_1="wflow", label_2="LSTM", bkg_map=None
+    y: xr.DataArray, yhat, lat=[], lon=[], label_1="wflow", label_2="LSTM", bkg_map=None, save = False
 ):
     time = y.time.values
     for ilat, ilon in zip(lat, lon):
@@ -587,3 +591,6 @@ def ts_compare(
             y.mean("time").plot(ax=ax_dict["C"], add_colorbar=False)
         df.plot(ax=ax_dict["C"], markersize=20, color="red")
         plt.title(f"lat, lon:  ({ ilat}, {ilon})")
+        if save:
+            fig = plt.gcf()
+            fig.savefig(save)

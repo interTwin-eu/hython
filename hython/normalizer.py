@@ -2,75 +2,97 @@ import numpy as np
 from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 
 
-STATS = {"minmax": [nanmin, nanmax], "standardize": [nanmean, nanstd]}
+FUNCS = {"minmax": [nanmin, nanmax], 
+         "standardize": [nanmean, nanstd]}
 
-SCALE = {
-    "minmax": lambda arr, axis, m1, m2: (arr - m1) / (m2 - m1),
-    "standardize": lambda arr, axis, m1, m2: (arr - expand_dims(m1, axis=axis))
-    / expand_dims(m2, axis=axis),
+SCALER = {
+    "minmax": lambda arr, axis, m1, m2: (arr - np.expand_dims(m1, axis=axis)) / (np.expand_dims(m2, axis=axis)  - np.expand_dims(m1, axis=axis)),
+    "standardize": lambda arr, axis, m1, m2: (arr - expand_dims(m1, axis=axis)) / expand_dims(m2, axis=axis),
 }
 
-TYPE = {"time": 1, "spacetime": (0, 1), "space": 0}
+DENORM = {
+    "standardize": lambda arr, axis, m1, m2:  (arr * expand_dims(m2, axis=axis)) + expand_dims(m1, axis=axis)
+}
+
+TYPE = {"space": 0, "time": 1, "spacetime": (0, 1)}
 
 
 class Normalizer:
     def __init__(
-        self, method: str, type: str, dir_temporary: str = None, caching: bool = False
+        self, method: str, type: str, save_stats: bool = False
     ):
         self.method = method
         self.type = type
-        self.stats_iscomputed = False
-        self.dir_temporary = dir_temporary
-        self.caching = caching
+        self.save_stats = save_stats
 
-    def _get_axis(self):
+        self.stats_iscomputed = False
+
+        self._set_axis()
+
+    def _set_axis(self):
         self.axis = TYPE.get(self.type, False)
 
+    def _get_scaler(self):
+        scaler = SCALER.get(self.method, None)
+        if scaler is None: raise NameError(f"Scaler for {self.method} does not exists") 
+        else: return scaler
+    
+    def _get_funcs(self):
+        funcs = FUNCS.get(self.method, False)
+        if funcs is None: raise NameError(f"{self.method} does not exists") 
+        else: return funcs 
+
     def compute_stats(self, arr):
-        funcs = STATS.get(self.method, False)
+        
+        print("compute stats")
 
-        self._get_axis()
+        funcs = self._get_funcs()
+        
+        self.stats_iscomputed = True
 
-        if funcs:
-            return [f(arr, axis=self.axis).compute() for f in funcs]
+        self.computed_stats =  [f(arr, axis=self.axis).compute() for f in funcs]
 
-    def _scale(self):
-        return SCALE.get(self.method, None)
 
-    def normalize(self, arr, fp=None):
-        # get stats, if stats was not computed yet
+    def normalize(self, arr, read_from=None, write_to = None):
+
+        scale_func = self._get_scaler()
+        
+        if read_from is not None:
+            self.read_stats(read_from)
+
         if self.stats_iscomputed is False:
-            self.computed_stats = self.compute_stats(arr)
+            self.compute_stats(arr)
 
-        if fp is not None:
-            self.read_stats(fp)
+        if write_to is not None:
+            self.write_stats(write_to)
 
-        scale_func = self._scale()
-
-        if scale_func is not None:
-            return scale_func(arr, self.axis, *self.computed_stats)
-        else:
-            pass
+        return scale_func(arr, self.axis, *self.computed_stats)
 
     def denormalize(self, arr, fp=None):
         if self.method == "standardize":
+
+            func = DENORM.get(self.method)
+            
             if fp is not None:
                 self.read_stats(fp)
                 m, std = self.computed_stats
-                return (arr * std) + m
+                return func(arr, self.axis, m, std)
             else:
+
                 m, std = self.computed_stats
-                return (arr * std) + m
+                return func(arr, self.axis, m, std)
         else:
             raise NotImplementedError()
 
-    def save_stats(self, fp):
-        for stat in self.computed_stats:
-            np.save(fp, stat)
+    def write_stats(self, fp):
+        print("save stats")
+        np.save(fp, self.computed_stats)
 
     def read_stats(self, fp):
+        print("read stats")
         self.stats_iscomputed = True
         self.computed_stats = np.load(fp)
+        print(self.computed_stats)
 
     def get_stats(self):
         return self.computed_stats

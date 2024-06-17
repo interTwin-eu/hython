@@ -18,7 +18,7 @@ class RNNTrainParams(BaseTrainParams):
         metric_func: Metric,
         experiment: str,
         temporal_subsampling: bool,
-        temporal_subset: int,
+        temporal_subset: list,
         seq_length: int,
         target_names: list,
     ):
@@ -34,7 +34,7 @@ class AbstractTrainer(ABC):
     def __init__(self, experiment: str):
         self.exp = experiment
 
-    def temporal_index(self, time_range):
+    def temporal_index(self, args):
         pass
 
     def epoch_step(self):
@@ -47,6 +47,7 @@ class AbstractTrainer(ABC):
         if onnx:
             raise NotImplementedError()
         else:
+            print(f"save weights to: {fp}")
             torch.save(model.state_dict(), fp)
 
 
@@ -83,18 +84,40 @@ class RNNTrainer(AbstractTrainer):
         print(self.P)
         super(RNNTrainer, self).__init__(self.P.experiment)
 
-    def temporal_index(self, time_range=None):
+    def temporal_index(self, data_loaders=None, opt=None):
         """Return the temporal indices of the timeseries, it may be a subset"""
 
-        if time_range is not None:
-            if self.P.temporal_subsampling:
+        if self.P.temporal_subsampling:
+            if len(self.P.temporal_subset) > 1: 
+                # use different time indices for training and validation
+
+                if opt is None: 
+                    # validation 
+                    time_range = next(iter(data_loaders[-1]))[0].shape[1]
+                    temporal_subset = self.P.temporal_subset[-1]
+                else:
+                    time_range = next(iter(data_loaders[0]))[0].shape[1]
+                    temporal_subset = self.P.temporal_subset[0]
+
                 self.time_index = np.random.randint(
-                    0, time_range - self.P.seq_length, self.P.temporal_subset
+                    0, time_range - self.P.seq_length, temporal_subset
                 )
             else:
-                self.time_index = np.arange(0, time_range)
+                # use same time indices for training and validation, time indices are from train_loader
+                time_range =  next(iter(data_loaders[0]))[0].shape[1]
+                self.time_index = np.random.randint(
+                    0, time_range - self.P.seq_length, self.P.temporal_subset[-1]
+                )   
+
         else:
-            self.time_index = None
+            if opt is None: 
+                # validation 
+                time_range = next(iter(data_loaders[-1]))[0].shape[1]
+            else:
+                time_range = next(iter(data_loaders[0]))[0].shape[1]
+
+            self.time_index = np.arange(0, time_range)
+
 
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
@@ -103,15 +126,20 @@ class RNNTrainer(AbstractTrainer):
         epoch_preds = None
         epoch_targets = None
 
+        # every epoch 
+        #self.temporal_index( next(iter(dataloader))[0].shape[1])
+
         for dynamic_b, static_b, targets_b in dataloader:
-            batch_temporal_loss = 0
+            batch_temporal_loss = 0            
+
+            # every batch
+            #self.temporal_index( dynamic_b.shape[1])
 
             for t in self.time_index:  # time_index could be a subset of time indices
                 dynamic_bt = dynamic_b[:, t : (t + self.P.seq_length)].to(device)
                 static_bt = static_b.to(device)
                 targets_bt = targets_b[:, t : (t + self.P.seq_length)].to(device)
-                if dynamic_bt.shape[1] == 0: # TODO: fix this in sampler
-                    continue
+
                 output = model(dynamic_bt, static_bt)
 
                 output = self.predict_step(output)
@@ -265,8 +293,7 @@ def train_val(
     optimizer,
     lr_scheduler,
     dp_weights,
-    device,
-    time_range=None,
+    device
 ):
 
     loss_history = {"train": [], "val": []}
@@ -277,9 +304,11 @@ def train_val(
 
     for epoch in tqdm(range(epochs)):
 
-        trainer.temporal_index(time_range)  # This has effect only if the trainer overload the method (i.e. for RNN)
-
         model.train()
+
+        # set time indices for training 
+        # This has effect only if the trainer overload the method (i.e. for RNN)
+        trainer.temporal_index([train_loader, val_loader])  
 
         train_loss, train_metric = trainer.epoch_step(
             model, train_loader, device, opt=optimizer
@@ -287,6 +316,11 @@ def train_val(
 
         model.eval()
         with torch.no_grad():
+            
+            # set time indices for validation
+            # This has effect only if the trainer overload the method (i.e. for RNN)
+            trainer.temporal_index([train_loader, val_loader])  
+
             val_loss, val_metric = trainer.epoch_step(
                 model, val_loader, device, opt=None
             )

@@ -95,7 +95,6 @@ def train(
     )
 
     SHAPE = Xd.attrs["shape"]
-    TIME_RANGE = Xd.shape[1]
 
     # === READ TEST ===================================================================
     
@@ -117,19 +116,32 @@ def train(
         .any(dim="mask_layer")
     )
 
+    # === SAMPLER ========================================================================
+
+    train_sampler_builder.initialize(
+        shape=SHAPE, mask_missing=masks.values
+    )  # TODO: RandomSampler requires dataset torch
+    test_sampler_builder.initialize(
+        shape=SHAPE, mask_missing=masks.values
+    )
+
+    train_sampler = train_sampler_builder.get_sampler()
+    test_sampler = test_sampler_builder.get_sampler()
+
+
     # === NORMALIZE ============================================================================
 
     # TODO: avoid input normalization, compute stats and implement normalization of mini-batches
 
-    normalizer_dynamic.compute_stats(Xd)
-    normalizer_static.compute_stats(Xs)
-    normalizer_target.compute_stats(Y)
-
     # TODO: save stats, implement caching of stats to save computation
 
-    Xd = normalizer_dynamic.normalize(Xd)
-    Xs = normalizer_static.normalize(Xs)
-    Y = normalizer_target.normalize(Y)
+    normalizer_dynamic.compute_stats(Xd[train_sampler_builder.indices])
+    normalizer_static.compute_stats(Xs[train_sampler_builder.indices])
+    normalizer_target.compute_stats(Y[train_sampler_builder.indices])
+
+    Xd = normalizer_dynamic.normalize(Xd, write_to = f"{dir_stats_output}/{experiment}_xd.npy")
+    Xs = normalizer_static.normalize(Xs, write_to = f"{dir_stats_output}/{experiment}_xs.npy")
+    Y = normalizer_target.normalize(Y, write_to = f"{dir_stats_output}/{experiment}_y.npy")
 
     Xd_test = normalizer_dynamic.normalize(Xd_test)
     Y_test = normalizer_target.normalize(Y_test)
@@ -138,26 +150,17 @@ def train(
     
     # TODO: find better way to convert xarray to torch tensor
     # LOOK: https://github.com/xarray-contrib/xbatcher
+    
     train_dataset = get_dataset(dataset)(
         torch.Tensor(Xd.values), torch.Tensor(Y.values), torch.Tensor(Xs.values)
     )
+
     test_dataset = get_dataset(dataset)(
         torch.Tensor(Xd_test.values),
         torch.Tensor(Y_test.values),
         torch.Tensor(Xs.values),
     )
 
-    # === SAMPLER ========================================================================
-
-    train_sampler_builder.initialize(
-        shape=SHAPE, mask_missing=masks.values, torch_dataset=train_dataset
-    )  # TODO: RandomSampler requires dataset torch
-    test_sampler_builder.initialize(
-        shape=SHAPE, mask_missing=masks.values, torch_dataset=test_dataset
-    )
-
-    train_sampler = train_sampler_builder.get_sampler()
-    test_sampler = test_sampler_builder.get_sampler()
 
     # === DATALOADER =====================================================================
     
@@ -184,8 +187,7 @@ def train(
         opt,
         lr_scheduler,
         file_surr_output,
-        device,
-        TIME_RANGE,
+        device
     )
 
     # === METRICS ====================================================================
