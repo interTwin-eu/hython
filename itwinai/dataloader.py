@@ -7,7 +7,7 @@ import torch
 import numpy as np
 import xarray as xr
 
-from hython.preprocess import reshape, apply_normalization
+from hython.hython.preprocessor import reshape, apply_normalization
 from hython.utils import missing_location_idx, read_from_zarr
 from hython.datasets.datasets import LSTMDataset
 from hython.sampler import RegularIntervalSampler, DataLoaderSpatialSampler, AbstractSampler
