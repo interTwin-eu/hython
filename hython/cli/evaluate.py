@@ -69,28 +69,20 @@ def evalute(
     valid_temporal_range = slice(*valid_temporal_range)
 
     # === READ TRAIN ============================================================= 
-    # Xd = (
-    #     read_from_zarr(url=file_surr_input, group="xd", multi_index="gridcell")
-    #     .sel(time=train_temporal_range)
-    #     .xd.sel(feat=dynamic_names)
-    # )
+
     Xs = read_from_zarr(url=file_surr_input, group="xs", multi_index="gridcell").xs.sel(
          feat=static_names
      )
-    # Y = (
-    #     read_from_zarr(url=file_surr_input, group="y", multi_index="gridcell")
-    #     .sel(time=train_temporal_range)
-    #     .y.sel(feat=target_names)
-    # )
+
 
     # === READ VALID. ============================================================= 
 
-    Xd_valid = (
+    Xd_test = (
         read_from_zarr(url=file_surr_input, group="xd", multi_index="gridcell")
         .sel(time=valid_temporal_range)
         .xd.sel(feat=dynamic_names)
     )
-    Y_valid = (
+    Y_test = (
         read_from_zarr(url=file_surr_input, group="y", multi_index="gridcell")
         .sel(time=valid_temporal_range)
         .y.sel(feat=target_names)
@@ -113,16 +105,14 @@ def evalute(
 
     # TODO: save stats, implement caching of stats to save computation
 
-    Xd_valid = normalizer_dynamic.normalize(Xd_valid)
+    Xd_test = normalizer_dynamic.normalize(Xd_test)
     Xs = normalizer_static.normalize(Xs)
-    Y_valid = normalizer_target.normalize(Y_valid)
+    Y_test = normalizer_target.normalize(Y_test)
 
     
     # ==== MODEL ============================================================================
     
     model.to(device)
-    opt = optim.Adam(model.parameters(), lr=1e-3)
-    lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
 
     # model load precomputed weights 
     print(f"loading model {file_surr_model}")
@@ -132,21 +122,21 @@ def evalute(
     
     ds_target = xr.open_dataset(file_wflow_target, chunks= {"time":200}).isel(lat=slice(None, None, -1)).sel(layer=1, drop=True)
     
-    lat, lon, time = len(masks.lat),len(masks.lon), Xd_valid.shape[1]
+    lat, lon, time = len(masks.lat),len(masks.lon), Xd_test.shape[1]
 
-    y_pred = predict(Xd_valid.values, Xs.values, model, batch, device)
+    y_pred = predict(Xd_test.values, Xs.values, model, batch, device)
 
 
     y_pred = normalizer_target.denormalize(y_pred)
 
-    Y_valid = normalizer_target.denormalize( Y_valid)
+    Y_test = normalizer_target.denormalize( Y_test)
     # === EVALUATE ===============================================================================
 
     for iv, var in enumerate(target_names):
         metrics_var = metrics.pop(var)
 
 
-        y_target_plot, y_pred_plot = prepare_for_plotting(y_target= Y_valid[:,:,[iv]].values,
+        y_target_plot, y_pred_plot = prepare_for_plotting(y_target= Y_test[:,:,[iv]].values,
                                                     y_pred = y_pred[:,:,[iv]], 
                                                     shape = (lat, lon, time), 
                                                     coords  = ds_target.sel(time=valid_temporal_range).coords)

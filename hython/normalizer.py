@@ -92,7 +92,6 @@ class Normalizer:
         print("read stats")
         self.stats_iscomputed = True
         self.computed_stats = np.load(fp)
-        print(self.computed_stats)
 
     def get_stats(self):
         return self.computed_stats
