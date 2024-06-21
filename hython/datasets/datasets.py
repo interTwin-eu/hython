@@ -3,6 +3,10 @@ import numpy as np
 import numpy.typing as npt
 from torch.utils.data import Dataset
 
+try:
+    import xbatcher
+except:
+    pass
 
 class LSTMDataset(Dataset):
     def __init__(
@@ -76,7 +80,124 @@ class LSTMDataset(Dataset):
         else:
             return self.Xd[i], self.y[i]
 
+class XBatchDataset(Dataset):
+    """
+    Returns batches of Ntile,seq L T C H W
 
+    The problem with this shape is that I cannot sample in time as the data points mixes both space (tile) and time (seq)
+    
+    """
+    def __init__(self, 
+                 xd,
+                 y, 
+                 xs = None,
+                 lstm = False, 
+                 join = False,
+                 xbatcher_kwargs = {},
+                 transform = None):
+
+        self.join = join
+        
+        self.xd_gen = self._get_xbatcher_generator(xd, **xbatcher_kwargs)
+
+
+        print( "dynamic: ", len(self.xd_gen))
+        
+        self.y_gen = self._get_xbatcher_generator(y, **xbatcher_kwargs)
+
+        #xbatcher_kwargs["input_dims"].pop("time")
+        
+        self.xs_gen = self._get_xbatcher_generator(xs, **xbatcher_kwargs)
+        self.transform = transform
+        self.lstm = lstm
+
+        print("static: ", len(self.xs_gen))
+    def __len__(self):
+        return len(self.xd_gen)
+    
+    def __getitem__(self, index):
+        
+        
+        
+        
+        if self.lstm:
+            
+            # Now using this: Ntile[index] C Nseq T H W => Npixel T C
+            
+            print(self.xd_gen[index].to_array().torch.to_tensor().shape)
+            xd = torch.flatten(
+                    self.xd_gen[index].to_array().torch.to_tensor(), start_dim=3) # C Nseq T Npixel
+            print(xd.shape)
+            xd = torch.transpose(xd, 1, 2) # C T Nseq Npixel 
+            print(xd.shape)
+            y = torch.flatten(
+                    self.y_gen[index].to_array().torch.to_tensor(), 
+                    start_dim=3) # C T N
+            y = torch.transpose(y, 1, 2) # C T Nseq Npixel 
+            
+            if self.xs_gen is not None:
+                # Ntile[index] C H W => Npixel C
+                xs = torch.flatten(
+                    self.xs_gen[index].to_array().torch.to_tensor(), start_dim=1) # C Npixel
+                #import pdb;pdb.set_trace()
+                xs = xs.unsqueeze(1).repeat(1, xd.size(1), 1) # C T Npixel
+                xs = xs.unsqueeze(2).repeat(1, 1, xd.size(2), 1) # C T Nseq Npixel
+
+        else:
+            # Ntile,seq[index] C T H W => Npixel T C
+            
+            xd = self.xd_gen[index].transpose("time", "variable",...).torch.to_tensor() # C T H W => T C H W
+            y = self.y_gen[index].transpose("time", "variable",...).torch.to_tensor() # C T H W => T C H W
+
+            if self.xs_gen is not None:
+                xs = self.xs_gen[index].torch.to_tensor() 
+                xs = xs.to(torch.float32) #torch.transpose(xs, 0,1)
+                #import pdb;pdb.set_trace()
+                #xs = xs.unsqueeze(0).repeat(xd.size(0), 1, 1, 1) # T C H W
+
+                
+                
+        if self.transform:
+            xd = self.transform(xd)  
+            
+        if self.xs_gen is not None:
+            if self.join:
+                return xd, y
+            else:
+                return xd, xs, y
+        else:
+            return xd, y
+
+    def _get_xbatcher_generator(self, ds, input_dims, concat_input_dims=True, batch_dims= {}, input_overlap={}, preload_batch=False):
+
+        time = input_dims.get("time", None)
+
+        
+        if ds is None:
+            return None
+        
+        if time is None:
+
+            gen = xbatcher.BatchGenerator(
+                ds = ds, 
+                input_dims = input_dims,
+                concat_input_dims = False,
+                batch_dims = batch_dims,
+                input_overlap = input_overlap,
+                preload_batch = preload_batch
+            )
+        else:
+            
+            gen = xbatcher.BatchGenerator(
+                ds = ds, 
+                input_dims = input_dims,
+                concat_input_dims = concat_input_dims,
+                batch_dims = batch_dims,
+                input_overlap = input_overlap,
+                preload_batch = preload_batch
+            )
+            
+        return gen
 class BasinDataset(Dataset):
     def __init__(
         self,
@@ -220,7 +341,8 @@ class GraphDataset(Dataset):
     pass
 
 
-DATASETS = {"LSTMDataset": LSTMDataset}
+DATASETS = {"LSTMDataset": LSTMDataset,
+             "XBatchDataset":XBatchDataset}
 
 
 def get_dataset(dataset):

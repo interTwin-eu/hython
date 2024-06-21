@@ -273,23 +273,30 @@ class SamplerBuilder(TorchSampler):
         self.processing = processing
 
     def initialize(self, shape=None, mask_missing=None, grid=None):
-        """Initialize the class
+        """Initialize the sampler and generate the SamplerResult.
+
+        This method delegates the creation of a 1D array of data point indices to the concrete implementation of the
+        AbstractDataSampler.
+
+        The 1D array of data point indices is available in the SamplerResult class.
+
+        In concrete, the use case defines what is a data point in a dataset.
+
+        For example, for emulating the soil moisture output of a distributed hydrological model, the data point is a grid cell. 
+
+        The indices are then used by the DataLoader in the training loop to sample the dataset.
         
         """
 
         self.mask_missing = mask_missing
 
-        self.grid = grid  # 2d grid
-
         self.method_instance = self.method_class(**self.sampling_method_kwargs)
 
         self.result = self.method_instance.sampling_idx(
-            shape, self.mask_missing, self.grid
+            shape, self.mask_missing, grid
         )
 
-        found_missing = len(self.result.idx_missing_1d) > 0
-
-        if found_missing:
+        if len(self.result.idx_missing_1d) > 0:
             print("found missing")
             self.indices = self.result.idx_sampled_1d_nomissing.tolist()
         else:
