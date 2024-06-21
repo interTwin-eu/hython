@@ -30,7 +30,6 @@ class CuDNNLSTM(nn.Module):
         l1 = self.fc0(x_ds)
 
         lstm_output, (h_n, c_n) = self.lstm(l1)
-        import pdb;pdb.set_trace()
 
         out = self.fc1(lstm_output)
 
