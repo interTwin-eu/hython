@@ -12,43 +12,49 @@ data_static = np.random.random(shape_static)
 
 
 
-@pytest.mark.parametrize("method, type, axis",[
+@pytest.mark.parametrize("method, type, shape, axis",[
                                                 (
                                                     "standardize",
                                                     "spacetime",
+                                                    "1D",
                                                     (0, 1)
                                                 ),
                                                                                                 (
                                                     "standardize",
                                                     "space",
+                                                    "1D",
                                                     0
                                                 ),
                                                                                                 (
                                                     "standardize",
                                                     "time",
+                                                    "1D",
                                                     1
                                                 ), 
                                                                                                  (
                                                     "minmax",
                                                     "spacetime",
+                                                    "1D",
                                                     (0, 1)
                                                 ),
                                                                                                                                                  (
                                                     "minmax",
                                                     "space",
+                                                    "1D",
                                                     0
                                                 ),
                                                                                                                                                  (
                                                     "minmax",
                                                     "time",
+                                                    "1D",
                                                     1
                                                 )                                                  
                                             ]
                                                 
                         )
-def test_normalizer_dynamic(method, type, axis):
+def test_normalizer_dynamic(method, type, shape, axis):
 
-    norm = Normalizer(method=method, type=type)
+    norm = Normalizer(method=method, type=type, shape=shape)
     normalized = norm.normalize(data_dynamic)
 
     if method == "standardize":

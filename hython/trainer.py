@@ -88,17 +88,17 @@ class XBatcherTrainer(AbstractTrainer):
 
         # N T C H W
         for dynamic_b, static_b, targets_b in dataloader:
-
-            print("batch")            
+          
 
             targets_b = targets_b.to(device)
 
             input = torch.concat([dynamic_b, static_b], 2).to(device)
             #
-            output = model(input)[-1][0][0] # last layer # hidden states
+            output = model(input)[0] # # N L H W Cout
             #import pdb;pdb.set_trace()
-            output = self.predict_step(output).flatten(1) # N T C H W => # N C H W => N C Pixel
-            target = self.predict_step(targets_b).flatten(1)
+            output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
+            output = self.predict_step(output).flatten(2) # N L C H W  => # N C H W => N C Pixel
+            target = self.predict_step(targets_b).flatten(2)
 
             if epoch_preds is None:
                 epoch_preds = output.detach().cpu().numpy()
@@ -113,13 +113,14 @@ class XBatcherTrainer(AbstractTrainer):
 
             batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt)
 
+
             #batch_temporal_loss += batch_sequence_loss
 
             #data_points += targets_b.size(0)
 
             running_batch_loss += batch_sequence_loss
 
-        epoch_loss = running_batch_loss #/ data_points
+        epoch_loss = running_batch_loss / len(dataloader)
 
         metric = metric_epoch(
             self.P.metric_func, epoch_targets, epoch_preds, self.P.target_names
@@ -129,8 +130,8 @@ class XBatcherTrainer(AbstractTrainer):
 
     def predict_step(self, arr):
         """Return the n steps that should be predicted"""
-        # N Hidden H W  
-        return arr[:, -1]
+        
+        return arr[:, -1] # N Ch H W  
 
 
 class RNNTrainer(AbstractTrainer):

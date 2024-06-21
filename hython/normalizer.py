@@ -7,21 +7,24 @@ FUNCS = {"minmax": [nanmin, nanmax],
 
 SCALER = {
     "minmax": lambda arr, axis, m1, m2: (arr - np.expand_dims(m1, axis=axis)) / (np.expand_dims(m2, axis=axis)  - np.expand_dims(m1, axis=axis)),
-    "standardize": lambda arr, axis, m1, m2: (arr - expand_dims(m1, axis=axis)) / expand_dims(m2, axis=axis),
-}
+    "standardize": lambda arr, axis, m1, m2: (arr - expand_dims(m1, axis=axis)) / expand_dims(m2, axis=axis)
+    }
+
 
 DENORM = {
     "standardize": lambda arr, axis, m1, m2:  (arr * expand_dims(m2, axis=axis)) + expand_dims(m1, axis=axis)
 }
 
-TYPE = {"space": 0, "time": 1, "spacetime": (0, 1)}
+TYPE = {"1D":{"space": 0, "time": 1, "spacetime": (0, 1)} , # N T C
+        "2D":{"space": (1, 2), "time": 1, "spacetime": (1, 2, 3)} } # C T H W
 
 
 class Normalizer:
     def __init__(
-        self, method: str, type: str, save_stats: bool = False
+        self, method: str,  type: str, shape:str, save_stats: bool = False
     ):
         self.method = method
+        self.shape = shape 
         self.type = type
         self.save_stats = save_stats
 
@@ -30,7 +33,8 @@ class Normalizer:
         self._set_axis()
 
     def _set_axis(self):
-        self.axis = TYPE.get(self.type, False)
+        self.axis = TYPE.get(self.shape).get(self.type, False)
+        #self.axis = TYPE.get(self.type, False)
 
     def _get_scaler(self):
         scaler = SCALER.get(self.method, None)

@@ -31,7 +31,8 @@ class ConvLSTMCell(nn.Module):
         self.conv = nn.Conv2d(
             in_channels=self.input_dim + self.hidden_dim,
             out_channels=4 * self.hidden_dim,
-            kernel_size=self.kernel_size,
+            dilation = 1, # TODO: HARDCODED 
+            kernel_size=self.kernel_size, 
             padding=self.padding,
             bias=self.bias,
         )
@@ -106,6 +107,7 @@ class ConvLSTM(nn.Module):
     def __init__(
         self,
         input_dim,
+        output_dim,
         hidden_dim,
         kernel_size,
         num_layers,
@@ -146,6 +148,11 @@ class ConvLSTM(nn.Module):
 
         self.cell_list = nn.ModuleList(cell_list)
 
+
+        # output 
+
+        self.fc1 = nn.Linear(hidden_dim[-1], output_dim)
+
     def forward(self, input_tensor, hidden_state=None):
         """
 
@@ -181,24 +188,31 @@ class ConvLSTM(nn.Module):
 
         for layer_idx in range(self.num_layers):
             h, c = hidden_state[layer_idx]
-            output_inner = []
+            layer_idx_hidden_sequence = []
             for t in range(seq_len):
                 h, c = self.cell_list[layer_idx](
                     input_tensor=cur_layer_input[:, t, :, :, :], cur_state=[h, c]
                 )
-                output_inner.append(h)
+                layer_idx_hidden_sequence.append(h)
 
-            layer_output = torch.stack(output_inner, dim=1)
+            layer_output = torch.stack(layer_idx_hidden_sequence, dim=1)
             cur_layer_input = layer_output
 
             layer_output_list.append(layer_output)
             last_state_list.append([h, c])
 
         if not self.return_all_layers:
-            layer_output_list = layer_output_list[-1:]
+            layer_output_list = layer_output_list[-1:] # N L C H W
             last_state_list = last_state_list[-1:]
+        
         #import pdb;pdb.set_trace()
-        return layer_output_list, last_state_list
+
+        # FC Head
+        out = torch.permute(layer_output_list[0], (0, 1, 3, 4, 2)) # N L H W Ch
+
+        out = torch.relu(self.fc1(out)) # N L H W Cout
+
+        return out, last_state_list
 
     def _init_hidden(self, batch_size, image_size):
         init_states = []
