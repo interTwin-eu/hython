@@ -150,7 +150,7 @@ class XBatchDataset(Dataset):
             y = self.y_gen[index].transpose("time", "variable",...).torch.to_tensor() # C T H W => T C H W
 
             if self.xs_gen is not None:
-                xs = self.xs_gen[index].torch.to_tensor() 
+                xs = self.xs_gen[index].transpose("time", "variable",...).torch.to_tensor() 
                 xs = xs.to(torch.float32) #torch.transpose(xs, 0,1)
                 #import pdb;pdb.set_trace()
                 #xs = xs.unsqueeze(0).repeat(xd.size(0), 1, 1, 1) # T C H W
