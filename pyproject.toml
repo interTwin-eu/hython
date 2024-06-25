@@ -26,9 +26,11 @@ io = ["netCDF4", "h5netcdf", "scipy", "zarr", "fsspec", "cftime", "pooch", "rast
 viz = ["matplotlib", "geopandas", "geoviews", "hvplot","cartopy"]
 complete = ["hython[dev,viz,io]"]
 
-[tool.setuptools]
-packages = ["hython"]
+#[tool.setuptools]
+#packages = ["hython"]
 
+[tool.setuptools.packages.find]
+where = ["hython"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
