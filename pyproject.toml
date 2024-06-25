@@ -30,7 +30,6 @@ complete = ["hython[dev,viz,io]"]
 #packages = ["hython"]
 
 [tool.setuptools.packages.find]
-where = ["hython"]
 include = ["*"]
 namespaces = false
 
