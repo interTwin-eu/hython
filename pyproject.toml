@@ -31,6 +31,8 @@ complete = ["hython[dev,viz,io]"]
 
 [tool.setuptools.packages.find]
 where = ["hython"]
+include = ["*"]
+namespaces = false
 
 [tool.pytest.ini_options]
 minversion = "6.0"
