@@ -152,7 +152,10 @@ def write_to_zarr(
             overwrite = "r"
         if chunks:
             arr = arr.chunk(chunks=chunks)
-        shape = arr.shape
+
+        if append_on_time:
+            shape = arr.shape
+
 
         if append_attrs:
             arr.attrs.update(append_attrs)
@@ -169,6 +172,8 @@ def write_to_zarr(
             if clear_zarr_storage:
                 fs_store.clear()
 
+
+            
 
             # initialize
             init = arr.isel(time=slice(0, time_chunk_size)).persist()
