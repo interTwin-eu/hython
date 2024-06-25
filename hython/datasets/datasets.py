@@ -122,26 +122,23 @@ class XBatchDataset(Dataset):
         
         if self.lstm:
             
-            # Now using this: Ntile[index] C Nseq T H W => Npixel T C
+            # Now using this: Ntile[index] C Nseq L H W => Npixel L C
+            ## Ntile,seq[index] C L H W => Npixel L C
             
-            print(self.xd_gen[index].to_array().torch.to_tensor().shape)
-            xd = torch.flatten(
-                    self.xd_gen[index].to_array().torch.to_tensor(), start_dim=3) # C Nseq T Npixel
-            print(xd.shape)
-            xd = torch.transpose(xd, 1, 2) # C T Nseq Npixel 
-            print(xd.shape)
-            y = torch.flatten(
-                    self.y_gen[index].to_array().torch.to_tensor(), 
-                    start_dim=3) # C T N
-            y = torch.transpose(y, 1, 2) # C T Nseq Npixel 
+            xd = self.xd_gen[index].torch.to_tensor().flatten(2) # C L Npixel
+            #print(xd.shape)
+            xd = torch.permute(xd, (2, 1, 0)) # Npixel L C  
+            #print(xd.shape)
+            y = self.y_gen[index].torch.to_tensor().flatten(2) # C L Npixel
+            y = torch.permute(y, (2, 1, 0)) # # Npixel L C  
             
             if self.xs_gen is not None:
-                # Ntile[index] C H W => Npixel C
-                xs = torch.flatten(
-                    self.xs_gen[index].to_array().torch.to_tensor(), start_dim=1) # C Npixel
-                #import pdb;pdb.set_trace()
-                xs = xs.unsqueeze(1).repeat(1, xd.size(1), 1) # C T Npixel
-                xs = xs.unsqueeze(2).repeat(1, 1, xd.size(2), 1) # C T Nseq Npixel
+                # Ntile[index] C H W
+                # Ntile,seq[index] C L H W
+                xs = self.xs_gen[index].torch.to_tensor().flatten(2) # C L Npixel
+                #print(xs.shape)
+                #xs = xs.unsqueeze(1).repeat(1, xd.size(1), 1) # C T Npixel
+                #xs = xs.unsqueeze(2).repeat(1, 1, xd.size(2), 1) # C T Nseq Npixel
 
         else:
             # Ntile,seq[index] C T H W => Npixel T C

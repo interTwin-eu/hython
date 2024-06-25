@@ -180,6 +180,7 @@ def map_pbias(
     offset=0,
     return_pbias=False,
     ticks=None,
+    title=None
 ):
     cmap = plt.colormaps["RdYlGn"]
     # cmap.set_bad("lightgrey")
@@ -228,7 +229,8 @@ def map_pbias(
             shrink=0.5,
             label=f"{label_2} < {label_1}    %     {label_2} > {label_1}",
         )
-    plt.title("")
+    if title:    
+        plt.title(title)
     if return_pbias:
         return fig, ax, pbias
     else:
@@ -246,6 +248,7 @@ def map_kge(
     kwargs_imshow={},
     return_kge=False,
     ticks=None,
+    title = None
 ):
     cmap = plt.colormaps["Greens"]
     vmin = kwargs_imshow.get("vmin", False)
@@ -292,7 +295,8 @@ def map_kge(
         # i = ax.imshow(rmse, cmap=cmap, norm= norm, **kwargs_imshow)
 
         fig.colorbar(i, ax=ax, shrink=0.5, label=f"KGE")
-    plt.title("")
+    if title:    
+        plt.title(title)
     if return_kge:
         return fig, ax, kge
     else:
@@ -305,11 +309,10 @@ def map_rmse(
     dim="time",
     unit="mm",
     figsize=(10, 10),
-    label_1="wflow",
-    label_2="LSTM",
     kwargs_imshow={},
     return_rmse=False,
     ticks=None,
+    title = None
 ):
     cmap = plt.colormaps["Blues"]
     # cmap.set_bad("lightgrey")
@@ -345,7 +348,7 @@ def map_rmse(
             i,
             ax=ax,
             shrink=0.5,
-            label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}",
+            label=f" {unit} ",
             ticks=ticks,
         )
     else:
@@ -363,9 +366,10 @@ def map_rmse(
             i,
             ax=ax,
             shrink=0.5,
-            label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}",
+            label=f" {unit} ",
         )
-    plt.title("")
+    if title:    
+        plt.title(title)
     if return_rmse:
         return fig, ax, rmse
     else:
@@ -383,6 +387,7 @@ def map_bias(
     kwargs_imshow={},
     offset=0,
     return_bias=False,
+    title=None
 ):
     cmap = plt.colormaps["RdYlGn"]
     cmap.set_bad("lightgrey")
@@ -414,7 +419,8 @@ def map_bias(
             shrink=0.5,
             label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}",
         )
-    plt.title("")
+    if title:    
+        plt.title(title)
     if return_bias:
         return bias
 

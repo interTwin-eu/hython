@@ -88,20 +88,7 @@ class RegularIntervalSampler(AbstractDataSampler):
     ):  # remove missing is a 2D mask
         """Sample a N-dimensional array by regularly-spaced points along the spatial axes.
 
-        Parameters
-        ----------
-        grid : np.ndarray
-            Spatial axes should be the first 2 dimensions, i.e. (lat, lon) or (y, x)
-        intervals : tuple[int], optional
-            Sampling intervals in CRS distance, by default (5,5).
-            5,5 in a 1 km resolution grid, means sampling every 5 km in x and y directions.
-        origin : tuple[int], optional
-            _description_, by default (0, 0)
-
-        Returns
-        -------
-        np.ndarray
-            _description_
+        mask_missing, removes missing values from grid where mask is True
         """
 
         xr_coords = None
@@ -140,8 +127,6 @@ class RegularIntervalSampler(AbstractDataSampler):
 
         if missing_mask is not None:
             idx_nan = grid_idx[missing_mask]
-
-            print(idx_nan)
 
             idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
         else:
@@ -267,6 +252,8 @@ class SamplerBuilder(TorchSampler):
         self.sampling_method = sampling_method
         self.sampling_method_kwargs = sampling_method_kwargs
         self.method_class = SAMPLERS.get(self.sampling_method, False)
+
+        if not self.method_class: raise Exception(f"Available sapling methods are: {list(SAMPLERS.keys())}")
 
         self.minibatch_sampling = minibatch_sampling 
 

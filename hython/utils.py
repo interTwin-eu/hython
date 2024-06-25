@@ -152,7 +152,9 @@ def write_to_zarr(
             overwrite = "r"
         if chunks:
             arr = arr.chunk(chunks=chunks)
-        shape = arr.shape
+            
+        if append_on_time:
+            shape = arr.shape
 
         if append_attrs:
             arr.attrs.update(append_attrs)
