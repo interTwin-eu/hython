@@ -152,9 +152,12 @@ def write_to_zarr(
             overwrite = "r"
         if chunks:
             arr = arr.chunk(chunks=chunks)
-            
-        if append_on_time:
+        
+        if isinstance(arr, xr.DataArray):
             shape = arr.shape
+        else:
+            shape = list(arr.sizes.values())
+
 
         if append_attrs:
             arr.attrs.update(append_attrs)
