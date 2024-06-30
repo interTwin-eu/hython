@@ -70,13 +70,13 @@ def loss_batch(loss_func, output, target, opt=None):
     return loss
 
 
-class HythonDataset(AbstractTrainer):
+class HythonTrainer(AbstractTrainer):
 
     def __init__(self, params: RNNTrainParams):
 
         self.P = params  # RNNTrainParams(**params)
         print(self.P)
-        super(HythonDataset, self).__init__(self.P.experiment)
+        super(HythonTrainer, self).__init__(self.P.experiment)
 
 
     def epoch_step(self, model, dataloader, device, opt=None):
