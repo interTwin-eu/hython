@@ -60,6 +60,7 @@ class LSTMDataset(Dataset):
                 (num_gridcells, num_samples - seq_length + 1, seq_length, num_features)
             )
             y_new = np.zeros((num_gridcells, num_samples - seq_length + 1, 1))
+            
             for i in range(0, xd_new.shape[1]):
                 xd_new[:, i, :, :num_features] = xd[:, i : i + seq_length, :]
                 y_new[:, i, 0] = y[:, i + seq_length - 1, 0]
@@ -86,6 +87,8 @@ class LSTMDataset(Dataset):
                     return self.Xd[i], self.xs[i], self.y[i]
         else:
             return self.Xd[i], self.y[i]
+        
+
 
 class XBatchDataset(Dataset):
     """
@@ -337,16 +340,6 @@ class LumpedDataset(Dataset):
             return self.Xd[i], self.y[i]
 
 
-class GraphDataset(Dataset):
-    """
-    Generate a graph dataset.
-    The getitem returns a snapshot.
-
-    """
-
-    pass
-
-
 
 class CubeletsDataset(Dataset):
 
@@ -386,7 +379,7 @@ class CubeletsDataset(Dataset):
                                                                                                                    overlap['xover'], 
                                                                                                                    overlap['yover'], 
                                                                                                                    KEEP_DEGENERATE_CUBELETS,
-                                                                                                                   masks = masks)
+                                                                                                                   masks = masks) 
         #print(self.cbs_spatial_idxs)
 
         self.cbs_time_idxs, self.cbs_degenerate_idxs, self.cbs_time_slices = compute_cubelet_time_idxs(shape, batch_size['tsize'], overlap['tover'], 
