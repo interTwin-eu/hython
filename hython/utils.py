@@ -8,7 +8,7 @@ import zarr
 from typing import Any
 from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
-
+import itertools
 
 def generate_model_name(surr_model_prefix, experiment, target_names, hidden_size, seed):
     TARGET_INITIALS = "".join([i[0].capitalize() for i in target_names])
@@ -230,3 +230,112 @@ def set_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = True
+
+def compute_grid_indices(shape=None, grid=None):
+    if grid is not None:
+        if isinstance(grid, np.ndarray):
+            shape = grid.shape
+        elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+            shape = (len(grid.lat), len(grid.lon))
+        else:
+            pass
+
+    ishape = shape[0]  # rows (y, lat)
+    jshape = shape[1]  # columns (x, lon)
+
+    grid_idx = np.arange(0, ishape * jshape, 1).reshape(ishape, jshape)
+
+    return grid_idx
+
+def compute_cubelet_spatial_idxs(shape, xsize, ysize, xover, yover, keep_degenerate_cbs=False, masks = None): # assume time,lat,lon
+
+    time_size,lat_size,lon_size = shape
+
+    # compute 
+    space_idx = compute_grid_indices(shape = (lat_size,lon_size))
+    
+    idx = 0
+    cbs_indexes, cbs_indexes_missing, cbs_indexes_degenerate, cbs_slices = [],[],[],[]
+    
+    for ix in range(0, lon_size, xsize - xover):
+        for iy in range(0, lat_size, ysize - yover):
+            xslice = slice(ix, ix + xsize)
+            yslice = slice(iy, iy + ysize)
+            # don't need the original data, but a derived 2D array of indices, very light! 
+            cubelet = space_idx[yslice, xslice]
+
+            
+            
+            # decide whether keep or not degenerate cubelets, otherwise these can be restored in the dataset using the collate function, which will fill with zeros
+            if cubelet.shape[0] < ysize or cubelet.shape[1] < xsize:
+                cbs_indexes_degenerate.append(idx)
+                if not keep_degenerate_cbs:
+                    continue
+
+
+            if masks is not None:
+                # keep or not cubelets that are all nans
+                mask_cubelet = masks[yslice, xslice]
+                if mask_cubelet.all().item(0):
+                    cbs_indexes_missing.append(idx)
+                    continue
+                
+            cbs_slices.append([yslice, xslice]) # latlon
+            cbs_indexes.append(idx)
+                
+            idx += 1
+
+    assert len(cbs_slices) == len(cbs_indexes)
+    
+    return list(map(np.array, [cbs_indexes,cbs_indexes_missing, cbs_indexes_degenerate, cbs_slices]))
+
+def compute_cubelet_time_idxs(shape, tsize, tover, keep_degenerate_cbs = False, masks = None): # assume time,lat,lon
+
+    time_size,lat_size,lon_size = shape
+
+    idx = 0
+    cbs_indexes, cbs_indexes_degenerate, cbs_slices = [],[], []
+    
+    for it in range(0, time_size, tsize - tover):
+        tslice = slice(it, it + tsize)
+        
+        # this requires the actual dataset? probably an array of a variable
+        # probably don't need raw data
+        
+        # if coordinates["time"] == 0:
+        #     cubelet = data.precip[tslice,...]
+        # elif coordinates["time"] == len(coordinates.keys()):
+        #     cubelet = data.precip[...,tslice]
+        # else:
+        #     cubelet = data.precip[...,tslice,...]
+            
+        if len(range(tsize)[tslice]) < tsize:
+            cbs_indexes_degenerate.append(idx)
+            if not keep_degenerate_cbs:
+                continue
+                
+        cbs_indexes.append(idx)
+        cbs_slices.append(tslice)
+        idx += 1
+
+    return list(map(np.array, [cbs_indexes, cbs_indexes_degenerate, cbs_slices]))
+
+def cbs_mapping_idx_slice(cbs_tuple_idxs, cbs_slices):
+    mapping = {}
+    for ic, islice in zip(cbs_tuple_idxs, cbs_slices):
+        m = {"time":"", "lat":"", "lon":""}
+        sp_slice, t_slice = islice # lat,lon,time
+        tot_slice = (sp_slice[0], sp_slice[1], t_slice) # T C H W
+        m.update({"time":t_slice})
+        m.update({"lat":sp_slice[0]})
+        m.update({"lon":sp_slice[1]})
+        mapping[ic] = m # (sp_slice[0], sp_slice[1], t_slice)    
+    return mapping
+
+
+
+def compute_cubelet_tuple_idxs(cbs_spatial_idxs, cbs_time_idxs):
+     return list(itertools.product(*(cbs_spatial_idxs, cbs_time_idxs))) # lat,lon,time
+
+def compute_cubelet_slices(cbs_spatial_slices, cbs_time_slices):
+     return list(itertools.product(*(cbs_spatial_slices, cbs_time_slices))) # lat,lon,time

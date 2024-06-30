@@ -91,8 +91,10 @@ class XBatcherTrainer(AbstractTrainer):
           
 
             targets_b = targets_b.to(device)
-
-            input = torch.concat([dynamic_b, static_b], 2).to(device)
+            if len(static_b[0]) > 1:
+                input = torch.concat([dynamic_b, static_b], 2).to(device)
+            else:
+                input = dynamic_b.to(device)
             #
             output = model(input)[0] # # N L H W Cout
             #import pdb;pdb.set_trace()

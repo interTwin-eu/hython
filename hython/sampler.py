@@ -12,21 +12,7 @@ from torch.utils.data import Sampler as TorchSampler
 from torch.utils.data import SubsetRandomSampler
 
 
-def compute_grid_indices(shape=None, grid=None):
-    if grid is not None:
-        if isinstance(grid, np.ndarray):
-            shape = grid.shape
-        elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
-            shape = (len(grid.lat), len(grid.lon))
-        else:
-            pass
-
-    ishape = shape[0]  # rows (y, lat)
-    jshape = shape[1]  # columns (x, lon)
-
-    grid_idx = np.arange(0, ishape * jshape, 1).reshape(ishape, jshape)
-
-    return grid_idx
+from hython.utils import compute_grid_indices
 
 @dataclass
 class SamplerResult:
@@ -154,6 +140,33 @@ class RegularIntervalSampler(AbstractDataSampler):
             xr_sampled_coords=xr_coords,
         )
 
+
+class CubeletSampler(AbstractDataSampler):
+    def __init__(self):
+        pass
+
+    def sampling_idx(
+        self, torch_dataset
+    ):  # remove missing is a 2D mask
+
+
+        if torch_dataset.masks is not None:
+            # removed missings from indexes
+            id_sampled_1d_nomissing = torch_dataset.cbs_spatial_idxs
+        else:
+            id_sampled_1d_nomissing = None
+
+
+
+        return SamplerResult(
+            idx_grid_2d=None,
+            idx_sampled_1d=torch_dataset.cbs_spatial_idxs,
+            idx_sampled_1d_nomissing=id_sampled_1d_nomissing,
+            idx_missing_1d=torch_dataset.cbs_missing_idxs,
+            sampled_grid=None,
+            sampled_grid_dims=None,
+            xr_sampled_coords=None,
+        )  
 class DefaultSampler(AbstractDataSampler):
     def __init__(self):
         pass
@@ -220,6 +233,7 @@ class DefaultSampler(AbstractDataSampler):
 SAMPLERS = {
     "downsampling_regular": RegularIntervalSampler,  
     "default": DefaultSampler,
+    "cubelets": CubeletSampler
 }
 
 class SubsetSequentialSampler:
@@ -259,7 +273,7 @@ class SamplerBuilder(TorchSampler):
 
         self.processing = processing
 
-    def initialize(self, shape=None, mask_missing=None, grid=None):
+    def initialize(self, shape=None, mask_missing=None, grid=None, torch_dataset = None):
         """Initialize the sampler and generate the SamplerResult.
 
         This method delegates the creation of a 1D array of data point indices to the concrete implementation of the
@@ -279,9 +293,14 @@ class SamplerBuilder(TorchSampler):
 
         self.method_instance = self.method_class(**self.sampling_method_kwargs)
 
-        self.result = self.method_instance.sampling_idx(
-            shape, self.mask_missing, grid
-        )
+        if torch_dataset is not None:
+            self.result = self.method_instance.sampling_idx(
+            torch_dataset
+             )
+        else: 
+            self.result = self.method_instance.sampling_idx(
+                shape, self.mask_missing, grid
+            )
 
         if len(self.result.idx_missing_1d) > 0:
             print("found missing")
