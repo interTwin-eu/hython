@@ -8,165 +8,119 @@ from hython.utils import (compute_cubelet_spatial_idxs,
                           compute_cubelet_time_idxs, 
                           cbs_mapping_idx_slice,
                           compute_cubelet_slices, 
-                          compute_cubelet_tuple_idxs
+                          compute_cubelet_tuple_idxs,
+                          compute_grid_indices
 )
 try:
     import xbatcher
 except:
     pass
 
-class LSTMDatasetNew(Dataset):
+class LSTMDataset(Dataset):
     def __init__(
         self,
-        xd,
-        y,
-        xs = None,
+        xd: xr.DataArray | npt.NDArray,
+        y: xr.DataArray | npt.NDArray,
+        xs: xr.DataArray | npt.NDArray = None,
+        original_domain_shape = (),
         mask = None,
         downsampler = None, 
-        normalizer = None,
-        seq_length: int = 60,
-        create_seq: bool = False,
-        convolution: bool = False,
+        normalizer_dynamic = None,
+        normalizer_static = None,
+        normalizer_target = None
     ):
-        """Create a dataset for training and validating LSTM-based models
 
-        LSTM assumes shape (C, T, F), C is the gridcell (is the dimension that is going to be mini-batched)
-
-        Parameters
-        ----------
-        xd : torch.Tensor | npt.NDArray
-            Dynamic parameter
-        y : torch.Tensor | npt.NDArray
-            Target
-        xs : torch.Tensor | npt.NDArray, optional
-            Static parameter, by default None
-        seq_length : int, optional
-            The hyperparameter of the LSTM represents the time window to gather info to predict, by default 60
-        create_seq : bool, optional
-            Create n sequences of size seq_length each from time series. Works for small datasets, by default False
-        convolution : bool, optional
-            Reshape data sample as LSTM+Convolution requires (B, T, X, Y, F) , by default False
-        """
-        self.seq_len = seq_length
-        self.create_seq = create_seq
-        self.convolution = convolution
-
-        num_gridcells, num_samples, num_features = xd.shape
+        self.shape = original_domain_shape
 
         self.xd = xd
         self.y = y
         self.xs = xs
 
-        # IF REMOVE MISSING FROM MASK
-        # Reduces the available indexes to a valid subset
-        if mask:
-            # This actually does not touch the dataset, only remove indexes corresponding to missing values from the available indexes
-            pass 
+        self.downsampler = downsampler
+
+
+        # compute indexes
+
+        ishape = self.shape[0]  # rows (y, lat)
+        jshape = self.shape[1]  # columns (x, lon)
+
+        irange = np.arange(0, ishape, 1)
+        jrange = np.arange(0, jshape, 1)
+
+        self.grid_idx_2d = compute_grid_indices(shape=self.shape)
+        self.grid_idx_1d = self.grid_idx_2d.flatten()
+        print(self.grid_idx_1d)
 
         # IF DOWNSAMPLING 
         # Reduces the available indexes to a valid subset
         if downsampler:
             # Same keep only indexes that satisfy some rule
-            pass
+            self.grid_idx_1d_downsampled = self.downsampler.sampling_idx(self.grid_idx_2d, self.shape)
 
+        # IF REMOVE MISSING FROM MASK
+        # Reduces the available indexes to a valid subset
+        if mask is not None:
+            # This actually does not touch the dataset, only remove indexes corresponding to missing values from the available indexes
+            idx_nan = self.grid_idx_2d[mask]
+            
+            if downsampler:
+                self.grid_idx_1d_valid = np.setdiff1d(self.grid_idx_1d_downsampled, idx_nan)
+            else:
+                self.grid_idx_1d_valid = np.setdiff1d(self.grid_idx_1d, idx_nan)
+        else:
+            if downsampler:
+                self.grid_idx_1d_valid = self.grid_idx_1d_downsampled
+            else:
+                self.grid_idx_1d_valid = self.grid_idx_1d
 
         # NORMALIZE BASED IF MAKS AND IF DOWNSAMPLING
-        if normalizer:
+        if normalizer_dynamic is not None or normalizer_target is not None or normalizer_static is not None:
             # this normalize the data corresponding to valid indexes
-            pass
-
-        if isinstance(xs, np.ndarray):
-            self.xs = xs.astype(np.float32)
-        else:
-            self.xs = xs
-
-
-
-
-    def __len__(self):
-        """Returns examples size. If LSTM number of gridcells. If ConvLSTM number of images."""
-        return self.Xd.shape[0]
-
-    def __getitem__(self, i):
-        if self.xs is not None:
-            return self.xd[i], self.xs[i], self.y[i]
-        else:
-            return self.xd[i], self.y[i]
-
-class LSTMDataset(Dataset):
-    def __init__(
-        self,
-        xd: torch.Tensor | npt.NDArray,
-        y: torch.Tensor | npt.NDArray,
-        xs: torch.Tensor | npt.NDArray = None,
-        seq_length: int = 60,
-        create_seq: bool = False,
-        convolution: bool = False,
-    ):
-        """Create a dataset for training and validating LSTM-based models
-
-        LSTM assumes shape (C, T, F), C is the gridcell (is the dimension that is going to be mini-batched)
-
-        Parameters
-        ----------
-        xd : torch.Tensor | npt.NDArray
-            Dynamic parameter
-        y : torch.Tensor | npt.NDArray
-            Target
-        xs : torch.Tensor | npt.NDArray, optional
-            Static parameter, by default None
-        seq_length : int, optional
-            The hyperparameter of the LSTM represents the time window to gather info to predict, by default 60
-        create_seq : bool, optional
-            Create n sequences of size seq_length each from time series. Works for small datasets, by default False
-        convolution : bool, optional
-            Reshape data sample as LSTM+Convolution requires (B, T, X, Y, F) , by default False
-        """
-        self.seq_len = seq_length
-        self.create_seq = create_seq
-        self.convolution = convolution
-
-        num_gridcells, num_samples, num_features = xd.shape
-
-        if isinstance(xs, np.ndarray):
-            self.xs = xs.astype(np.float32)
-        else:
-            self.xs = xs
-
-        if create_seq:
-            xd_new = np.zeros(
-                (num_gridcells, num_samples - seq_length + 1, seq_length, num_features)
-            )
-            y_new = np.zeros((num_gridcells, num_samples - seq_length + 1, 1))
-
-            for i in range(0, xd_new.shape[1]):
-                xd_new[:, i, :, :num_features] = xd[:, i : i + seq_length, :]
-                y_new[:, i, 0] = y[:, i + seq_length - 1, 0]
-
-            self.Xd = torch.from_numpy(xd_new.astype(np.float32))
-            self.y = torch.from_numpy(y_new.astype(np.float32))
-        else:
-            self.Xd = xd
-            self.y = y
-
-    def __len__(self):
-        """Returns examples size. If LSTM number of gridcells. If ConvLSTM number of images."""
-        return self.Xd.shape[0]
-
-    def __getitem__(self, i):
-        if self.xs is not None:
-            # case when there are static values
-            if self.create_seq:
-                return self.Xd[i], self.xs, self.y[i]
+            
+            if normalizer_dynamic.stats_iscomputed: # validation or test
+                self.xd = normalizer_dynamic.normalize(self.xd)
             else:
-                if self.convolution:
-                    return self.Xd[i], self.xs[i], self.y[i]
+                # compute stats for training
+                normalizer_dynamic.compute_stats(self.xd[self.grid_idx_1d_valid])
+                self.xd = normalizer_dynamic.normalize(self.xd)
+                
+            if normalizer_static.stats_iscomputed: # validation or test
+                self.xs = normalizer_static.normalize(self.xs)
+            else:
+                if downsampler:
+                    normalizer_static.compute_stats(self.xs[self.grid_idx_1d_valid])
                 else:
-                    return self.Xd[i], self.xs[i], self.y[i]
-        else:
-            return self.Xd[i], self.y[i]
+                    normalizer_static.compute_stats(self.xs)
+                    
+                self.xs = normalizer_static.normalize(self.xs)
+                
+            if normalizer_target.stats_iscomputed: # validation or test
+                self.y = normalizer_target.normalize(self.y)
+            else:
+                normalizer_target.compute_stats(self.y[self.grid_idx_1d_valid])
+                self.y = normalizer_target.normalize(self.y)
+                
         
+        self.xs = self.xs.astype(np.float32)
 
+        if isinstance(self.xd, xr.DataArray):
+            self.xd = torch.tensor(self.xd.values)
+            self.y = torch.tensor(self.y.values)
+            self.xs = torch.tensor(self.xs.values)
+        else:
+            self.xd = torch.tensor(self.xd)
+            self.y = torch.tensor(self.y)
+            self.xs = torch.tensor(self.xs)
+
+
+    def __len__(self):
+        return len(self.grid_idx_1d_valid)
+
+    def __getitem__(self, index):
+        if self.xs is not None:
+            return self.xd[index], self.xs[index], self.y[index]
+        else:
+            return self.xd[index], self.y[index]
 
 class XBatchDataset(Dataset):
     """
@@ -425,14 +379,17 @@ class CubeletsDataset(Dataset):
                  xd: xr.Dataset, # time, lat, lon 
                  y:xr.Dataset, # time, lat, lon
                  xs: xr.Dataset = None,  # lat, lon
-                 masks = None,
+                 mask = None,
+                 downsampler = None,
+                 normalizer = None,
                  shape:tuple = (), # time ,lat ,lon
                  batch_size:dict = {"xsize":20, "ysize":20, "tsize":20},
                  overlap:dict = {"xover":0, "yover":0, "tover":0},
                  fill_missing = 0, 
                  persist=False, 
                  lstm_1d = False, 
-                 static_to_dynamic=False):
+                 static_to_dynamic=False
+                 ):
         """
         CAN I USE IT FOR PARAM LEARNING?
 
@@ -445,7 +402,7 @@ class CubeletsDataset(Dataset):
 
         self.shape = shape
 
-        self.masks = masks
+        self.masks = mask
 
         KEEP_DEGENERATE_CUBELETS = False # TODO: hardcoded
         
