@@ -33,7 +33,7 @@ TYPE = {
 
 class Normalizer:
     def __init__(
-        self, method: str,  type: str, axis_order:str, dask_compute:bool = False, save_stats: bool = False
+        self, method: str,  type: str, axis_order:str, dask_compute:bool = False, save_stats: str = None
     ):
         self.method = method
         self.axis_order = axis_order
@@ -83,7 +83,12 @@ class Normalizer:
             funcs = self._get_funcs()
             self.computed_stats =  [f(arr, axis=self.axis).compute() for f in funcs]
 
+        if self.save_stats is not None and self.stats_iscomputed is False:
+            self.write_stats(self.save_stats)
+            
         self.stats_iscomputed = True
+
+
 
 
     def normalize(self, arr, read_from=None, write_to = None):
