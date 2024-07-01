@@ -67,7 +67,7 @@ class Normalizer:
     def compute_stats(self, arr):
         
         print("compute stats")
-        if isinstance(arr, xr.Dataset):
+        if "xarray" in self.axis_order:
             if self.method == "standardize":
                 if self.dask_compute:
                     self.computed_stats = [arr.mean(self.axis).compute(), arr.std(self.axis).compute()]
@@ -122,7 +122,7 @@ class Normalizer:
             raise NotImplementedError()
 
     def write_stats(self, fp):
-        print("save stats")
+        print(f"write stats to {fp}")
         if "xarray" in self.axis_order:
             xarr = xr.DataArray(["m1","m2"], coords=[("stats",["m1","m2"])])
             ds = xr.concat(self.computed_stats, dim= xarr)
@@ -131,7 +131,7 @@ class Normalizer:
             np.save(fp, self.computed_stats)
 
     def read_stats(self, fp):
-        print("read stats")
+        print(f"read from {fp}")
         self.stats_iscomputed = True
         if "xarray" in self.axis_order:
             ds = xr.open_dataset(fp)
