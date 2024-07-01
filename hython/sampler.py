@@ -29,8 +29,8 @@ class SamplerResult:
     def __repr__(self):
         return f"SamplerResult(\n - id_grid_2d: {self.idx_grid_2d.shape} \n - idx_sampled_1d: {self.idx_sampled_1d.shape} \n - idx_sampled_1d_nomissing: {self.idx_sampled_1d_nomissing.shape}) \n - idx_missing_1d: {self.idx_missing_1d.shape} \n - sampled_grid_dims: {self.sampled_grid_dims} \n - xr_coords: {self.xr_sampled_coords}"
 
-# === SAMPLERS ===============================================================
-class AbstractDataSampler(ABC):
+# === DOWNSAMPLERS ===============================================================
+class AbstractDownSampler(ABC):
     def __init__(self):
         """Pass parametes required by the downsampling approach"""
         pass
@@ -58,7 +58,60 @@ class AbstractDataSampler(ABC):
 
         pass
 
-class RegularIntervalSampler(AbstractDataSampler):
+class RegularIntervalDownsampler(AbstractDownSampler):
+    def __init__(self, intervals: list[int], origin: list[int]):
+        self.intervals = intervals
+        self.origin = origin
+
+        if intervals[0] != intervals[1]:
+            raise NotImplementedError("Different x,y intervals not yet implemented!")
+
+        if origin[0] != origin[1]:
+            raise NotImplementedError("Different x,y origins not yet implemented!")
+
+    def sampling_idx(
+        self, indexes, shape
+    ):  # remove missing is a 2D mask
+        """Sample a N-dimensional array by regularly-spaced points along the spatial axes.
+
+        mask_missing, removes missing values from grid where mask is True
+        """
+
+        xr_coords = None
+        sampled_grid = None
+        sampled_grid_dims = None
+
+        idx_nan = np.array([])
+
+        ishape, iorigin, iintervals = (
+            shape[0],
+            self.origin[0],
+            self.intervals[0],
+        )  # rows (y, lat)
+        
+        jshape, jorigin, jintervals = (
+            shape[1],
+            self.origin[1],
+            self.intervals[1],
+        )  # columns (x, lon)
+
+        #import pdb;pdb.set_trace()
+        irange = np.arange(iorigin, ishape, iintervals)
+        jrange = np.arange(jorigin, jshape, jintervals)
+
+        idxs_sampled = indexes[irange[:, None], jrange].flatten()  # broadcasting
+
+        # if missing_mask is not None:
+        #     idx_nan = grid_idx[missing_mask]
+
+        #     idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
+        # else:
+        #     idx_sampled_1d_nomissing = idx_sampled
+
+
+        return idxs_sampled
+
+class RegularIntervalSampler(AbstractDownSampler):
     def __init__(self, intervals: list[int], origin: list[int]):
         self.intervals = intervals
         self.origin = origin
@@ -140,8 +193,7 @@ class RegularIntervalSampler(AbstractDataSampler):
             xr_sampled_coords=xr_coords,
         )
 
-
-class CubeletSampler(AbstractDataSampler):
+class CubeletSampler(AbstractDownSampler):
     def __init__(self):
         pass
 
@@ -167,7 +219,9 @@ class CubeletSampler(AbstractDataSampler):
             sampled_grid_dims=None,
             xr_sampled_coords=None,
         )  
-class DefaultSampler(AbstractDataSampler):
+
+
+class DefaultSampler(AbstractDownSampler):
     def __init__(self):
         pass
 
@@ -203,7 +257,6 @@ class DefaultSampler(AbstractDataSampler):
 
         if missing_mask is not None:
             idx_nan = grid_idx[missing_mask]
-
             idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
         else:
             idx_sampled_1d_nomissing = idx_sampled
@@ -236,6 +289,7 @@ SAMPLERS = {
     "cubelets": CubeletSampler
 }
 
+# === TRAINING SAMPLERS ===============================================================
 class SubsetSequentialSampler:
     r"""Samples elements sequentially, always in the same order.
 
@@ -273,7 +327,7 @@ class SamplerBuilder(TorchSampler):
 
         self.processing = processing
 
-    def initialize(self, shape=None, mask_missing=None, grid=None, torch_dataset = None):
+    def initialize(self, indexes):
         """Initialize the sampler and generate the SamplerResult.
 
         This method delegates the creation of a 1D array of data point indices to the concrete implementation of the
@@ -289,32 +343,33 @@ class SamplerBuilder(TorchSampler):
         
         """
 
-        self.mask_missing = mask_missing
+        self.indexes = indexes
+        # self.mask_missing = mask_missing
 
-        self.method_instance = self.method_class(**self.sampling_method_kwargs)
+        # self.method_instance = self.method_class(**self.sampling_method_kwargs)
 
-        if torch_dataset is not None:
-            self.result = self.method_instance.sampling_idx(
-            torch_dataset
-             )
-        else: 
-            self.result = self.method_instance.sampling_idx(
-                shape, self.mask_missing, grid
-            )
+        # if torch_dataset is not None:
+        #     self.result = self.method_instance.sampling_idx(
+        #     torch_dataset
+        #      )
+        # else: 
+        #     self.result = self.method_instance.sampling_idx(
+        #         shape, self.mask_missing, grid
+        #     )
 
-        if len(self.result.idx_missing_1d) > 0:
-            print("found missing")
-            self.indices = self.result.idx_sampled_1d_nomissing.tolist()
-        else:
-            print("not found missing")
-            self.indices = self.result.idx_sampled_1d.tolist()
+        # if len(self.result.idx_missing_1d) > 0:
+        #     print("found missing")
+        #     self.indices = self.result.idx_sampled_1d_nomissing.tolist()
+        # else:
+        #     print("not found missing")
+        #     self.indices = self.result.idx_sampled_1d.tolist()
 
     def get_sampler(self):
         if self.processing == "single-gpu":
             if self.minibatch_sampling == "random":
-                return SubsetRandomSampler(self.indices)
+                return SubsetRandomSampler(self.indexes)
             elif self.minibatch_sampling == "sequential":
-                return SubsetSequentialSampler(self.indices)
+                return SubsetSequentialSampler(self.indexes)
         if self.processing == "multi-gpu":
             raise NotImplementedError()
 
