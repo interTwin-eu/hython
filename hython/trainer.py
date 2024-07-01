@@ -16,11 +16,11 @@ class RNNTrainParams(BaseTrainParams):
         self,
         loss_func: _Loss,
         metric_func: Metric,
-        experiment: str,
-        temporal_subsampling: bool,
-        temporal_subset: list,
-        seq_length: int,
         target_names: list,
+        experiment: str = None,
+        temporal_subsampling: bool = None,
+        temporal_subset: list = None,
+        seq_length: int = None
     ):
         self.loss_func = loss_func
         self.metric_func = metric_func
@@ -70,13 +70,13 @@ def loss_batch(loss_func, output, target, opt=None):
     return loss
 
 
-class XBatcherTrainer(AbstractTrainer):
+class HythonTrainer(AbstractTrainer):
 
     def __init__(self, params: RNNTrainParams):
 
         self.P = params  # RNNTrainParams(**params)
         print(self.P)
-        super(XBatcherTrainer, self).__init__(self.P.experiment)
+        super(HythonTrainer, self).__init__(self.P.experiment)
 
 
     def epoch_step(self, model, dataloader, device, opt=None):
@@ -91,8 +91,10 @@ class XBatcherTrainer(AbstractTrainer):
           
 
             targets_b = targets_b.to(device)
-
-            input = torch.concat([dynamic_b, static_b], 2).to(device)
+            if len(static_b[0]) > 1:
+                input = torch.concat([dynamic_b, static_b], 2).to(device)
+            else:
+                input = dynamic_b.to(device)
             #
             output = model(input)[0] # # N L H W Cout
             #import pdb;pdb.set_trace()
@@ -132,6 +134,8 @@ class XBatcherTrainer(AbstractTrainer):
         """Return the n steps that should be predicted"""
         
         return arr[:, -1] # N Ch H W  
+
+
 
 
 class RNNTrainer(AbstractTrainer):

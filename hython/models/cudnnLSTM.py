@@ -9,9 +9,12 @@ class CuDNNLSTM(nn.Module):
         dynamic_input_size: int = 3,
         static_input_size: int = 5,
         output_size: int = 2,
+        static_to_dynamic: bool = True,
         dropout=0.1,
     ):
         super(CuDNNLSTM, self).__init__()
+
+        self.static_to_dynamic = static_to_dynamic
 
         self.fc0 = nn.Linear(dynamic_input_size + static_input_size, hidden_size)
 
@@ -19,8 +22,10 @@ class CuDNNLSTM(nn.Module):
 
         self.fc1 = nn.Linear(hidden_size, output_size)
 
-    def forward(self, x, static_params):
-        s = static_params.unsqueeze(1).repeat(1, x.size(1), 1)
+    def forward(self, x, s):
+        
+        if self.static_to_dynamic:
+            s = s.unsqueeze(1).repeat(1, x.size(1), 1)
 
         x_ds = torch.cat(
             (x, s),
