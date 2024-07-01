@@ -8,8 +8,9 @@ from typing import Any, Tuple, List
 from numpy.typing import NDArray
 from xarray.core.coordinates import DatasetCoordinates
 
+from torch.utils.data import Dataset
 from torch.utils.data import Sampler as TorchSampler
-from torch.utils.data import SubsetRandomSampler
+from torch.utils.data import SubsetRandomSampler, DistributedSampler, SequentialSampler, RandomSampler
 
 
 from hython.utils import compute_grid_indices
@@ -306,39 +307,39 @@ class SubsetSequentialSampler:
     def __len__(self) -> int:
         return len(self.indices)
 
+
+
+
+
 # === SAMPLER BUILDER =========================================================
 
 class SamplerBuilder(TorchSampler):
     def __init__(
         self,
-        # sampling_method: str = "regular",
-        # sampling_method_kwargs: dict = {},
-        minibatch_sampling: str = "random",
+        pytorch_dataset:Dataset, 
+        sampling: str = "random",
+        sampling_kwargs: dict = {},
         processing: str = "single-gpu",
     ):
-    
-        # self.sampling_method = sampling_method
-        # self.sampling_method_kwargs = sampling_method_kwargs
-        # self.method_class = SAMPLERS.get(self.sampling_method, False)
 
-        # if not self.method_class: raise Exception(f"Available sapling methods are: {list(SAMPLERS.keys())}")
+        self.dataset = pytorch_dataset
 
-        self.minibatch_sampling = minibatch_sampling 
+        self.sampling = sampling 
+
+        self.sampling_kwargs = sampling_kwargs
 
         self.processing = processing
 
-    def initialize(self, torch_dataset):
-
-        self.indexes = torch_dataset.get_indexes()
 
     def get_sampler(self):
         if self.processing == "single-gpu":
-            if self.minibatch_sampling == "random":
-                return SubsetRandomSampler(self.indexes)
-            elif self.minibatch_sampling == "sequential":
-                return SubsetSequentialSampler(self.indexes)
+            if self.sampling == "random":
+                return RandomSampler(self.dataset, **self.sampling_kwargs)
+            elif self.sampling == "sequential":
+                return SequentialSampler(self.dataset, **self.sampling_kwargs)
         if self.processing == "multi-gpu":
-            raise NotImplementedError()
+            if self.sampling == "random":
+                return DistributedSampler(self.dataset, shuffle=True, **self.sampling_kwargs)
+            elif self.sampling == "sequential":
+                return DistributedSampler(self.dataset, shuffle=False, **self.sampling_kwargs)
 
-    def get_metadata(self):
-        return self.result

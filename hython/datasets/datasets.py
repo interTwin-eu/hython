@@ -117,13 +117,16 @@ class LSTMDataset(Dataset):
         return len(self.grid_idx_1d_valid)
 
     def get_indexes(self):
-        return self.grid_idx_1d_valid
+        return list(range(len(self.grid_idx_1d_valid)))
     
     def __getitem__(self, index):
+        
+        item_index = self.grid_idx_1d_valid[index]
+
         if self.xs is not None:
-            return self.xd[index], self.xs[index], self.y[index]
+            return self.xd[item_index], self.xs[item_index], self.y[item_index]
         else:
-            return self.xd[index], self.y[index]
+            return self.xd[item_index], self.y[item_index]
 
 class XBatchDataset(Dataset):
     """
