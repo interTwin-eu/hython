@@ -111,183 +111,183 @@ class RegularIntervalDownsampler(AbstractDownSampler):
 
         return idxs_sampled
 
-class RegularIntervalSampler(AbstractDownSampler):
-    def __init__(self, intervals: list[int], origin: list[int]):
-        self.intervals = intervals
-        self.origin = origin
+# class RegularIntervalSampler(AbstractDownSampler):
+#     def __init__(self, intervals: list[int], origin: list[int]):
+#         self.intervals = intervals
+#         self.origin = origin
 
-        if intervals[0] != intervals[1]:
-            raise NotImplementedError("Different x,y intervals not yet implemented!")
+#         if intervals[0] != intervals[1]:
+#             raise NotImplementedError("Different x,y intervals not yet implemented!")
 
-        if origin[0] != origin[1]:
-            raise NotImplementedError("Different x,y origins not yet implemented!")
+#         if origin[0] != origin[1]:
+#             raise NotImplementedError("Different x,y origins not yet implemented!")
 
-    def sampling_idx(
-        self, shape, missing_mask=None, grid=None
-    ):  # remove missing is a 2D mask
-        """Sample a N-dimensional array by regularly-spaced points along the spatial axes.
+#     def sampling_idx(
+#         self, shape, missing_mask=None, grid=None
+#     ):  # remove missing is a 2D mask
+#         """Sample a N-dimensional array by regularly-spaced points along the spatial axes.
 
-        mask_missing, removes missing values from grid where mask is True
-        """
+#         mask_missing, removes missing values from grid where mask is True
+#         """
 
-        xr_coords = None
-        sampled_grid = None
-        sampled_grid_dims = None
+#         xr_coords = None
+#         sampled_grid = None
+#         sampled_grid_dims = None
 
-        idx_nan = np.array([])
+#         idx_nan = np.array([])
 
-        if isinstance(grid, np.ndarray):
-            shape = grid.shape
-        elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
-            shape = (len(grid.lat), len(grid.lon))
-        else:
-            pass
+#         if isinstance(grid, np.ndarray):
+#             shape = grid.shape
+#         elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+#             shape = (len(grid.lat), len(grid.lon))
+#         else:
+#             pass
 
-        ishape, iorigin, iintervals = (
-            shape[0],
-            self.origin[0],
-            self.intervals[0],
-        )  # rows (y, lat)
-        jshape, jorigin, jintervals = (
-            shape[1],
-            self.origin[1],
-            self.intervals[1],
-        )  # columns (x, lon)
+#         ishape, iorigin, iintervals = (
+#             shape[0],
+#             self.origin[0],
+#             self.intervals[0],
+#         )  # rows (y, lat)
+#         jshape, jorigin, jintervals = (
+#             shape[1],
+#             self.origin[1],
+#             self.intervals[1],
+#         )  # columns (x, lon)
 
-        irange = np.arange(iorigin, ishape, iintervals)
-        jrange = np.arange(jorigin, jshape, jintervals)
+#         irange = np.arange(iorigin, ishape, iintervals)
+#         jrange = np.arange(jorigin, jshape, jintervals)
 
-        if shape is not None:
-            grid_idx = self.compute_grid_indices(shape=shape)
-        else:
-            grid_idx = self.compute_grid_indices(grid=grid)
+#         if shape is not None:
+#             grid_idx = self.compute_grid_indices(shape=shape)
+#         else:
+#             grid_idx = self.compute_grid_indices(grid=grid)
 
-        idx_sampled = grid_idx[irange[:, None], jrange].flatten()  # broadcasting
+#         idx_sampled = grid_idx[irange[:, None], jrange].flatten()  # broadcasting
 
-        if missing_mask is not None:
-            idx_nan = grid_idx[missing_mask]
+#         if missing_mask is not None:
+#             idx_nan = grid_idx[missing_mask]
 
-            idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
-        else:
-            idx_sampled_1d_nomissing = idx_sampled
+#             idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
+#         else:
+#             idx_sampled_1d_nomissing = idx_sampled
 
-        if grid is not None:
-            if isinstance(grid, np.ndarray):
-                sampled_grid = grid[irange[:, None], jrange]
-            elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
-                sampled_grid = grid.isel(lat=irange, lon=jrange)
+#         if grid is not None:
+#             if isinstance(grid, np.ndarray):
+#                 sampled_grid = grid[irange[:, None], jrange]
+#             elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+#                 sampled_grid = grid.isel(lat=irange, lon=jrange)
 
-                xr_coords = sampled_grid.coords
-            else:
-                pass
+#                 xr_coords = sampled_grid.coords
+#             else:
+#                 pass
 
-            sampled_grid_dims = sampled_grid.shape  # lat, lon
+#             sampled_grid_dims = sampled_grid.shape  # lat, lon
 
-        return SamplerResult(
-            idx_grid_2d=grid_idx,
-            idx_sampled_1d=idx_sampled,
-            idx_sampled_1d_nomissing=idx_sampled_1d_nomissing,
-            idx_missing_1d=idx_nan,
-            sampled_grid=sampled_grid,
-            sampled_grid_dims=sampled_grid_dims,
-            xr_sampled_coords=xr_coords,
-        )
+#         return SamplerResult(
+#             idx_grid_2d=grid_idx,
+#             idx_sampled_1d=idx_sampled,
+#             idx_sampled_1d_nomissing=idx_sampled_1d_nomissing,
+#             idx_missing_1d=idx_nan,
+#             sampled_grid=sampled_grid,
+#             sampled_grid_dims=sampled_grid_dims,
+#             xr_sampled_coords=xr_coords,
+#         )
 
-class CubeletSampler(AbstractDownSampler):
-    def __init__(self):
-        pass
+# class CubeletSampler(AbstractDownSampler):
+#     def __init__(self):
+#         pass
 
-    def sampling_idx(
-        self, torch_dataset
-    ):  # remove missing is a 2D mask
-
-
-        if torch_dataset.masks is not None:
-            # removed missings from indexes
-            id_sampled_1d_nomissing = torch_dataset.cbs_spatial_idxs
-        else:
-            id_sampled_1d_nomissing = None
+#     def sampling_idx(
+#         self, torch_dataset
+#     ):  # remove missing is a 2D mask
 
 
-
-        return SamplerResult(
-            idx_grid_2d=None,
-            idx_sampled_1d=torch_dataset.cbs_spatial_idxs,
-            idx_sampled_1d_nomissing=id_sampled_1d_nomissing,
-            idx_missing_1d=torch_dataset.cbs_missing_idxs,
-            sampled_grid=None,
-            sampled_grid_dims=None,
-            xr_sampled_coords=None,
-        )  
+#         if torch_dataset.masks is not None:
+#             # removed missings from indexes
+#             id_sampled_1d_nomissing = torch_dataset.cbs_spatial_idxs
+#         else:
+#             id_sampled_1d_nomissing = None
 
 
-class DefaultSampler(AbstractDownSampler):
-    def __init__(self):
-        pass
 
-    def sampling_idx(
-        self, shape, missing_mask=None, grid=None
-    ):  # remove missing is a 2D mask
+#         return SamplerResult(
+#             idx_grid_2d=None,
+#             idx_sampled_1d=torch_dataset.cbs_spatial_idxs,
+#             idx_sampled_1d_nomissing=id_sampled_1d_nomissing,
+#             idx_missing_1d=torch_dataset.cbs_missing_idxs,
+#             sampled_grid=None,
+#             sampled_grid_dims=None,
+#             xr_sampled_coords=None,
+#         )  
 
-        xr_coords = None
-        sampled_grid = None
-        sampled_grid_dims = None
 
-        idx_nan = np.array([])
+# class DefaultSampler(AbstractDownSampler):
+#     def __init__(self):
+#         pass
 
-        if isinstance(grid, np.ndarray):
-            shape = grid.shape
-        elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
-            shape = (len(grid.lat), len(grid.lon))
-        else:
-            pass
+#     def sampling_idx(
+#         self, shape, missing_mask=None, grid=None
+#     ):  # remove missing is a 2D mask
 
-        ishape = shape[0]  # rows (y, lat)
-        jshape = shape[1]  # columns (x, lon)
+#         xr_coords = None
+#         sampled_grid = None
+#         sampled_grid_dims = None
 
-        irange = np.arange(0, ishape, 1)
-        jrange = np.arange(0, jshape, 1)
+#         idx_nan = np.array([])
 
-        if shape is not None:
-            grid_idx = self.compute_grid_indices(shape=shape)
-        else:
-            grid_idx = self.compute_grid_indices(grid=grid)
+#         if isinstance(grid, np.ndarray):
+#             shape = grid.shape
+#         elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+#             shape = (len(grid.lat), len(grid.lon))
+#         else:
+#             pass
 
-        idx_sampled = grid_idx[irange[:, None], jrange].flatten()  # broadcasting
+#         ishape = shape[0]  # rows (y, lat)
+#         jshape = shape[1]  # columns (x, lon)
 
-        if missing_mask is not None:
-            idx_nan = grid_idx[missing_mask]
-            idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
-        else:
-            idx_sampled_1d_nomissing = idx_sampled
+#         irange = np.arange(0, ishape, 1)
+#         jrange = np.arange(0, jshape, 1)
 
-        if grid is not None:
-            if isinstance(grid, np.ndarray):
-                sampled_grid = grid[irange[:, None], jrange]
-            elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
-                sampled_grid = grid.isel(lat=irange, lon=jrange)
+#         if shape is not None:
+#             grid_idx = self.compute_grid_indices(shape=shape)
+#         else:
+#             grid_idx = self.compute_grid_indices(grid=grid)
 
-                xr_coords = sampled_grid.coords
-            else:
-                pass
+#         idx_sampled = grid_idx[irange[:, None], jrange].flatten()  # broadcasting
 
-            sampled_grid_dims = sampled_grid.shape  # lat, lon
+#         if missing_mask is not None:
+#             idx_nan = grid_idx[missing_mask]
+#             idx_sampled_1d_nomissing = np.setdiff1d(idx_sampled, idx_nan)
+#         else:
+#             idx_sampled_1d_nomissing = idx_sampled
 
-        return SamplerResult(
-            idx_grid_2d=grid_idx,
-            idx_sampled_1d=idx_sampled,
-            idx_sampled_1d_nomissing=idx_sampled_1d_nomissing,
-            idx_missing_1d=idx_nan,
-            sampled_grid=sampled_grid,
-            sampled_grid_dims=sampled_grid_dims,
-            xr_sampled_coords=xr_coords,
-        )
+#         if grid is not None:
+#             if isinstance(grid, np.ndarray):
+#                 sampled_grid = grid[irange[:, None], jrange]
+#             elif isinstance(grid, xr.DataArray) or isinstance(grid, xr.Dataset):
+#                 sampled_grid = grid.isel(lat=irange, lon=jrange)
 
-SAMPLERS = {
-    "downsampling_regular": RegularIntervalSampler,  
-    "default": DefaultSampler,
-    "cubelets": CubeletSampler
-}
+#                 xr_coords = sampled_grid.coords
+#             else:
+#                 pass
+
+#             sampled_grid_dims = sampled_grid.shape  # lat, lon
+
+#         return SamplerResult(
+#             idx_grid_2d=grid_idx,
+#             idx_sampled_1d=idx_sampled,
+#             idx_sampled_1d_nomissing=idx_sampled_1d_nomissing,
+#             idx_missing_1d=idx_nan,
+#             sampled_grid=sampled_grid,
+#             sampled_grid_dims=sampled_grid_dims,
+#             xr_sampled_coords=xr_coords,
+#         )
+
+# SAMPLERS = {
+#     "downsampling_regular": RegularIntervalSampler,  
+#     "default": DefaultSampler,
+#     "cubelets": CubeletSampler
+# }
 
 # === TRAINING SAMPLERS ===============================================================
 class SubsetSequentialSampler:
@@ -297,8 +297,8 @@ class SubsetSequentialSampler:
         data_source (Dataset): dataset to sample from
     """
 
-    def __init__(self, indices) -> None:
-        self.indices = indices
+    def __init__(self, indexes) -> None:
+        self.indices = indexes
 
     def __iter__(self):
         return iter(self.indices)
@@ -311,58 +311,25 @@ class SubsetSequentialSampler:
 class SamplerBuilder(TorchSampler):
     def __init__(
         self,
-        sampling_method: str = "regular",
-        sampling_method_kwargs: dict = {},
+        # sampling_method: str = "regular",
+        # sampling_method_kwargs: dict = {},
         minibatch_sampling: str = "random",
         processing: str = "single-gpu",
     ):
     
-        self.sampling_method = sampling_method
-        self.sampling_method_kwargs = sampling_method_kwargs
-        self.method_class = SAMPLERS.get(self.sampling_method, False)
+        # self.sampling_method = sampling_method
+        # self.sampling_method_kwargs = sampling_method_kwargs
+        # self.method_class = SAMPLERS.get(self.sampling_method, False)
 
-        if not self.method_class: raise Exception(f"Available sapling methods are: {list(SAMPLERS.keys())}")
+        # if not self.method_class: raise Exception(f"Available sapling methods are: {list(SAMPLERS.keys())}")
 
         self.minibatch_sampling = minibatch_sampling 
 
         self.processing = processing
 
-    def initialize(self, indexes):
-        """Initialize the sampler and generate the SamplerResult.
+    def initialize(self, torch_dataset):
 
-        This method delegates the creation of a 1D array of data point indices to the concrete implementation of the
-        AbstractDataSampler.
-
-        The 1D array of data point indices is available in the SamplerResult class.
-
-        In concrete, the use case defines what is a data point in a dataset.
-
-        For example, for emulating the soil moisture output of a distributed hydrological model, the data point is a grid cell. 
-
-        The indices are then used by the DataLoader in the training loop to sample the dataset.
-        
-        """
-
-        self.indexes = indexes
-        # self.mask_missing = mask_missing
-
-        # self.method_instance = self.method_class(**self.sampling_method_kwargs)
-
-        # if torch_dataset is not None:
-        #     self.result = self.method_instance.sampling_idx(
-        #     torch_dataset
-        #      )
-        # else: 
-        #     self.result = self.method_instance.sampling_idx(
-        #         shape, self.mask_missing, grid
-        #     )
-
-        # if len(self.result.idx_missing_1d) > 0:
-        #     print("found missing")
-        #     self.indices = self.result.idx_sampled_1d_nomissing.tolist()
-        # else:
-        #     print("not found missing")
-        #     self.indices = self.result.idx_sampled_1d.tolist()
+        self.indexes = torch_dataset.get_indexes()
 
     def get_sampler(self):
         if self.processing == "single-gpu":

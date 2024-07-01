@@ -116,6 +116,9 @@ class LSTMDataset(Dataset):
     def __len__(self):
         return len(self.grid_idx_1d_valid)
 
+    def get_indexes(self):
+        return self.grid_idx_1d_valid
+    
     def __getitem__(self, index):
         if self.xs is not None:
             return self.xd[index], self.xs[index], self.y[index]
@@ -381,7 +384,9 @@ class CubeletsDataset(Dataset):
                  xs: xr.Dataset = None,  # lat, lon
                  mask = None,
                  downsampler = None,
-                 normalizer = None,
+                 normalizer_dynamic = None,
+                 normalizer_static = None,
+                 normalizer_target = None,
                  shape:tuple = (), # time ,lat ,lon
                  batch_size:dict = {"xsize":20, "ysize":20, "tsize":20},
                  overlap:dict = {"xover":0, "yover":0, "tover":0},
@@ -402,7 +407,7 @@ class CubeletsDataset(Dataset):
 
         self.shape = shape
 
-        self.masks = mask
+        self.mask = mask
 
         KEEP_DEGENERATE_CUBELETS = False # TODO: hardcoded
         
@@ -414,12 +419,12 @@ class CubeletsDataset(Dataset):
                                                                                                                    overlap['xover'], 
                                                                                                                    overlap['yover'], 
                                                                                                                    KEEP_DEGENERATE_CUBELETS,
-                                                                                                                   masks = masks) 
+                                                                                                                   masks = self.mask) 
         #print(self.cbs_spatial_idxs)
 
         self.cbs_time_idxs, self.cbs_degenerate_idxs, self.cbs_time_slices = compute_cubelet_time_idxs(shape, batch_size['tsize'], overlap['tover'], 
                                                                                         KEEP_DEGENERATE_CUBELETS,
-                                                                                        masks = masks)
+                                                                                        masks = self.mask)
 
         #print(self.cbs_spatial_idxs)
         
@@ -428,12 +433,44 @@ class CubeletsDataset(Dataset):
 
         self.cbs_mapping_idxs = cbs_mapping_idx_slice(cbs_tuple_idxs, cbs_slices)
         
+        if downsampler:
+            # implement as 
+            # return a subset of the cbs_mapping_idxs
+            pass
         
+        if normalizer_dynamic is not None or normalizer_target is not None or normalizer_static is not None:
+            # this normalize the data corresponding to valid indexes
+            
+            if normalizer_dynamic.stats_iscomputed: # validation or test
+                self.xd = normalizer_dynamic.normalize(self.xd)
+            else:
+                # compute stats for training
+                normalizer_dynamic.compute_stats(self.xd)
+                self.xd = normalizer_dynamic.normalize(self.xd)
+                
+            if normalizer_static.stats_iscomputed: # validation or test
+                self.xs = normalizer_static.normalize(self.xs)
+            else:
+                if downsampler:
+                    normalizer_static.compute_stats(self.xs)
+                else:
+                    normalizer_static.compute_stats(self.xs)
+                    
+                self.xs = normalizer_static.normalize(self.xs)
+                
+            if normalizer_target.stats_iscomputed: # validation or test
+                self.y = normalizer_target.normalize(self.y)
+            else:
+                normalizer_target.compute_stats(self.y)
+                self.y = normalizer_target.normalize(self.y)
+
         # either do this here or in the getitem
         # maybe add HERE THE RASHAPE IN CASE IS LSTM 1D
         self.xd = self.xd.to_stacked_array( new_dim="feat", sample_dims = ["time", "lat", "lon"]) # time, lat, lon , feat
         self.xd = self.xd.transpose("time", "feat", "lat" , "lon") # T C H W
         self.xd = self.xd.astype("float32")
+
+        print(self.xd)
 
         self.y = self.y.to_stacked_array( new_dim="feat", sample_dims = ["time", "lat", "lon"])
         self.y = self.y.transpose("time", "feat", "lat" , "lon") # T C H W
@@ -443,8 +480,9 @@ class CubeletsDataset(Dataset):
             self.xs = xs.to_stacked_array( new_dim="feat", sample_dims = ["lat", "lon"]) # H W C
             self.xs = self.xs.transpose("feat", "lat", "lon")
             self.xs = self.xs.astype("float32")
-            self.xs = self.xs.fillna(fill_missing)
-        
+            
+
+
         if persist:
             self.xd = self.xd.persist()
             self.y = self.y.persist()
@@ -457,6 +495,9 @@ class CubeletsDataset(Dataset):
         
         self.y = self.y.fillna(fill_missing)
 
+        if self.xs is not None:
+            self.xs = self.xs.fillna(fill_missing)
+
         self.lstm_1d = lstm_1d
         self.static_to_dynamic = static_to_dynamic
 
@@ -467,6 +508,9 @@ class CubeletsDataset(Dataset):
     def __len__(self):
         return len(self.cbs_mapping_idxs)
 
+    def get_indexes(self):
+        return list(range(len(self.cbs_mapping_idxs)))
+    
     def __getitem__(self, index):
 
         cubelet_idx = list(self.cbs_mapping_idxs.keys())[index]
