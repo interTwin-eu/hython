@@ -41,15 +41,16 @@ class RMSELoss(_Loss):
         """
         if self.target_weight is None:
             total_rmse_loss = torch.sqrt(self.mseloss(y_true, y_pred))
-
         else:
-            total_rmse_loss = 0
-            for idx, k in enumerate(self.target_weight):
-                w = self.target_weight[k]
-                # rmse_loss = torch.sqrt(self.mseloss(y_true[:,:,idx], y_pred[:,:,idx]))
-                rmse_loss = torch.sqrt(self.mseloss(y_true[:, idx], y_pred[:, idx]))
-                loss = rmse_loss * w
-                total_rmse_loss += loss
+            if len(self.target_weight.keys()) > 1:
+                total_rmse_loss = 0
+                for idx, k in enumerate(self.target_weight):
+                    w = self.target_weight[k]
+                    rmse_loss = torch.sqrt(self.mseloss(y_true[:, idx], y_pred[:, idx]))
+                    loss = rmse_loss * w
+                    total_rmse_loss += loss
+            else:
+                total_rmse_loss = torch.sqrt(self.mseloss(y_true, y_pred))
 
         return total_rmse_loss
 
