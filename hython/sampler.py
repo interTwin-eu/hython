@@ -1,5 +1,6 @@
 import numpy as np
 import xarray as xr
+import itertools
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ from torch.utils.data import Sampler as TorchSampler
 from torch.utils.data import SubsetRandomSampler, DistributedSampler, SequentialSampler, RandomSampler
 
 
-from hython.utils import compute_grid_indices
+from hython.utils import compute_grid_indices, get_unique_spatial_idxs, get_unique_time_idxs
 
 @dataclass
 class SamplerResult:
@@ -59,6 +60,30 @@ class AbstractDownSampler(ABC):
 
         pass
 
+
+class CubeletsDownsampler(AbstractDownSampler):
+    def __init__(self, temporal_donwsample_fraction: int = 0.5, spatial_downsample_fraction: int = 0.5):
+        self.temporal_frac = temporal_donwsample_fraction
+        self.spatial_frac = spatial_downsample_fraction
+
+    def sampling_idx(self, indexes):
+        
+        idxs_sampled = {}
+        
+        time_idx = get_unique_time_idxs(indexes)
+        spatial_idx = get_unique_spatial_idxs(indexes)
+
+        time_sub_idx = np.random.choice(time_idx, size=int(self.temporal_frac*len(time_idx)), replace=False)
+
+        spatial_sub_idx = np.random.choice(spatial_idx, size=int(self.spatial_frac*len(spatial_idx)), replace=False)
+        
+        for filter in itertools.product(spatial_sub_idx, time_sub_idx):
+
+            value = indexes.get(filter, None)
+            if value is not None:
+                idxs_sampled[filter] = value
+                
+        return idxs_sampled
 class RegularIntervalDownsampler(AbstractDownSampler):
     def __init__(self, intervals: list[int], origin: list[int]):
         self.intervals = intervals

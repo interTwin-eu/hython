@@ -393,6 +393,7 @@ class CubeletsDataset(Dataset):
                  shape:tuple = (), # time ,lat ,lon
                  batch_size:dict = {"xsize":20, "ysize":20, "tsize":20},
                  overlap:dict = {"xover":0, "yover":0, "tover":0},
+                 missing_policy: str | float = "all",
                  fill_missing = 0, 
                  persist=False, 
                  lstm_1d = False, 
@@ -412,6 +413,10 @@ class CubeletsDataset(Dataset):
 
         self.mask = mask
 
+        self.missing_policy = missing_policy
+
+        self.downsampler = downsampler
+
         KEEP_DEGENERATE_CUBELETS = False # TODO: hardcoded
         
         # compute stuff
@@ -422,10 +427,13 @@ class CubeletsDataset(Dataset):
                                                                                                                    overlap['xover'], 
                                                                                                                    overlap['yover'], 
                                                                                                                    KEEP_DEGENERATE_CUBELETS,
-                                                                                                                   masks = self.mask) 
+                                                                                                                   masks = self.mask,
+                                                                                                                   missing_policy=self.missing_policy) 
         #print(self.cbs_spatial_idxs)
 
-        self.cbs_time_idxs, self.cbs_degenerate_idxs, self.cbs_time_slices = compute_cubelet_time_idxs(shape, batch_size['tsize'], overlap['tover'], 
+        self.cbs_time_idxs, self.cbs_degenerate_idxs, self.cbs_time_slices = compute_cubelet_time_idxs(shape, 
+                                                                                        batch_size['tsize'],
+                                                                                        overlap['tover'], 
                                                                                         KEEP_DEGENERATE_CUBELETS,
                                                                                         masks = self.mask)
 
@@ -436,10 +444,12 @@ class CubeletsDataset(Dataset):
 
         self.cbs_mapping_idxs = cbs_mapping_idx_slice(cbs_tuple_idxs, cbs_slices)
         
-        if downsampler:
-            # implement as 
+        if self.downsampler is not None:
+            # DOWNSAMPLE THE REMAINING INDEXES AFTER REMOVING MISSING AND DEGENERATED
             # return a subset of the cbs_mapping_idxs
-            pass
+            #TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
+            self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
+            
         
         if normalizer_dynamic is not None or normalizer_target is not None or normalizer_static is not None:
             # this normalize the data corresponding to valid indexes
@@ -472,8 +482,6 @@ class CubeletsDataset(Dataset):
         self.xd = self.xd.to_stacked_array( new_dim="feat", sample_dims = ["time", "lat", "lon"]) # time, lat, lon , feat
         self.xd = self.xd.transpose("time", "feat", "lat" , "lon") # T C H W
         self.xd = self.xd.astype("float32")
-
-        print(self.xd)
 
         self.y = self.y.to_stacked_array( new_dim="feat", sample_dims = ["time", "lat", "lon"])
         self.y = self.y.transpose("time", "feat", "lat" , "lon") # T C H W
@@ -515,10 +523,10 @@ class CubeletsDataset(Dataset):
         return list(range(len(self.cbs_mapping_idxs)))
     
     def __getitem__(self, index):
-
+        
         cubelet_idx = list(self.cbs_mapping_idxs.keys())[index]
         
-        #print(cubelet_idx, self.cubelet_indices[cubelet_idx])
+        #print(index, cubelet_idx)
 
         time_slice = self.cbs_mapping_idxs[cubelet_idx]["time"]
         lat_slice =  self.cbs_mapping_idxs[cubelet_idx]["lat"]

@@ -247,7 +247,8 @@ def compute_grid_indices(shape=None, grid=None):
 
     return grid_idx
 
-def compute_cubelet_spatial_idxs(shape, xsize, ysize, xover, yover, keep_degenerate_cbs=False, masks = None): # assume time,lat,lon
+def compute_cubelet_spatial_idxs(shape, xsize, ysize, xover, yover, keep_degenerate_cbs=False, masks = None,
+                                 missing_policy = "all"): # assume time,lat,lon
 
     time_size,lat_size,lon_size = shape
 
@@ -276,9 +277,21 @@ def compute_cubelet_spatial_idxs(shape, xsize, ysize, xover, yover, keep_degener
             if masks is not None:
                 # keep or not cubelets that are all nans
                 mask_cubelet = masks[yslice, xslice]
-                if mask_cubelet.all().item(0):
-                    cbs_indexes_missing.append(idx)
-                    continue
+                if missing_policy == "all":
+                    if mask_cubelet.all().item(0):
+                        cbs_indexes_missing.append(idx)
+                        continue
+                elif missing_policy == "any":
+                    if mask_cubelet.any().item(0):
+                        cbs_indexes_missing.append(idx)
+                        continue
+                else:
+                    nmissing = mask_cubelet.sum()
+                    total = mask_cubelet.shape[0] * mask_cubelet.shape[1]
+                    missing_fraction = nmissing/total
+                    if missing_fraction > missing_policy:
+                        cbs_indexes_missing.append(idx)
+                        continue
                 
             cbs_slices.append([yslice, xslice]) # latlon
             cbs_indexes.append(idx)
@@ -295,21 +308,12 @@ def compute_cubelet_time_idxs(shape, tsize, tover, keep_degenerate_cbs = False, 
 
     idx = 0
     cbs_indexes, cbs_indexes_degenerate, cbs_slices = [],[], []
-    
+
     for it in range(0, time_size, tsize - tover):
+        
         tslice = slice(it, it + tsize)
-        
-        # this requires the actual dataset? probably an array of a variable
-        # probably don't need raw data
-        
-        # if coordinates["time"] == 0:
-        #     cubelet = data.precip[tslice,...]
-        # elif coordinates["time"] == len(coordinates.keys()):
-        #     cubelet = data.precip[...,tslice]
-        # else:
-        #     cubelet = data.precip[...,tslice,...]
-            
-        if len(range(tsize)[tslice]) < tsize:
+                
+        if len(range(time_size)[tslice]) < tsize:
             cbs_indexes_degenerate.append(idx)
             if not keep_degenerate_cbs:
                 continue
@@ -339,3 +343,10 @@ def compute_cubelet_tuple_idxs(cbs_spatial_idxs, cbs_time_idxs):
 
 def compute_cubelet_slices(cbs_spatial_slices, cbs_time_slices):
      return list(itertools.product(*(cbs_spatial_slices, cbs_time_slices))) # lat,lon,time
+
+
+
+def get_unique_time_idxs(cbs_mapping_idxs):
+    return np.unique([i[-1] for i in cbs_mapping_idxs.keys()]).tolist()
+def get_unique_spatial_idxs(cbs_mapping_idxs):
+    return np.unique([i[0] for i in cbs_mapping_idxs.keys()]).tolist()
