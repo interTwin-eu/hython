@@ -250,7 +250,7 @@ def compute_grid_indices(shape=None, grid=None):
 def compute_cubelet_spatial_idxs(shape, xsize, ysize, xover, yover, keep_degenerate_cbs=False, masks = None,
                                  missing_policy = "all"): # assume time,lat,lon
 
-    time_size,lat_size,lon_size = shape
+    *time_size,lat_size,lon_size = shape
 
     # compute 
     space_idx = compute_grid_indices(shape = (lat_size,lon_size))
@@ -336,6 +336,18 @@ def cbs_mapping_idx_slice(cbs_tuple_idxs, cbs_slices):
         mapping[ic] = m # (sp_slice[0], sp_slice[1], t_slice)    
     return mapping
 
+
+def cbs_mapping_idx_slice_notime(cbs_tuple_idxs, cbs_slices):
+    mapping = {}
+    for ic, islice in zip(cbs_tuple_idxs, cbs_slices):
+        m = {"lat":"", "lon":""}
+        #sp_slice= islice # lat,lon,time
+        #tot_slice = (sp_slice[0], sp_slice[1], t_slice) # T C H W
+        #m.update({"time":t_slice})
+        m.update({"lat":islice[0]})
+        m.update({"lon":islice[1]})
+        mapping[ic] = m # (sp_slice[0], sp_slice[1], t_slice)    
+    return mapping
 
 
 def compute_cubelet_tuple_idxs(cbs_spatial_idxs, cbs_time_idxs):

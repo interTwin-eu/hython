@@ -9,7 +9,8 @@ from hython.utils import (compute_cubelet_spatial_idxs,
                           cbs_mapping_idx_slice,
                           compute_cubelet_slices, 
                           compute_cubelet_tuple_idxs,
-                          compute_grid_indices
+                          compute_grid_indices,
+                          cbs_mapping_idx_slice_notime
 )
 try:
     import xbatcher
@@ -376,6 +377,111 @@ class LumpedDataset(Dataset):
                 return self.Xd[i], self.xs[i], self.y[i]
         else:
             return self.Xd[i], self.y[i]
+
+class TilesDataset(Dataset):
+
+    def __init__(self, 
+                 xs: xr.Dataset = None,  # lat, lon
+                 mask = None,
+                 downsampler = None,
+                 normalizer_static = None,
+                 shape:tuple = (), # time ,lat ,lon
+                 batch_size:dict = {"xsize":20, "ysize":20},
+                 overlap:dict = {"xover":0, "yover":0},
+                 missing_policy: str | float = "all",
+                 fill_missing = 0, 
+                 persist=False, 
+                 lstm_1d = False, 
+                 static_to_dynamic=False
+                 ):
+
+        self.xs = xs
+
+        self.shape = shape
+
+        self.mask = mask
+
+        self.missing_policy = missing_policy
+
+        self.downsampler = downsampler
+
+        KEEP_DEGENERATE_CUBELETS = False # TODO: hardcoded
+        
+        # compute stuff
+
+        self.cbs_spatial_idxs, self.cbs_missing_idxs, self.cbs_degenerate_idxs, self.cbs_spatial_slices = compute_cubelet_spatial_idxs(shape, 
+                                                                                                                   batch_size['xsize'], 
+                                                                                                                   batch_size['ysize'], 
+                                                                                                                   overlap['xover'], 
+                                                                                                                   overlap['yover'], 
+                                                                                                                   KEEP_DEGENERATE_CUBELETS,
+                                                                                                                   masks = self.mask,
+                                                                                                                   missing_policy=self.missing_policy) 
+        self.cbs_mapping_idxs = cbs_mapping_idx_slice_notime(self.cbs_spatial_idxs, self.cbs_spatial_slices)
+        
+        if self.downsampler is not None:
+            # DOWNSAMPLE THE REMAINING INDEXES AFTER REMOVING MISSING AND DEGENERATED
+            # return a subset of the cbs_mapping_idxs
+            #TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
+            self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
+            
+        
+        if normalizer_static is not None:
+            # this normalize the data corresponding to valid indexes
+            
+                
+            if normalizer_static.stats_iscomputed: # validation or test
+                self.xs = normalizer_static.normalize(self.xs)
+            else:
+                if downsampler:
+                    normalizer_static.compute_stats(self.xs)
+                else:
+                    normalizer_static.compute_stats(self.xs)
+                    
+                self.xs = normalizer_static.normalize(self.xs)
+
+
+        self.xs = xs.to_stacked_array( new_dim="feat", sample_dims = ["lat", "lon"]) # H W C
+        self.xs = self.xs.transpose("feat", "lat", "lon")
+        self.xs = self.xs.astype("float32")
+            
+
+
+        if persist:
+            self.xs = self.xs.persist()
+
+        if self.xs is not None:
+            self.xs = self.xs.fillna(fill_missing)
+
+        self.lstm_1d = lstm_1d
+        self.static_to_dynamic = static_to_dynamic
+
+
+    def __len__(self):
+        return len(self.cbs_mapping_idxs)
+
+    def get_indexes(self):
+        return list(range(len(self.cbs_mapping_idxs)))
+    
+    def __getitem__(self, index):
+        
+        cubelet_idx = list(self.cbs_mapping_idxs.keys())[index]
+        
+        #print(index, cubelet_idx)
+
+        lat_slice =  self.cbs_mapping_idxs[cubelet_idx]["lat"]
+        lon_slice = self.cbs_mapping_idxs[cubelet_idx]["lon"]
+
+        xs = self.xs[:, lat_slice,lon_slice].values # C H W
+        xs = torch.tensor(xs)
+
+            
+        if self.lstm_1d:
+            xs = xs.squeeze() # C H W => C N  
+
+        return xs
+
+        
 
 
 
