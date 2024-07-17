@@ -74,7 +74,7 @@ class LSTMDataset(Dataset):
                 self.grid_idx_1d_valid = self.grid_idx_1d
 
         # NORMALIZE BASED IF MAKS AND IF DOWNSAMPLING
-        if normalizer_dynamic is not None or normalizer_target is not None or normalizer_static is not None:
+        if normalizer_dynamic is not None:
             # this normalize the data corresponding to valid indexes
             
             if normalizer_dynamic.stats_iscomputed: # validation or test
@@ -83,7 +83,8 @@ class LSTMDataset(Dataset):
                 # compute stats for training
                 normalizer_dynamic.compute_stats(self.xd[self.grid_idx_1d_valid])
                 self.xd = normalizer_dynamic.normalize(self.xd)
-                
+
+        if normalizer_static is not None:     
             if normalizer_static.stats_iscomputed: # validation or test
                 self.xs = normalizer_static.normalize(self.xs)
             else:
@@ -93,7 +94,7 @@ class LSTMDataset(Dataset):
                     normalizer_static.compute_stats(self.xs)
                     
                 self.xs = normalizer_static.normalize(self.xs)
-                
+        if normalizer_target is not None:
             if normalizer_target.stats_iscomputed: # validation or test
                 self.y = normalizer_target.normalize(self.y)
             else:
@@ -451,16 +452,15 @@ class CubeletsDataset(Dataset):
             self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
             
         
-        if normalizer_dynamic is not None or normalizer_target is not None or normalizer_static is not None:
+        if normalizer_dynamic is not None:
             # this normalize the data corresponding to valid indexes
-            
             if normalizer_dynamic.stats_iscomputed: # validation or test
                 self.xd = normalizer_dynamic.normalize(self.xd)
             else:
                 # compute stats for training
                 normalizer_dynamic.compute_stats(self.xd)
                 self.xd = normalizer_dynamic.normalize(self.xd)
-                
+        if normalizer_static is not None:
             if normalizer_static.stats_iscomputed: # validation or test
                 self.xs = normalizer_static.normalize(self.xs)
             else:
@@ -470,7 +470,7 @@ class CubeletsDataset(Dataset):
                     normalizer_static.compute_stats(self.xs)
                     
                 self.xs = normalizer_static.normalize(self.xs)
-                
+        if normalizer_target is not None: 
             if normalizer_target.stats_iscomputed: # validation or test
                 self.y = normalizer_target.normalize(self.y)
             else:
