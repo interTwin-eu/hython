@@ -14,13 +14,15 @@ class CellLSTM(nn.Module):
 
         self.hh = nn.Parameter(torch.FloatTensor(4* hidden_size, hidden_size))
 
-        self.ib = nn.Parameter(torch.FloatTensor(4 * hidden_size))
+        self.ib = nn.Parameter(torch.FloatTensor(4* hidden_size))
 
-        self.hb =  nn.Parameter(torch.FloatTensor(4 * hidden_size))
+        self.hb =  nn.Parameter(torch.FloatTensor(4* hidden_size))
+
+        self.init_parameters()
 
 
     def init_parameters(self):
-
+        # TODO
         pass 
 
     def forward(self, x, h_0, c_0):
@@ -31,10 +33,10 @@ class CellLSTM(nn.Module):
         h_i, h_f, h_g, h_o = torch.split(self.hh, self.hidden_size)
         hb_i, hb_f, hb_g, hb_o = torch.split(self.hb, self.hidden_size)
 
-        I = x_i @ x + xb_i + h_i @ h_0 + hb_i 
-        F = x_f @ x + xb_f + h_f @ h_0 + hb_f 
-        G = x_g @ x + xb_g + h_g @ h_0 + hb_g 
-        O = x_o @ x + xb_o + h_o @ h_0 + hb_o 
+        I = x @ x_i + xb_i + h_0 @ h_i + hb_i 
+        F = x @ x_f + xb_f + h_0 @ h_f + hb_f 
+        G = x @ x_g + xb_g + h_0 @ h_g + hb_g 
+        O = x @ x_o + xb_o + h_0 @ h_o + hb_o 
 
         c_1 = c_0 * sigmoid(F) + sigmoid(I) * tanh(G)
         h_1 = sigmoid(O) + tanh(c_1)
@@ -52,7 +54,7 @@ class CustomLSTM(nn.Module):
                  output_size,
                  dropout = 0.01
                  ):
-        super().__init__()
+        super(CustomLSTM, self).__init__()
 
         self.hidden_size = hidden_size 
 
@@ -65,19 +67,20 @@ class CustomLSTM(nn.Module):
         self.head = nn.Linear(hidden_size, output_size)
 
 
-    def forward(self, x, h_0, c_0):
+    def forward(self, x, h_0=None, c_0=None):
 
-        batch_size, seq_len, _ = x.size()
+
+        emb = self.embedding(x)
+
+        batch_size, seq_len, _ = emb.size()
 
         if h_0 is None:
-            h_0 = torch.zeros((batch_size, self.hidden_size))
+            h_0 = emb.data.new(batch_size, self.hidden_size).zero_()
         if c_0 is None:
-            c_0 = torch.zeros((batch_size, self.hidden_size))
+            c_0 = emb.data.new(batch_size, self.hidden_size).zero_()
 
         h_n, c_n = [], []
         h_x = (h_0, c_0) 
-
-        emb = self.embedding(x)
 
         for t in range(seq_len):
             h_0, c_0 = h_x
@@ -89,11 +92,10 @@ class CustomLSTM(nn.Module):
             h_n.append(cell_out[0])
             c_n.append(cell_out[1])
 
-
         h_n = torch.stack(h_n, 1)
         c_n = torch.stack(c_n, 1)
 
-        out = self.head(self.dropout(h_n)[-1])
+        out = self.head(self.dropout(h_n))
 
         return out
 
