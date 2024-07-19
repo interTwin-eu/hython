@@ -204,14 +204,22 @@ class RNNTrainer(AbstractTrainer):
             #self.temporal_index( dynamic_b.shape[1])
 
             for t in self.time_index:  # time_index could be a subset of time indices
+                # filter sequence
                 dynamic_bt = dynamic_b[:, t : (t + self.P.seq_length)].to(device)
-                static_bt = static_b.to(device)
                 targets_bt = targets_b[:, t : (t + self.P.seq_length)].to(device)
+                
+                # static --> dynamic size (repeat time dim)
+                static_bt = static_b.unsqueeze(1).repeat(1, dynamic_bt.size(1), 1).to(device)
+                
+                x_concat = torch.cat(
+                    (dynamic_bt, static_bt),
+                    dim=-1,
+                )
 
-                output = model(dynamic_bt, static_bt)
+                output = model(x_concat)
 
-                output = self.predict_step(output)
-                target = self.predict_step(targets_bt)
+                output = self.predict_step(output, steps=-1)
+                target = self.predict_step(targets_bt, steps=-1)
 
                 if epoch_preds is None:
                     epoch_preds = output.detach().cpu().numpy()
@@ -233,16 +241,16 @@ class RNNTrainer(AbstractTrainer):
             running_batch_loss += batch_temporal_loss
 
         epoch_loss = running_batch_loss / data_points
-
+        
         metric = metric_epoch(
             self.P.metric_func, epoch_targets, epoch_preds, self.P.target_names
         )
 
         return epoch_loss, metric
 
-    def predict_step(self, arr):
+    def predict_step(self, arr, steps=-1):
         """Return the n steps that should be predicted"""
-        return arr[:, -1]
+        return arr[:, steps]
 
 
 class BasinLumpedTrainer(RNNTrainer):
