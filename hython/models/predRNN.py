@@ -290,10 +290,10 @@ class ForcedSTRNN(nn.Module):
         self,
         num_layers,
         num_hidden,
-        img_channel,
-        act_channel,
-        init_cond_channel,
-        static_channel,
+        img_channel, # states? inputs....
+        act_channel, # dynamic/forcings
+        init_cond_channel, # states?
+        static_channel, # static
         out_channel,
         filter_size=5,
         stride=1,
@@ -304,7 +304,7 @@ class ForcedSTRNN(nn.Module):
         self.action_channel = act_channel
         self.init_cond_channel = init_cond_channel
         self.static_channel = static_channel
-        self.frame_channel = img_channel
+        self.frame_channel = img_channel # inputs..
         self.num_layers = num_layers
         self.num_hidden = num_hidden
         self.out_channel = out_channel
@@ -317,13 +317,14 @@ class ForcedSTRNN(nn.Module):
                 in_channel, act_channel, num_hidden[i], filter_size, stride,
             ))
         self.cell_list = nn.ModuleList(cell_list)
-        # Set up the output conv layer, which
+        # Convolution on outputs
         self.conv_last = nn.Conv2d(
             num_hidden[num_layers - 1],
             self.out_channel,
             kernel_size=1,
             bias=False
         )
+        # convolution on inputs
         adapter_num_hidden = num_hidden[0]
         self.adapter = nn.Conv2d(
             adapter_num_hidden,
@@ -378,12 +379,12 @@ class ForcedSTRNN(nn.Module):
         # First input is the initial condition
         x = init_cond[:, 0]
         for t in range(timesteps):
-            a = forcings[:, t]
+            a = forcings[:, t] # FORCINGS ARE CONSIDERED ACTIONS
             h_t[0], c_t[0], memory, dc, dm = self.cell_list[0](x, a, h_t[0], c_t[0], memory)
             delta_c_list[0] = self.update_state(dc)
             delta_m_list[0] = self.update_state(dm)
 
-            for i in range(1, self.num_layers):
+            for i in range(1, self.num_layers): # LOOP OVER OTHER LAYERS
                 h_t[i], c_t[i], memory, dc, dm = self.cell_list[i](h_t[i - 1], a, h_t[i], c_t[i], memory)
                 delta_c_list[i] = self.update_state(dc)
                 delta_m_list[i] = self.update_state(dm)
