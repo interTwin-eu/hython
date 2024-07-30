@@ -22,20 +22,12 @@ class CuDNNLSTM(nn.Module):
 
         self.fc1 = nn.Linear(hidden_size, output_size)
 
-    def forward(self, x, s):
-        
-        if self.static_to_dynamic:
-            s = s.unsqueeze(1).repeat(1, x.size(1), 1)
+    def forward(self, x):
 
-        x_ds = torch.cat(
-            (x, s),
-            dim=-1,
-        )
-
-        l1 = self.fc0(x_ds)
+        l1 = self.fc0(x)
 
         lstm_output, (h_n, c_n) = self.lstm(l1)
-
+    
         out = self.fc1(lstm_output)
 
         return out

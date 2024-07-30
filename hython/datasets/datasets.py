@@ -75,7 +75,7 @@ class LSTMDataset(Dataset):
                 self.grid_idx_1d_valid = self.grid_idx_1d
 
         # NORMALIZE BASED IF MAKS AND IF DOWNSAMPLING
-        if normalizer_dynamic is not None or normalizer_target is not None or normalizer_static is not None:
+        if normalizer_dynamic is not None:
             # this normalize the data corresponding to valid indexes
             
             if normalizer_dynamic.stats_iscomputed: # validation or test
@@ -84,7 +84,8 @@ class LSTMDataset(Dataset):
                 # compute stats for training
                 normalizer_dynamic.compute_stats(self.xd[self.grid_idx_1d_valid])
                 self.xd = normalizer_dynamic.normalize(self.xd)
-                
+
+        if normalizer_static is not None:     
             if normalizer_static.stats_iscomputed: # validation or test
                 self.xs = normalizer_static.normalize(self.xs)
             else:
@@ -94,7 +95,7 @@ class LSTMDataset(Dataset):
                     normalizer_static.compute_stats(self.xs)
                     
                 self.xs = normalizer_static.normalize(self.xs)
-                
+        if normalizer_target is not None:
             if normalizer_target.stats_iscomputed: # validation or test
                 self.y = normalizer_target.normalize(self.y)
             else:
@@ -557,26 +558,24 @@ class CubeletsDataset(Dataset):
             self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
             
         
-        if normalizer_dynamic is not None or normalizer_target is not None or normalizer_static is not None:
+        if normalizer_dynamic is not None:
             # this normalize the data corresponding to valid indexes
-            
             if normalizer_dynamic.stats_iscomputed: # validation or test
                 self.xd = normalizer_dynamic.normalize(self.xd)
             else:
                 # compute stats for training
                 normalizer_dynamic.compute_stats(self.xd)
                 self.xd = normalizer_dynamic.normalize(self.xd)
-                
+
+        if normalizer_static is not None:
+            #import pdb;pdb.set_trace()
             if normalizer_static.stats_iscomputed: # validation or test
                 self.xs = normalizer_static.normalize(self.xs)
             else:
-                if downsampler:
-                    normalizer_static.compute_stats(self.xs)
-                else:
-                    normalizer_static.compute_stats(self.xs)
-                    
+                normalizer_static.compute_stats(self.xs)   
                 self.xs = normalizer_static.normalize(self.xs)
-                
+
+        if normalizer_target is not None: 
             if normalizer_target.stats_iscomputed: # validation or test
                 self.y = normalizer_target.normalize(self.y)
             else:
@@ -594,17 +593,17 @@ class CubeletsDataset(Dataset):
         self.y = self.y.astype("float32")
 
         if self.xs is not None:
-            self.xs = xs.to_stacked_array( new_dim="feat", sample_dims = ["lat", "lon"]) # H W C
+            self.xs = self.xs.to_stacked_array( new_dim="feat", sample_dims = ["lat", "lon"]) # H W C
             self.xs = self.xs.transpose("feat", "lat", "lon")
             self.xs = self.xs.astype("float32")
             
 
 
         if persist:
-            self.xd = self.xd.persist()
-            self.y = self.y.persist()
+            self.xd = self.xd.compute()
+            self.y = self.y.compute()
             if self.xs is not None:
-                self.xs = self.xs.persist()
+                self.xs = self.xs.compute()
 
         # The conversion of missing nans should occur at the very end. The nans are used in the compute_cubelets_*_idxs to remove cubelets with all nans
         # should the missing flag not be equal to a potential valid value for that quantity? for example zero may be valid for many geophysical variables

@@ -5,7 +5,7 @@ from torch import nn
 class ConvLSTMCell(nn.Module):
     def __init__(self, input_dim, hidden_dim, kernel_size, bias):
         """
-        Initialize ConvLSTM cell.
+        The ConvLSTM cell operates at each element of the sequence.
 
         Parameters
         ----------
@@ -28,6 +28,25 @@ class ConvLSTMCell(nn.Module):
         self.padding = kernel_size[0] // 2, kernel_size[1] // 2
         self.bias = bias
 
+        # input layer convolution
+        self.conv_x = nn.Conv2d(
+            in_channels=self.input_dim,
+            out_channels= self.hidden_dim * 4, # will split in 4 input weight matrices
+            kernel_size=self.kernel_size,
+            dilation = 1,
+            padding=self.padding,
+            bias= self.bias 
+        )
+        # hidden layer convolution
+        self.conv_h = nn.Conv2d(
+            in_channels=self.hidden_dim,
+            out_channels= self.hidden_dim * 4, # will split in 4 hidden weight matrices
+            kernel_size=self.kernel_size,
+            dilation = 1,
+            padding=self.padding,
+            bias= self.bias 
+        )
+
         self.conv = nn.Conv2d(
             in_channels=self.input_dim + self.hidden_dim,
             out_channels=4 * self.hidden_dim,
@@ -39,20 +58,36 @@ class ConvLSTMCell(nn.Module):
 
     def forward(self, input_tensor, cur_state):
         h_cur, c_cur = cur_state
+        #import pdb;pdb.set_trace()
+        
+        x_concat = self.conv_x(input_tensor)
+        h_concat = self.conv_h(h_cur)
 
-        combined = torch.cat(
-            [input_tensor, h_cur], dim=1
-        )  # concatenate along channel axis
+        i_x, f_x, o_x, g_x = torch.split(x_concat, self.hidden_dim, dim=1) # split 
+        i_h, f_h, o_h, g_h = torch.split(h_concat, self.hidden_dim, dim=1) # split 
 
-        combined_conv = self.conv(combined)
-        cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_dim, dim=1)
-        i = torch.sigmoid(cc_i)
-        f = torch.sigmoid(cc_f)
-        o = torch.sigmoid(cc_o)
-        g = torch.tanh(cc_g)
+        i = torch.sigmoid(i_x + i_h)
+        f = torch.sigmoid(f_x + f_h)
+        o = torch.sigmoid(o_x + o_h)
+
+        g = torch.tanh(g_x + g_h)
 
         c_next = f * c_cur + i * g
         h_next = o * torch.tanh(c_next)
+
+        #combined = torch.cat(
+        #    [input_tensor, h_cur], dim=1
+        #)  # concatenate along channel axis
+
+        #combined_conv = self.conv(combined)
+        #cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_dim, dim=1)
+        #i = torch.sigmoid(cc_i)
+        #f = torch.sigmoid(cc_f)
+        #o = torch.sigmoid(cc_o)
+        #g = torch.tanh(cc_g)
+
+        #c_next = f * c_cur + i * g
+        #h_next = o * torch.tanh(c_next)
 
         return h_next, c_next
 
