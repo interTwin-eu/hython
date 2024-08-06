@@ -51,17 +51,17 @@ class AbstractTrainer(ABC):
             torch.save(model.state_dict(), fp)
 
 
-def metric_epoch(metric_func, y_pred, y_true, target_names):
-    metrics = metric_func(y_pred, y_true, target_names)
+def metric_epoch(metric_func, y_pred, y_true, target_names, valid_mask=None):
+    metrics = metric_func(y_pred, y_true, target_names, valid_mask)
     return metrics
 
 
-def loss_batch(loss_func, output, target, opt=None):
+def loss_batch(loss_func, output, target, opt=None,valid_mask = None):
     if target.shape[-1] == 1:
         target = torch.squeeze(target)
         output = torch.squeeze(output)
 
-    loss = loss_func(target, output)
+    loss = loss_func(target, output, valid_mask)
     if opt is not None:  # evaluation
         opt.zero_grad()
         loss.backward()
@@ -98,7 +98,7 @@ class HythonTrainer(AbstractTrainer):
             #
             output = model(input)[0] # # N L H W Cout
             #import pdb;pdb.set_trace()
-            output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
+            #output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
             output = self.predict_step(output).flatten(2) # N L C H W  => # N C H W => N C Pixel
             target = self.predict_step(targets_b).flatten(2)
 
