@@ -23,7 +23,7 @@ class RMSELoss(_Loss):
         self.mseloss = nn.MSELoss()
         self.target_weight = target_weight
 
-    def forward(self, y_true, y_pred):
+    def forward(self, y_true, y_pred, valid_mask=None):
         """
         Calculate the Root Mean Squared Error (RMSE) between two tensors.
 
@@ -45,8 +45,14 @@ class RMSELoss(_Loss):
             if len(self.target_weight.keys()) > 1:
                 total_rmse_loss = 0
                 for idx, k in enumerate(self.target_weight):
+                    iypred = y_pred[:, idx]
+                    iytrue = y_true[:, idx]
+                    if valid_mask is not None:
+                        imask = valid_mask[:, idx]
+                        iypred = iypred[imask]
+                        iytrue = iytrue[imask]
                     w = self.target_weight[k]
-                    rmse_loss = torch.sqrt(self.mseloss(y_true[:, idx], y_pred[:, idx]))
+                    rmse_loss = torch.sqrt(self.mseloss(iytrue, iypred))
                     loss = rmse_loss * w
                     total_rmse_loss += loss
             else:
