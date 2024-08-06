@@ -10,7 +10,8 @@ class CuDNNLSTM(nn.Module):
         static_input_size: int = 5,
         output_size: int = 2,
         static_to_dynamic: bool = True,
-        dropout=0.1,
+        num_layers:int = 1,
+        dropout:float = 0.0,
     ):
         super(CuDNNLSTM, self).__init__()
 
@@ -18,7 +19,7 @@ class CuDNNLSTM(nn.Module):
 
         self.fc0 = nn.Linear(dynamic_input_size + static_input_size, hidden_size)
 
-        self.lstm = nn.LSTM(hidden_size, hidden_size, batch_first=True)
+        self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers = num_layers, batch_first=True, dropout=dropout)
 
         self.fc1 = nn.Linear(hidden_size, output_size)
 
