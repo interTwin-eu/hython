@@ -10,11 +10,11 @@ class MSEMetric(Metric):
     def __init__(self, target_names: list[str]):
         self.target_names = target_names
 
-    def __call__(self, y_pred, y_true, target_names):
-        return mse_metric(y_pred, y_true, target_names)
+    def __call__(self, y_pred, y_true, target_names, valid_mask = None):
+        return mse_metric(y_pred, y_true, target_names, valid_mask)
 
 
-def mse_metric(y_pred, y_true, target_names):
+def mse_metric(y_pred, y_true, target_names, valid_mask = None):
     """
     Root Mean Squared Error (RMSE) metric for regression task.
 
@@ -33,7 +33,13 @@ def mse_metric(y_pred, y_true, target_names):
     """
     metrics = {}
     for idx, target in enumerate(target_names):
-        metric_epoch = mean_squared_error(y_true[:, idx], y_pred[:, idx])
+        iypred = y_pred[:, idx]
+        iytrue = y_true[:, idx]
+        if valid_mask is not None:
+            imask = valid_mask[:, idx]
+            iypred = iypred[imask]
+            iytrue = iytrue[imask]
+        metric_epoch = mean_squared_error(iytrue, iypred)
         metrics[target] = metric_epoch
 
     return metrics
