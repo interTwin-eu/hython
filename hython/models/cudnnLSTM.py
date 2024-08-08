@@ -58,16 +58,21 @@ class LSTMModule(nn.Module):
         return lstm_output
     
 
+from hython.models.cudnnLSTM import LSTMModule
+from torch import nn
 class LandSurfaceLSTM(nn.Module):
 
     def __init__(self, 
                  module_dict,
                  output_size,
-                 device):
+                 device=None):
         super(LandSurfaceLSTM, self).__init__()
         
-        self.modules = {k:LSTMModule(**v).to(device) for k,v in module_dict.items()}
-
+        self.model_modules = nn.ModuleDict(
+            {k:LSTMModule(**v) for k,v in module_dict.items()}
+        )
+        if device:
+            self.model_modules = self.model_modules.to(device)
         total_hidden_size = sum([v["hidden_size"] for v in module_dict.values()])
 
         self.fc0 = nn.Linear(total_hidden_size, output_size)
@@ -77,9 +82,9 @@ class LandSurfaceLSTM(nn.Module):
     def forward(self, x):
 
         distr_out = [] 
-        for variable in self.modules:
+        for variable in self.model_modules:
             distr_out.append(
-                self.modules[variable](x)
+                self.model_modules[variable](x)
             )
             
         out = torch.cat(distr_out, dim=-1)
