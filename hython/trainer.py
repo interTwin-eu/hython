@@ -96,7 +96,7 @@ class HythonTrainer(AbstractTrainer):
             else:
                 input = dynamic_b.to(device)
             #
-            output = model(input)[0] # # N L H W Cout
+            output = model(input) # # N L H W Cout
             #import pdb;pdb.set_trace()
             #output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
             output = self.predict_step(output).flatten(2) # N L C H W  => # N C H W => N C Pixel
@@ -281,13 +281,19 @@ class ParameterLearningTrainer(AbstractTrainer):
             # Predict wflow parameters
             parameter = model["transfer_nn"](predictor_b).to(device) #  N C H W -> N C h w   #   N L H W Cout
 
+            # concat dynamic and static parameters, common to convLSTM and LSTM
+            # if both dynamic?
+            # convLSTM: N C H W -> N L C H W 
+            # LSTM:  NCHW -> NC -> NLC
+            #import pdb;pdb.set_trace()
             X = torch.concat([
                             parameter.unsqueeze(1).repeat(1, forcing_b.size(1), 1,1,1),
                             forcing_b], dim=2)
 
-            output = model["surrogate"](X)[0]
-   
-            output = output.flatten(2)
+            output = model["surrogate"](X) # convLSTM: NLCHW, LSTM: NLC
+
+            # flatten HW
+            output = self.predict_step(output).flatten(2)
             target = self.predict_step(target_b).flatten(2)
 
             valid_mask = target != 0

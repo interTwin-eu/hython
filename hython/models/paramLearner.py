@@ -51,7 +51,7 @@ class TransferNN(nn.Module):
         self.conv2 = nn.Conv2d(latent_dims, output_dim, 5, stride=1, padding=1,padding_mode="reflect")
         self.ad2 = nn.AdaptiveAvgPool2d( self.shape_top ) 
         #self.batch2 = nn.BatchNorm2d(16) # what is this doing?
-        self.conv3 = nn.Conv2d(16, 32, 5, stride=1, padding=1)
+        #self.conv3 = nn.Conv2d(16, 32, 5, stride=1, padding=1)
         # self.linear1 = nn.Linear(3*3*32, 128)
         # self.linear2 = nn.Linear(128, latent_dims)
         # self.linear3 = nn.Linear(128, latent_dims)

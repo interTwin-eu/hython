@@ -249,7 +249,7 @@ class ConvLSTM(nn.Module):
 
         out = torch.permute(out, (0, 1, 4, 2, 3))
 
-        return out, last_state_list
+        return out #, last_state_list
 
     def _init_hidden(self, batch_size, image_size):
         init_states = []
