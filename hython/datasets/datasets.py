@@ -518,18 +518,24 @@ class CubeletsDataset(Dataset):
 
         # either do this here or in the getitem
         # maybe add HERE THE RASHAPE IN CASE IS LSTM 1D
+        xd_data_vars = list(self.xd.data_vars)
         self.xd = self.xd.to_stacked_array( new_dim="feat", sample_dims = ["time", "lat", "lon"]) # time, lat, lon , feat
         self.xd = self.xd.transpose("time", "feat", "lat" , "lon") # T C H W
         self.xd = self.xd.astype("float32")
-
+        self.xd = self.xd.drop_vars(["feat", "variable"]).assign_coords({"feat":xd_data_vars})
+        
+        y_data_vars = list(self.y.data_vars)
         self.y = self.y.to_stacked_array( new_dim="feat", sample_dims = ["time", "lat", "lon"])
         self.y = self.y.transpose("time", "feat", "lat" , "lon") # T C H W
         self.y = self.y.astype("float32")
+        self.y = self.y.drop_vars(["feat", "variable"]).assign_coords({"feat":y_data_vars})
 
         if self.xs is not None:
+            xs_data_vars = list(self.xs.data_vars)
             self.xs = self.xs.to_stacked_array( new_dim="feat", sample_dims = ["lat", "lon"]) # H W C
             self.xs = self.xs.transpose("feat", "lat", "lon")
             self.xs = self.xs.astype("float32")
+            self.xs = self.xs.drop_vars(["feat", "variable"]).assign_coords({"feat":xs_data_vars})
             
 
 
@@ -542,8 +548,9 @@ class CubeletsDataset(Dataset):
         # The conversion of missing nans should occur at the very end. The nans are used in the compute_cubelets_*_idxs to remove cubelets with all nans
         # should the missing flag not be equal to a potential valid value for that quantity? for example zero may be valid for many geophysical variables
         self.xd = self.xd.fillna(fill_missing)
-        
         self.y = self.y.fillna(fill_missing)
+
+
 
         if self.xs is not None:
             self.xs = self.xs.fillna(fill_missing)

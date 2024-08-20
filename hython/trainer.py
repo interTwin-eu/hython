@@ -96,9 +96,10 @@ class HythonTrainer(AbstractTrainer):
             else:
                 input = dynamic_b.to(device)
             #
-            output = model(input) # # N L H W Cout
-            #import pdb;pdb.set_trace()
-            #output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
+
+            output = model(input)[0] # # N L H W Cout
+            output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
+
             output = self.predict_step(output).flatten(2) # N L C H W  => # N C H W => N C Pixel
             target = self.predict_step(targets_b).flatten(2)
 
@@ -115,12 +116,7 @@ class HythonTrainer(AbstractTrainer):
 
             batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt)
 
-
-            #batch_temporal_loss += batch_sequence_loss
-
-            #data_points += targets_b.size(0)
-
-            running_batch_loss += batch_sequence_loss
+            running_batch_loss += batch_sequence_loss.detach()
 
         epoch_loss = running_batch_loss / len(dataloader)
 
