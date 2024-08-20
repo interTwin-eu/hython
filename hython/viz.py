@@ -422,7 +422,9 @@ def map_bias(
     if title:    
         plt.title(title)
     if return_bias:
-        return bias
+        return fig, ax, bias
+    else:
+        return fig, ax
 
 
 def map_at_timesteps(

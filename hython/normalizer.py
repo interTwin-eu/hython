@@ -17,7 +17,7 @@ SCALER_XARRAY = {
 }
 
 DENORM_XARRAY = {
-    "standardize": lambda arr, m1, m2: (arr * m2) + m1
+    "standardize": lambda arr, axis, m1, m2: (arr * m2) + m1
 }
 DENORM = {
     "standardize": lambda arr, axis, m1, m2:  (arr * expand_dims(m2, axis=axis)) + expand_dims(m1, axis=axis)
@@ -122,7 +122,15 @@ class Normalizer:
                 return func(arr, self.axis, m, std)
             else:
                 m, std = self.computed_stats
-                return func(arr, self.axis, m, std)
+                if "xarray" in self.axis_order:
+                    if isinstance(arr, np.ndarray):
+                        std = std.to_dataarray().values 
+                        m = m.to_dataarray().values
+                    else:
+                        pass
+                    return func(arr, self.axis, m, std)
+                else:
+                    return func(arr, self.axis, m, std)
         else:
             raise NotImplementedError()
 
