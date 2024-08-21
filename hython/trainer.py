@@ -286,8 +286,9 @@ class ParameterLearningTrainer(AbstractTrainer):
                             parameter.unsqueeze(1).repeat(1, forcing_b.size(1), 1,1,1),
                             forcing_b], dim=2)
 
-            output = model["surrogate"](X) # convLSTM: NLCHW, LSTM: NLC
-
+            output = model["surrogate"](X)[0] # convLSTM: NLCHW, LSTM: NLC
+            output = torch.permute(output, (0, 1, 4, 2, 3))
+            #import pdb;pdb.set_trace()
             # flatten HW
             output = self.predict_step(output).flatten(2)
             target = self.predict_step(target_b).flatten(2)
