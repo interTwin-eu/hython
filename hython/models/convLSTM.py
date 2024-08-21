@@ -206,7 +206,7 @@ class ConvLSTM(nn.Module):
             # (t, b, c, h, w) -> (b, t, c, h, w)
             input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
 
-        b, _, _, h, w = input_tensor.size()
+        b, it, _, h, w = input_tensor.size()
 
         # Implement stateful ConvLSTM
         if hidden_state is not None:
@@ -218,7 +218,7 @@ class ConvLSTM(nn.Module):
         layer_output_list = []
         last_state_list = []
 
-        seq_len = input_tensor.size(1)
+        seq_len = it
         cur_layer_input = input_tensor
 
         for layer_idx in range(self.num_layers):
@@ -245,7 +245,7 @@ class ConvLSTM(nn.Module):
         # FC Head
         out = torch.permute(layer_output_list[0], (0, 1, 3, 4, 2)) # N L H W Ch
 
-        out = torch.relu(self.fc1(out)) # N L H W Cout
+        out = self.fc1(torch.relu(out)) # N L H W Cout
 
         return out, last_state_list
 
