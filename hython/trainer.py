@@ -20,7 +20,8 @@ class RNNTrainParams(BaseTrainParams):
         experiment: str = None,
         temporal_subsampling: bool = None,
         temporal_subset: list = None,
-        seq_length: int = None
+        seq_length: int = None,
+        gradient_clip: dict = None
     ):
         self.loss_func = loss_func
         self.metric_func = metric_func
@@ -29,6 +30,8 @@ class RNNTrainParams(BaseTrainParams):
         self.temporal_subset = temporal_subset
         self.seq_length = seq_length
         self.target_names = target_names
+        self.gradient_clip = gradient_clip
+
 
 class AbstractTrainer(ABC):
     def __init__(self, experiment: str):
@@ -56,7 +59,7 @@ def metric_epoch(metric_func, y_pred, y_true, target_names, valid_mask=None):
     return metrics
 
 
-def loss_batch(loss_func, output, target, opt=None,valid_mask = None):
+def loss_batch(loss_func, output, target, opt=None, gradient_clip = None, model=None, valid_mask = None):
     if target.shape[-1] == 1:
         target = torch.squeeze(target)
         output = torch.squeeze(output)
@@ -65,6 +68,11 @@ def loss_batch(loss_func, output, target, opt=None,valid_mask = None):
     if opt is not None:  # evaluation
         opt.zero_grad()
         loss.backward()
+
+        # clip gradient
+        if gradient_clip is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), **gradient_clip)
+
         opt.step()
 
     return loss
@@ -114,7 +122,7 @@ class HythonTrainer(AbstractTrainer):
                     (epoch_targets, target.detach().cpu().numpy()), axis=0
                 )
 
-            batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt)
+            batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model)
 
             running_batch_loss += batch_sequence_loss.detach()
 
@@ -228,7 +236,7 @@ class RNNTrainer(AbstractTrainer):
                         (epoch_targets, target.detach().cpu().numpy()), axis=0
                     )
 
-                batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt)
+                batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model)
 
                 batch_temporal_loss += batch_sequence_loss
 
