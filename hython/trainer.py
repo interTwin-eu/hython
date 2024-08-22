@@ -289,21 +289,21 @@ class ParameterLearningTrainer(AbstractTrainer):
             # if both dynamic?
             # convLSTM: N C H W -> N L C H W 
             # LSTM:  NCHW -> NC -> NLC
-            #import pdb;pdb.set_trace()
+            #
             X = torch.concat([
                             parameter.unsqueeze(1).repeat(1, forcing_b.size(1), 1,1,1),
                             forcing_b], dim=2)
 
             output = model["surrogate"](X)[0] # convLSTM: NLCHW, LSTM: NLC
-            output = torch.permute(output, (0, 1, 4, 2, 3))
+            output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
             #import pdb;pdb.set_trace()
             # flatten HW
             output = self.predict_step(output).flatten(2)
             target = self.predict_step(target_b).flatten(2)
 
-            valid_mask = target != 0
+            valid_mask = target != 0 # non null values
 
-            batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, valid_mask)
+            batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model, valid_mask)
             
             if epoch_preds is None:
                 epoch_preds = output.detach().cpu().numpy()
@@ -321,10 +321,10 @@ class ParameterLearningTrainer(AbstractTrainer):
 
             
 
-            running_batch_loss += batch_sequence_loss
+            running_batch_loss += batch_sequence_loss.detach()
 
-        epoch_loss = running_batch_loss / len(dataloader)
-
+        epoch_loss = running_batch_loss / len(dataloader.dataset)
+        import pdb;pdb.set_trace()
         metric = metric_epoch(
             self.P.metric_func, epoch_targets, epoch_preds, self.P.target_names, valid_masks
         )
