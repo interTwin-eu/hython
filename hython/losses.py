@@ -56,9 +56,14 @@ class RMSELoss(_Loss):
                     rmse_loss = torch.sqrt(self.mseloss(iytrue, iypred))
                     loss = rmse_loss * w
                     total_rmse_loss += loss
-            else:
-                total_rmse_loss = torch.sqrt(self.mseloss(y_true, y_pred))
-
+            else: # case when only one target is available
+                iypred = y_pred[:, 0]
+                iytrue = y_true[:, 0]
+                if valid_mask is not None:
+                    imask = valid_mask[:, 0]
+                    iypred = iypred[imask]
+                    iytrue = iytrue[imask]
+                total_rmse_loss = torch.sqrt(self.mseloss(iytrue, iypred))
         return total_rmse_loss
 
 

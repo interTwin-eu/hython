@@ -275,15 +275,29 @@ class ParameterLearningTrainer(AbstractTrainer):
         valid_masks = None
 
         # N T C H W
+        flag_counter = 0
         for predictor_b, forcing_b, target_b in dataloader: # predictors, forcings , observations
-          
+            
+            #TODO: this is a temporary solution, to be removed!!
+            cube_slice = self.predict_step(target_b) # N C H W
+            flag = cube_slice.isnan().all().item()
+            if flag is True: 
+                flag_counter += 1
+                print(flag_counter)
+                continue
+
             target_b = target_b.to(device)
+
             forcing_b = forcing_b.to(device)
 
             predictor_b = predictor_b.to(device)
             
             # Predict wflow parameters
             parameter = model["transfer_nn"](predictor_b).to(device) #  N C H W -> N C h w   #   N L H W Cout
+
+            # minmax scaling as surrogate expects minmax scaled effective parameters
+            # TODO: should I compute the minmax over the mini-batch? should I compute the minmax by using global statistics?
+            #parameter = (parameter - torch.amin(parameter, dim=(0,2,3), keepdim=True) ) / (torch.amax(parameter, dim=(0,2,3), keepdim=True) - torch.amin(parameter, dim=(0,2,3) , keepdim=True))
 
             # concat dynamic and static parameters, common to convLSTM and LSTM
             # if both dynamic?
@@ -301,7 +315,7 @@ class ParameterLearningTrainer(AbstractTrainer):
             output = self.predict_step(output).flatten(2)
             target = self.predict_step(target_b).flatten(2)
 
-            valid_mask = target != 0 # non null values
+            valid_mask = ~target.isnan() # non null values
 
             batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model, valid_mask)
             
@@ -323,8 +337,7 @@ class ParameterLearningTrainer(AbstractTrainer):
 
             running_batch_loss += batch_sequence_loss.detach()
 
-        epoch_loss = running_batch_loss / len(dataloader.dataset)
-        import pdb;pdb.set_trace()
+        epoch_loss = running_batch_loss / (len(dataloader.dataset) - flag_counter)
         metric = metric_epoch(
             self.P.metric_func, epoch_targets, epoch_preds, self.P.target_names, valid_masks
         )
