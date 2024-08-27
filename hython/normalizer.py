@@ -17,7 +17,8 @@ SCALER_XARRAY = {
 }
 
 DENORM_XARRAY = {
-    "standardize": lambda arr, axis, m1, m2: (arr * m2) + m1
+    "standardize": lambda arr, axis, m1, m2: (arr * m2) + m1,
+    "minmax": lambda arr, axis, m1, m2: (arr * (m2 - m1)) + m1
 }
 DENORM = {
     "standardize": lambda arr, axis, m1, m2:  (arr * expand_dims(m2, axis=axis)) + expand_dims(m1, axis=axis)
@@ -132,7 +133,25 @@ class Normalizer:
                 else:
                     return func(arr, self.axis, m, std)
         else:
-            raise NotImplementedError()
+            if "xarray" in self.axis_order:
+                func = DENORM_XARRAY.get(self.method)
+            else:
+                func = DENORM.get(self.method)
+            if fp is not None:
+                self.read_stats(fp)
+                m1, m2 = self.computed_stats
+                return func(arr, self.axis, m1, m2)
+            else:
+                m1, m2 = self.computed_stats
+                if "xarray" in self.axis_order:
+                    if isinstance(arr, np.ndarray):
+                        m2 = m2.to_dataarray().values 
+                        m1 = m1.to_dataarray().values
+                    else:
+                        pass
+                    return func(arr, self.axis, m1, m2)
+                else:
+                    return func(arr, self.axis, m1, m2)
 
     def write_stats(self, fp):
         print(f"write stats to {fp}")

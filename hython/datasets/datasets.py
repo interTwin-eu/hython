@@ -639,6 +639,8 @@ class PyramidDataset(Dataset):
                  overlap:dict = {"xover":0, "yover":0, "tover":0},
                  missing_policy: str | float = "all",
                  fill_missing = 0, 
+                 keep_spatial_degenerate_cubelets = False,
+                 keep_temporal_degenerate_cubelets = False,
                  persist=False, 
                  lstm_1d = False, 
                  static_to_dynamic=False
@@ -660,8 +662,6 @@ class PyramidDataset(Dataset):
         self.missing_policy = missing_policy
 
         self.downsampler = downsampler
-
-        KEEP_DEGENERATE_CUBELETS = False # TODO: hardcoded
         
         # compute stuff
 
@@ -670,14 +670,14 @@ class PyramidDataset(Dataset):
                                                                                                                    batch_size['ysize'], 
                                                                                                                    overlap['xover'], 
                                                                                                                    overlap['yover'], 
-                                                                                                                   KEEP_DEGENERATE_CUBELETS,
+                                                                                                                   keep_spatial_degenerate_cubelets,
                                                                                                                    masks = self.mask,
                                                                                                                    missing_policy=self.missing_policy) 
 
         self.cbs_time_idxs, self.cbs_degenerate_idxs, self.cbs_time_slices = compute_cubelet_time_idxs(shape, 
                                                                                         batch_size['tsize'],
                                                                                         overlap['tover'], 
-                                                                                        KEEP_DEGENERATE_CUBELETS,
+                                                                                        keep_temporal_degenerate_cubelets,
                                                                                         masks = self.mask)
 
         #print(self.cbs_spatial_idxs)
@@ -740,9 +740,10 @@ class PyramidDataset(Dataset):
         # The conversion of missing nans should occur at the very end. The nans are used in the compute_cubelets_*_idxs to remove cubelets with all nans
         # should the missing flag not be equal to a potential valid value for that quantity? for example zero may be valid for many geophysical variables
         self.forcing = self.forcing.fillna(fill_missing)
-        
-        self.target = self.target.fillna(fill_missing)
-    
+
+        # no fill target        
+        #self.target = self.target.fillna(fill_missing)
+
         self.predictor = self.predictor.fillna(fill_missing)
 
         self.lstm_1d = lstm_1d
