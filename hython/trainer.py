@@ -257,6 +257,7 @@ class RNNTrainer(AbstractTrainer):
         return arr[:, steps]
 
 
+        
 class ParameterLearningTrainer(AbstractTrainer):
 
     def __init__(self, params: RNNTrainParams):
@@ -295,10 +296,12 @@ class ParameterLearningTrainer(AbstractTrainer):
             # Predict wflow parameters
             parameter = model["transfer_nn"](predictor_b).to(device) #  N C H W -> N C h w   #   N L H W Cout
 
+            
             # minmax scaling as surrogate expects minmax scaled effective parameters
             # TODO: should I compute the minmax over the mini-batch? should I compute the minmax by using global statistics?
             #parameter = (parameter - torch.amin(parameter, dim=(0,2,3), keepdim=True) ) / (torch.amax(parameter, dim=(0,2,3), keepdim=True) - torch.amin(parameter, dim=(0,2,3) , keepdim=True))
 
+            parameter = (self.P.stats[1]*parameter) + self.P.stats[0]
             # concat dynamic and static parameters, common to convLSTM and LSTM
             # if both dynamic?
             # convLSTM: N C H W -> N L C H W 

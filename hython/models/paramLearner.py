@@ -41,6 +41,13 @@ class ParamLearner():
         self[model_name].load_state_dict(fp)
 
 
+class TransferBlock(nn.Module):
+    """ 
+    """
+    def __init__(self):
+        pass
+
+
 class TransferNN(nn.Module):
     def __init__(self, input_ch, latent_dims, output_dim, shape_bottom, shape_top):
         super(TransferNN, self).__init__()
