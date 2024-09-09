@@ -75,7 +75,7 @@ class TransferNN(nn.Module):
         x = self.ad1(x)
         x = self.conv2(x)
         x = self.ad2(x)#  F.relu(self.batch2(self.conv2(x)))
-        
+        x = F.relu(x)
         #x = self.linear4(x.permute(1,2,0))
         # x = F.relu(self.conv3(x))
         # x = torch.flatten(x, start_dim=1)

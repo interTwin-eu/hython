@@ -96,22 +96,22 @@ def plot_sampler(
     return fig, ax
 
 
-def compute_pbias(y_in: xr.DataArray, yhat_in, dim="time", offset=0):
+def compute_pbias(y_in: xr.DataArray, yhat_in, dim="time", offset=0, skipna=False):
     y = y_in.copy() + offset
     yhat = yhat_in.copy() + offset
     if isinstance(y, xr.DataArray) or isinstance(yhat, xr.DataArray):
         return 100 * (
-            (yhat - y).sum(dim=dim, skipna=False) / y.sum(dim=dim, skipna=False)
+            (yhat - y).sum(dim=dim, skipna=skipna) / y.sum(dim=dim, skipna=skipna)
         )
     else:
         return 100 * np.sum(yhat - y, axis=2) / np.sum(y, axis=2)
 
 
-def compute_bias(y_in: xr.DataArray, yhat_in, dim="time", offset=0):
+def compute_bias(y_in: xr.DataArray, yhat_in, dim="time", offset=0, skipna=False):
     y = y_in.copy() + offset
     yhat = yhat_in.copy() + offset
     if isinstance(y, xr.DataArray) or isinstance(yhat, xr.DataArray):
-        return (yhat - y).sum(dim=dim, skipna=False) / len(yhat)
+        return (yhat - y).sum(dim=dim, skipna=skipna) / len(yhat)
     else:
         return np.sum(yhat - y, axis=2) / len(yhat)
 
@@ -155,9 +155,9 @@ def compute_kge_parallel(y_target, y_pred):
     return kge
 
 
-def compute_rmse(y, yhat, dim="time"):
+def compute_rmse(y, yhat, dim="time", skipna=False):
     if isinstance(y, xr.DataArray) or isinstance(yhat, xr.DataArray):
-        return np.sqrt(((yhat - y) ** 2).mean(dim=dim, skipna=False))
+        return np.sqrt(((yhat - y) ** 2).mean(dim=dim, skipna=skipna))
     else:
         return np.sqrt(np.mean((yhat - y) ** 2, axis=2))
 
@@ -180,7 +180,8 @@ def map_pbias(
     offset=0,
     return_pbias=False,
     ticks=None,
-    title=None
+    title=None,
+    ax = None
 ):
     cmap = plt.colormaps["RdYlGn"]
     # cmap.set_bad("lightgrey")
@@ -190,7 +191,8 @@ def map_pbias(
     pbias = compute_pbias(y, yhat, dim, offset=offset)
     map_proj = ccrs.PlateCarree()
     fig = plt.figure(figsize=figsize)
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    if ax is None:
+        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
     ax.set_extent([minx, maxx, miny, maxy], crs=ccrs.PlateCarree())
     try:
         ax.add_wms(wms="http://vmap0.tiles.osgeo.org/wms/vmap0", layers=["basic"])
@@ -216,7 +218,7 @@ def map_pbias(
         )
     else:
         norm = CenteredNorm()
-        i = pbias.plot(
+        p = pbias.plot(
             ax=ax,
             norm=norm,
             cmap=cmap,
@@ -224,7 +226,7 @@ def map_pbias(
             add_colorbar=False,
         )
         fig.colorbar(
-            i,
+            p,
             ax=ax,
             shrink=0.5,
             label=f"{label_2} < {label_1}    %     {label_2} > {label_1}",
@@ -604,6 +606,56 @@ def ts_compare(
             fig.savefig(save)
 
 
+def ts_compare_multiple_experiments(
+    y: xr.DataArray, y_deltas: list, lat=[], lon=[], label_1="wflow", label_2="LSTM", annotations = None, save = False
+):
+    time = y.time.values
+
+    ilat,ilon = lat, lon
+    ax_dict = plt.figure(layout="constrained", figsize=(20, 6)).subplot_mosaic(
+        """
+    A
+    B
+    """,
+        #width_ratios=[4, 1],
+    )
+    
+    iy = y.sel(lat=ilat, lon=ilon, method="nearest")
+    
+    
+    for i, yd in enumerate(y_deltas):
+        iyd = yd.sel(lat=ilat, lon=ilon, method="nearest")
+        ax_dict["A"].plot(time, iyd, label=label_2[i])
+        
+        
+        ax_dict["B"].scatter(iy, iyd, s=1)
+        xmin = np.nanmin(np.concatenate([iy, iyd])) - 0.05
+        xmax = np.nanmax(np.concatenate([iy, iyd])) + 0.05
+        ax_dict["B"].set_xlim(xmin, xmax)
+        ax_dict["B"].set_ylim(xmin, xmax)
+        ax_dict["B"].axline((0, 0), (1, 1), color="black", linestyle="dashed")
+        ax_dict["B"].set_ylabel("Delta Volumetric Water Content")
+        ax_dict["B"].set_xlabel("Volumetric Water Content")
+        plt.title(f"lat, lon:  ({ ilat}, {ilon})")
+    
+    ax_dict["A"].set_ylabel("Volumetric Water Content")
+    ax_dict["A"].plot(time, iy, label=label_1, color="black", ls="--")
+    ax_dict["A"].legend()
+
+    yc = 0.4 # 0.35
+    xc = 0.2 #0.1
+    ax_dict["B"].annotate(f"{label_1}:     {np.round(annotations[0],3)}",xy=[xc, yc])
+    
+    for i in range(1, len(annotations)):
+        print(i)
+        yc -= 0.05
+        ax_dict["B"].annotate(f"{label_2[i-1]}:     {np.round(annotations[i],3)}",xy=[xc, yc])
+        
+        
+    
+    if save:
+        fig = plt.gcf()
+        fig.savefig(save)
 
 def show_cubelet_tile(dataset,n = 10, 
                       dynamic_var_idx = 0, 

@@ -83,7 +83,6 @@ class HythonTrainer(AbstractTrainer):
     def __init__(self, params: RNNTrainParams):
 
         self.P = params  # RNNTrainParams(**params)
-        print(self.P)
         super(HythonTrainer, self).__init__(self.P.experiment)
 
 
@@ -153,7 +152,6 @@ class RNNTrainer(AbstractTrainer):
             
         """
         self.P = params  # RNNTrainParams(**params)
-        print(self.P)
         super(RNNTrainer, self).__init__(self.P.experiment)
 
     def temporal_index(self, data_loaders=None, opt=None):
@@ -263,7 +261,6 @@ class ParameterLearningTrainer(AbstractTrainer):
     def __init__(self, params: RNNTrainParams):
 
         self.P = params  # RNNTrainParams(**params)
-        print(self.P)
         super(ParameterLearningTrainer, self).__init__(self.P.experiment)
 
 
