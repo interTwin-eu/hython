@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from typing import List
 
 
 class ConvLSTMCell(nn.Module):
@@ -141,18 +142,18 @@ class ConvLSTM(nn.Module):
 
     def __init__(
         self,
-        input_dim,
-        output_dim,
-        hidden_dim,
-        kernel_size,
-        num_layers,
-        batch_first=False,
-        bias=True,
-        return_all_layers=False,
+        input_dim:int = 2,
+        output_dim:int = 2,
+        hidden_dim:int = 24,
+        kernel_size:list[int] | tuple[int] = [3,3],
+        num_layers:int = 1,
+        batch_first:bool=False,
+        bias:bool=True,
+        return_all_layers:bool=False,
     ):
         super(ConvLSTM, self).__init__()
 
-        self._check_kernel_size_consistency(kernel_size)
+        #self._check_kernel_size_consistency(kernel_size)
 
         # Make sure that both `kernel_size` and `hidden_dim` are lists having len == num_layers
         kernel_size = self._extend_for_multilayer(kernel_size, num_layers)
@@ -255,20 +256,20 @@ class ConvLSTM(nn.Module):
             init_states.append(self.cell_list[i].init_hidden(batch_size, image_size))
         return init_states
 
-    @staticmethod
-    def _check_kernel_size_consistency(kernel_size):
-        if not (
-            isinstance(kernel_size, tuple)
-            or (
-                isinstance(kernel_size, list)
-                and all([isinstance(elem, tuple) for elem in kernel_size])
-            )
-        ):
-            raise ValueError("`kernel_size` must be tuple or list of tuples")
+    # @staticmethod
+    # def _check_kernel_size_consistency(kernel_size):
+    #     if not (
+    #         isinstance(kernel_size, tuple)
+    #         or (
+    #             isinstance(kernel_size, list)
+    #             and all([isinstance(elem, tuple) for elem in kernel_size])
+    #         )
+    #     ):
+    #         raise ValueError("`kernel_size` must be tuple or list of tuples")
 
     @staticmethod
     def _extend_for_multilayer(param, num_layers):
-        if not isinstance(param, list):
+        if not isinstance(param, list) or not isinstance(param, tuple):
             param = [param] * num_layers
         return param
 

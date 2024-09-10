@@ -62,8 +62,8 @@ class AbstractDownSampler(ABC):
 
 
 class CubeletsDownsampler(AbstractDownSampler):
-    def __init__(self, temporal_donwsample_fraction: int = 0.5, spatial_downsample_fraction: int = 0.5):
-        self.temporal_frac = temporal_donwsample_fraction
+    def __init__(self, temporal_downsample_fraction: float = 0.5, spatial_downsample_fraction: float = 0.5):
+        self.temporal_frac = temporal_downsample_fraction
         self.spatial_frac = spatial_downsample_fraction
 
     def sampling_idx(self, indexes):
