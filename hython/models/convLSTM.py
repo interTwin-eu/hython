@@ -142,9 +142,9 @@ class ConvLSTM(nn.Module):
 
     def __init__(
         self,
-        input_dim:int,
-        output_dim:int,
-        hidden_dim:int,
+        input_dim:int = 2,
+        output_dim:int = 2,
+        hidden_dim:int = 24,
         kernel_size:list[int] | tuple[int] = [3,3],
         num_layers:int = 1,
         batch_first:bool=False,
@@ -158,8 +158,8 @@ class ConvLSTM(nn.Module):
         # Make sure that both `kernel_size` and `hidden_dim` are lists having len == num_layers
         kernel_size = self._extend_for_multilayer(kernel_size, num_layers)
         hidden_dim = self._extend_for_multilayer(hidden_dim, num_layers)
-        # if not len(kernel_size) == len(hidden_dim) == num_layers:
-        #     raise ValueError("Inconsistent list length.")
+        if not len(kernel_size) == len(hidden_dim) == num_layers:
+            raise ValueError("Inconsistent list length.")
 
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -269,7 +269,7 @@ class ConvLSTM(nn.Module):
 
     @staticmethod
     def _extend_for_multilayer(param, num_layers):
-        if not isinstance(param, list):
+        if not isinstance(param, list) or not isinstance(param, tuple):
             param = [param] * num_layers
         return param
 
