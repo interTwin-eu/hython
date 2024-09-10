@@ -57,8 +57,12 @@ class RMSELoss(_Loss):
                     loss = rmse_loss * w
                     total_rmse_loss += loss
             else: # case when only one target is available
-                iypred = y_pred[:, 0]
-                iytrue = y_true[:, 0]
+                if len(y_pred.shape) > 1:
+                    iypred = y_pred[:, 0]
+                    iytrue = y_true[:, 0]
+                else:
+                    iypred = y_pred 
+                    iytrue = y_true
                 if valid_mask is not None:
                     imask = valid_mask[:, 0]
                     iypred = iypred[imask]
