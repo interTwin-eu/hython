@@ -139,8 +139,6 @@ class HythonTrainer(AbstractTrainer):
         return arr[:, -1] # N Ch H W  
 
 
-
-
 class RNNTrainer(AbstractTrainer):
 
     def __init__(self, params: RNNTrainParams):
@@ -438,21 +436,6 @@ class BasinLumpedTrainer(RNNTrainer):
 
         return loss, metric
 
-
-class BasinDistributedTrainer(RNNTrainer):
-    def __init__(self, params):
-        super(BasinDistributedTrainer, self).__init__(params)
-
-    def epoch_step(self, model, device, opt=None):
-        pass
-
-
-class BasinGraphTrainer(RNNTrainer):
-    def __init__(self, params):
-        super(BasinGraphTrainer, self).__init__(params)
-
-    def epoch_step(self, model, device, opt=None):
-        pass
 
 
 def train_val(
