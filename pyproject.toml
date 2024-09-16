@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff","pytest","itwinai @ git+https://github.com/interTwin-eu/itwinai@dev"]
+dev = ["ruff","pytest"]
 io = ["netCDF4", "h5netcdf", "scipy", "zarr", "fsspec", "cftime", "cf_xarray", "pooch", "rasterio","requests", "aiohttp"]
 viz = ["matplotlib", "geopandas", "geoviews", "hvplot","cartopy"]
 complete = ["hython[dev,viz,io]"]
