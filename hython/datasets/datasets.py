@@ -334,11 +334,6 @@ class CubeletsDataset(Dataset):
                  lstm_1d = False, 
                  static_to_dynamic=False
                  ):
-        """
-        CAN I USE IT FOR PARAM LEARNING?
-
-        IN THE CASE I WANT TO PRECOMPUTE THE DUMMY TIME DIMENSION FOR THE STATIC PARAMETERS I COULD MERGE XS WITH XD AND PASS IT AS XD AND SET XS=NONE
-        """
         
         self.xd = xd
         self.y = y
@@ -452,9 +447,6 @@ class CubeletsDataset(Dataset):
         self.lstm_1d = lstm_1d
         self.static_to_dynamic = static_to_dynamic
 
-        # expand static to dynamic 
-        #time_da = xr.DataArray(dynamic.time.values, [('time', dynamic.time.values)])
-        #static = static.expand_dims({"time":time_da})
 
     def __len__(self):
         return len(self.cbs_mapping_idxs)
@@ -465,8 +457,6 @@ class CubeletsDataset(Dataset):
     def __getitem__(self, index):
         
         cubelet_idx = list(self.cbs_mapping_idxs.keys())[index]
-        
-        #print(index, cubelet_idx)
 
         time_slice = self.cbs_mapping_idxs[cubelet_idx]["time"]
         lat_slice =  self.cbs_mapping_idxs[cubelet_idx]["lat"]
@@ -503,11 +493,9 @@ class CubeletsDataset(Dataset):
             if self.xs is not None:
                 xs = xs.squeeze() # C H W => C N  
 
-        #print(xd.shape,y.shape, xs.shape)
         if self.xs is not None:
             if self.static_to_dynamic:
                 if self.lstm_1d:
-                    #print(xs.shape)
                     xs = xs.unsqueeze(0).repeat(xd.size(0), 1, )
                 else:
                     xs = xs.unsqueeze(0).repeat(xd.size(0), 1, 1, 1)
