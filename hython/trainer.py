@@ -1,11 +1,14 @@
-import torch # type: ignore
+import torch
 import numpy as np
 from abc import ABC
-from torch.nn.modules.loss import _Loss # type: ignore
+from torch.nn.modules.loss import _Loss
 from hython.metrics import Metric
 import copy
-from tqdm.auto import tqdm
+import importlib.util
 
+tqdm_support = True if importlib.util.find_spec("tqdm") is not None else False
+
+if tqdm_support: from tqdm.auto import tqdm
 
 class BaseTrainParams:
     pass
@@ -363,7 +366,9 @@ def train_val(
 
     best_loss = float("inf")
 
-    for epoch in tqdm(range(epochs)):
+    epoch_iterator = tqdm(range(epochs)) if tqdm_support else range(epochs)
+
+    for epoch in epoch_iterator:
 
         model.train()
 
