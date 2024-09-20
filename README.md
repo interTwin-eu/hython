@@ -42,7 +42,7 @@ pip install .[complete]
 
 ```
 
-There are two notebooks showcasing the traing of a simple LSTM model and a Convolutional LSTM.
+There are two notebooks showcasing the training of a simple LSTM model and a Convolutional LSTM.
 
 ```bash
 ./demo/train_lstm.ipynb
