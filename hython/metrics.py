@@ -14,7 +14,7 @@ class MSEMetric(Metric):
         return mse_metric(y_pred, y_true, target_names)
 
 
-def mse_metric(y_pred, y_true, target_names):
+def mse_metric(y_pred, y_true, target_names, sample_weight=None):
     """
     Root Mean Squared Error (RMSE) metric for regression task.
 
@@ -33,7 +33,7 @@ def mse_metric(y_pred, y_true, target_names):
     """
     metrics = {}
     for idx, target in enumerate(target_names):
-        metric_epoch = mean_squared_error(y_true[:, idx], y_pred[:, idx])
+        metric_epoch = np.average((y_true[:, idx]- y_pred[:, idx]) ** 2, axis=0, weights=sample_weight)
         metrics[target] = metric_epoch
 
     return metrics
