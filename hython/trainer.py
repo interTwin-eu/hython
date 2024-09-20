@@ -86,7 +86,6 @@ class HythonTrainer(AbstractTrainer):
     def __init__(self, params: RNNTrainParams):
 
         self.P = params  # RNNTrainParams(**params)
-        print(self.P)
         super(HythonTrainer, self).__init__(self.P.experiment)
 
 
@@ -152,7 +151,6 @@ class RNNTrainer(AbstractTrainer):
             
         """
         self.P = params  # RNNTrainParams(**params)
-        print(self.P)
         super(RNNTrainer, self).__init__(self.P.experiment)
 
     def temporal_index(self, data_loaders=None, opt=None):
@@ -406,6 +404,7 @@ def train_val(
             trainer.save_weights(model, dp_weights)
             print("Copied best model weights!")
 
+        if not tqdm_support: print(f"Epoch: {epoch}") 
         print(f"train loss: {train_loss}")
         print(f"val loss: {val_loss}")
 

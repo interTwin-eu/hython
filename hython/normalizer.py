@@ -66,7 +66,6 @@ class Normalizer:
 
     def compute_stats(self, arr):
         
-        print("compute stats")
         if "xarray" in self.axis_order:
             if self.method == "standardize":
                 if self.dask_compute:

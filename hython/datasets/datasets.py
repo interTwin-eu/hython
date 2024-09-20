@@ -49,7 +49,6 @@ class LSTMDataset(Dataset):
 
         self.grid_idx_2d = compute_grid_indices(shape=self.shape)
         self.grid_idx_1d = self.grid_idx_2d.flatten()
-        print(self.grid_idx_1d)
 
         # IF DOWNSAMPLING 
         # Reduces the available indexes to a valid subset
