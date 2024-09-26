@@ -405,8 +405,7 @@ def train_val(
             print("Copied best model weights!")
 
         if not tqdm_support: print(f"Epoch: {epoch}") 
-        print(f"train loss: {train_loss}")
-        print(f"val loss: {val_loss}")
+        print(f"Losses - train: {torch.round(train_loss,decimals=5)}  val: {torch.round(val_loss,decimals= 5)}")
 
     model.load_state_dict(best_model_weights)
 

@@ -1,17 +1,25 @@
 import torch
 import xarray as xr
 import numpy as np
-from hython.datasets.datasets import CubeletsDataset
 
-
-def predict(Xd, Xs, model, batch_size, device):
+def predict(dataset, model, batch_size, device):
     model = model.to(device)
-    arr = []
-    for i in range(0, Xd.shape[0], batch_size):
-        d = torch.Tensor(Xd[i : (i + batch_size)]).to(device)
 
-        s = torch.Tensor(Xs[i : (i + batch_size)]).to(device)
-        arr.append(model(d, s).detach().cpu().numpy())
+    n, t, _ = dataset.xd.shape
+    
+    arr = []
+    for i in range(0, n, batch_size):
+        d = torch.tensor(dataset.xd[i : (i + batch_size)]).to(device)
+        s = torch.tensor(dataset.xs[i : (i + batch_size)]).to(device)
+
+        static_bt = s.unsqueeze(1).repeat(1, d.size(1), 1).to(device)
+        
+        x_concat = torch.cat(
+            (d, static_bt),
+            dim=-1,
+        )
+
+        arr.append(model(x_concat).detach().cpu().numpy())
     return np.vstack(arr)
 
 
