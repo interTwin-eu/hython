@@ -1,8 +1,29 @@
 import numpy as np
 import xarray as xr
-from hython.utils import metric_decorator
+
+__all__ = ["MSEMetric", "RMSEMetric"]
+
+
+def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
+    def target(wrapped):
+        def wrapper():
+            metrics = {}
+            for idx, target in enumerate(target_names):
+                metrics[target] = wrapped(y_true[:, idx], y_pred[:, idx], sample_weight)
+            return metrics 
+        return wrapper
+    return target
 
 class Metric:
+    """
+    Hython is currently supporting sequence-to-one training (predicting the last time step of the sequence). Therefore it assumes that
+    the shape of y_true and y_pred is (N, C).
+
+    In the future it will also support sequence-to-sequence training for forecasting applications.
+
+    TODO: In forecasting, the shape of y_true and y_pred is going to be (N,T,C), where T is the n of future time steps.
+
+    """
     def __init__(self):
         pass
 
@@ -28,6 +49,12 @@ class RMSEMetric(Metric):
     def __call__(self, y_pred, y_true, target_names: list[str]):
         return metric_decorator(y_pred, y_true, target_names)(compute_rmse)()
     
+
+# == METRICS
+# The metrics below should work for both numpy or xarray inputs. The usage of xarray inputs is supported as it is handy for lazy computations
+# e.g. compute_mse(y_true.chunk(lat=100,lon=100), y_pred.chunk(lat=100,lon=100)).compute()
+
+
 
 # DISCHARGE 
 

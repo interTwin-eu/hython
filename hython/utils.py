@@ -353,12 +353,3 @@ def get_unique_spatial_idxs(cbs_mapping_idxs):
 
 
 
-def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
-    def target(wrapped):
-        def wrapper():
-            metrics = {}
-            for idx, target in enumerate(target_names):
-                metrics[target] = wrapped(y_true[:, idx], y_pred[:,idx], sample_weight)
-            return metrics 
-        return wrapper
-    return target
