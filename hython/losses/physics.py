@@ -26,11 +26,11 @@ class PhysicsLossCollection:
         
 def return_dict(*args): return {}   
 
-class PhysicsLoss(_Loss):
-    __name__ = "Physics1"
+class PrecipSoilMoistureLoss(_Loss):
+    __name__ = "PrecipSoilMoisture"
 
     def __init__(self):
-        super(PhysicsLoss, self).__init__()
+        super(PrecipSoilMoistureLoss, self).__init__()
 
     def forward(self, x, y):
         N, T, C = x.shape
@@ -41,6 +41,19 @@ class PhysicsLoss(_Loss):
         # positive increments of the x field should produce positive increments of the y field
         positive_x = diff_x >= 0 
         # positive
-        MSE = torch.sum((F.relu(-1*diff_y[positive_x]))**2)/torch.sum(positive_x)
+        loss = torch.sum((F.relu(-1*diff_y[positive_x]))**2)/torch.sum(positive_x)
 
-        return {"mse":MSE}
+        return {self.__name__:loss}
+    
+
+class ThetaLoss(_Loss):
+    __name__ = "Theta"
+
+    def __init__(self, min_storage = 0):
+        super(ThetaLoss, self).__init__()
+        self.min_storage = min_storage
+
+    def forward(self, thetaS, thetaR):
+        viol = F.relu( ((thetaR + self.min_storage) - thetaS))
+        loss = torch.sum(viol**2) / max(torch.sum(viol), 1)
+        return {self.__name__:loss}

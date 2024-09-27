@@ -117,6 +117,10 @@ class HythonTrainer(AbstractTrainer):
             #
             output = model(input)[0] # # N L H W Cout
             output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
+
+            # physics loss
+            add_losses = self.P.loss_physics_collection["PrecipSoilMoisture"](input[..., [0]], output[..., [0]])
+
             output = self.predict_step(output).flatten(2) # N L C H W  => # N C H W => N C Pixel
             target = self.predict_step(targets_b).flatten(2)
 
@@ -131,7 +135,7 @@ class HythonTrainer(AbstractTrainer):
                     (epoch_targets, target.detach().cpu().numpy()), axis=0
                 )
 
-            batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model)
+            batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model, add_losses)
 
             running_batch_loss += batch_sequence_loss.detach()
 
@@ -203,8 +207,6 @@ class RNNTrainer(AbstractTrainer):
         epoch_preds = None
         epoch_targets = None
 
-        add_losses = {}
-
         # every epoch 
         #self.temporal_index( next(iter(dataloader))[0].shape[1])
 
@@ -229,8 +231,8 @@ class RNNTrainer(AbstractTrainer):
 
                 output = model(x_concat)
 
-                # physically based loss, only precipitation --> soil moisture
-                add_losses = self.P.loss_physics_collection["Physics1"](targets_bt[..., [0]], output[..., [0]])
+                # physics based loss
+                add_losses = self.P.loss_physics_collection["PrecipSoilMoisture"](targets_bt[..., [0]], output[..., [0]])
 
                 output = self.predict_step(output, steps=-1)
                 target = self.predict_step(targets_bt, steps=-1)
