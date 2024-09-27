@@ -3,6 +3,7 @@ import numpy as np
 from abc import ABC
 from torch.nn.modules.loss import _Loss
 from hython.metrics import Metric
+from hython.losses import PhysicsLossCollection
 import copy
 import importlib.util
 
@@ -20,6 +21,7 @@ class RNNTrainParams(BaseTrainParams):
         loss_func: _Loss,
         metric_func: Metric,
         target_names: list,
+        loss_physics_collection: PhysicsLossCollection = PhysicsLossCollection(),
         experiment: str = None,
         temporal_subsampling: bool = None,
         temporal_subset: list = None,
@@ -28,6 +30,7 @@ class RNNTrainParams(BaseTrainParams):
     ):
         self.loss_func = loss_func
         self.metric_func = metric_func
+        self.loss_physics_collection = loss_physics_collection
         self.experiment = experiment
         self.temporal_subsampling = temporal_subsampling
         self.temporal_subset = temporal_subset
@@ -49,6 +52,7 @@ class AbstractTrainer(ABC):
     def predict_step(self):
         pass
 
+
     def save_weights(self, model, fp, onnx=False):
         if onnx:
             raise NotImplementedError()
@@ -62,17 +66,22 @@ def metric_epoch(metric_func, y_pred, y_true, target_names):
     return metrics
 
 
-def loss_batch(loss_func, output, target, opt=None, gradient_clip = None, model=None):
+def loss_batch(loss_func, output, target, opt=None, gradient_clip = None, model=None, add_losses: dict = {}):
     if target.shape[-1] == 1:
         target = torch.squeeze(target)
         output = torch.squeeze(output)
 
     loss = loss_func(target, output)
-    if opt is not None:  # evaluation
+
+    # compound more losses, in case dict is not empty
+    # TODO: add user-defined weights
+    for k in add_losses:
+        loss += add_losses[k]
+
+    if opt is not None: 
         opt.zero_grad()
         loss.backward()
 
-        # clip gradient
         if gradient_clip is not None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), **gradient_clip)
 
@@ -187,13 +196,14 @@ class RNNTrainer(AbstractTrainer):
 
             self.time_index = np.arange(0, time_range)
 
-
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
         data_points = 0
 
         epoch_preds = None
         epoch_targets = None
+
+        add_losses = {}
 
         # every epoch 
         #self.temporal_index( next(iter(dataloader))[0].shape[1])
@@ -219,6 +229,9 @@ class RNNTrainer(AbstractTrainer):
 
                 output = model(x_concat)
 
+                # physically based loss, only precipitation --> soil moisture
+                add_losses = self.P.loss_physics_collection["Physics1"](targets_bt[..., [0]], output[..., [0]])
+
                 output = self.predict_step(output, steps=-1)
                 target = self.predict_step(targets_bt, steps=-1)
 
@@ -233,7 +246,7 @@ class RNNTrainer(AbstractTrainer):
                         (epoch_targets, target.detach().cpu().numpy()), axis=0
                     )
 
-                batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model)
+                batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model, add_losses)
 
                 batch_temporal_loss += batch_sequence_loss
 
@@ -405,7 +418,7 @@ def train_val(
             print("Copied best model weights!")
 
         if not tqdm_support: print(f"Epoch: {epoch}") 
-        print(f"Losses - train: {torch.round(train_loss,decimals=5)}  val: {torch.round(val_loss,decimals= 5)}")
+        print(f"Losses - train: {train_loss.item():.6f}  val: {val_loss.item():.6f}")
 
     model.load_state_dict(best_model_weights)
 
