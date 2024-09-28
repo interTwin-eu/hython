@@ -7,7 +7,7 @@ import pandas as pd
 from hython.sampler import SamplerBuilder
 from hython.metrics import MSEMetric
 from hython.losses import RMSELoss
-from hython.trainer import RNNTrainer, RNNTrainParams
+from hython.trainer import RNNTrainer, ConvTrainer, RNNTrainParams
 from itwinai.torch.distributed import (
     DeepSpeedStrategy
 )

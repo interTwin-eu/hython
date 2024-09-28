@@ -1,7 +1,7 @@
 import pytest 
 import numpy as np 
 
-from hython.metrics import MSEMetric, RMSEMetric, compute_mse
+from hython.hython.metrics.standard import MSEMetric, RMSEMetric, compute_mse
 
 TARGETS = ["vwc","actevap"]
 
