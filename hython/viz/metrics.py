@@ -204,7 +204,7 @@ def map_rmse(
     plt.title(title)
     
     if return_computation:
-        return fig, ax, bias
+        return fig, ax, rmse
     else:
         return fig, ax
 
