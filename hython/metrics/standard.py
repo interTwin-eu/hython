@@ -149,6 +149,52 @@ def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None):
         return np.average((y_pred - y_true) ** 2, axis=axis, weights=sample_weight)
 
 
+def compute_pearson(y_true, y_pred, axis=0, dim="time", sample_weight=None):
+    if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
+        return xr.corr(y_true, y_pred, dim=dim, weights=sample_weight)
+    else:
+        raise NotImplementedError
+
+
+def compute_kge(y_true, y_pred):
+    if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)):
+        return np.array([np.nan, np.nan, np.nan, np.nan])
+
+    # r = np.corrcoef(observed, simulated)[1, 0]
+    # alpha = np.std(simulated, ddof=1) /np.std(observed, ddof=1)
+    # beta = np.mean(simulated) / np.mean(observed)
+    # kge = 1 - np.sqrt(np.power(r-1, 2) + np.power(alpha-1, 2) + np.power(beta-1, 2))
+
+    m1, m2 = np.mean(y_true, axis=0), np.mean(y_pred, axis=0)
+    num_r = np.sum((y_true - m1) * (y_pred - m2), axis=0)
+    den_r = np.sqrt(np.sum((y_true - m1) ** 2, axis=0)) * np.sqrt(
+        np.sum((y_pred - m2) ** 2, axis=0)
+    )
+    r = num_r / den_r
+    beta = m2 / m1
+    gamma = (np.std(y_pred, axis=0) / m2) / (np.std(y_true, axis=0) / m1)
+    kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (beta - 1.0) ** 2 + (gamma - 1.0) ** 2)
+
+    return np.array([kge, r, gamma, beta])
+
+
+def compute_kge_parallel(y_target, y_pred):
+    kge = xr.apply_ufunc(
+        compute_kge,
+        y_target,
+        y_pred,
+        input_core_dims=[["time"], ["time"]],
+        output_core_dims=[["kge"]],
+        output_dtypes=[float],
+        vectorize=True,
+        dask="parallelized",
+        dask_gufunc_kwargs={"output_sizes": {"kge": 4}},
+    )
+
+    kge = kge.assign_coords({"kge": ["kge", "r", "alpha", "beta"]})
+    return kge
+
+
 def kge_metric(y_true, y_pred, target_names):
     """
     The Kling Gupta efficiency metric

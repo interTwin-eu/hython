@@ -1,5 +1,6 @@
 from . import *
 
+
 class CubeletsDataset(Dataset):
     def __init__(
         self,
@@ -213,8 +214,6 @@ class CubeletsDataset(Dataset):
             return xd, torch.tensor([]), y
 
 
-
-
 class XBatchDataset(Dataset):
     """
     Returns batches of Ntile,seq L T C H W
@@ -330,4 +329,3 @@ class XBatchDataset(Dataset):
             )
 
         return gen
-

@@ -1,5 +1,6 @@
 from . import *
 
+
 class LumpedDataset(Dataset):
     def __init__(
         self,
