@@ -2,12 +2,9 @@ from . import *
 
 
 class ConvTrainer(AbstractTrainer):
-
     def __init__(self, params: RNNTrainParams):
-
         self.P = params  # RNNTrainParams(**params)
         super(ConvTrainer, self).__init__(self.P.experiment)
-
 
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
@@ -18,21 +15,23 @@ class ConvTrainer(AbstractTrainer):
 
         # N T C H W
         for dynamic_b, static_b, targets_b in dataloader:
-          
-
             targets_b = targets_b.to(device)
             if len(static_b[0]) > 1:
                 input = torch.concat([dynamic_b, static_b], 2).to(device)
             else:
                 input = dynamic_b.to(device)
             #
-            output = model(input)[0] # # N L H W Cout
-            output = torch.permute(output, (0, 1, 4, 2, 3)) # N L C H W 
+            output = model(input)[0]  # # N L H W Cout
+            output = torch.permute(output, (0, 1, 4, 2, 3))  # N L C H W
 
             # physics loss
-            add_losses = self.P.loss_physics_collection["PrecipSoilMoisture"](input[..., [0]], output[..., [0]])
+            add_losses = self.P.loss_physics_collection["PrecipSoilMoisture"](
+                input[..., [0]], output[..., [0]]
+            )
 
-            output = self.predict_step(output).flatten(2) # N L C H W  => # N C H W => N C Pixel
+            output = self.predict_step(output).flatten(
+                2
+            )  # N L C H W  => # N C H W => N C Pixel
             target = self.predict_step(targets_b).flatten(2)
 
             if epoch_preds is None:
@@ -46,7 +45,15 @@ class ConvTrainer(AbstractTrainer):
                     (epoch_targets, target.detach().cpu().numpy()), axis=0
                 )
 
-            batch_sequence_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model, add_losses)
+            batch_sequence_loss = loss_batch(
+                self.P.loss_func,
+                output,
+                target,
+                opt,
+                self.P.gradient_clip,
+                model,
+                add_losses,
+            )
 
             running_batch_loss += batch_sequence_loss.detach()
 
@@ -60,5 +67,5 @@ class ConvTrainer(AbstractTrainer):
 
     def predict_step(self, arr):
         """Return the n steps that should be predicted"""
-        
-        return arr[:, -1] # N Ch H W  
+
+        return arr[:, -1]  # N Ch H W

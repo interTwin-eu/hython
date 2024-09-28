@@ -1,12 +1,20 @@
 from . import *
 
 
-
 def metric_epoch(metric_func, y_pred, y_true, target_names):
     metrics = metric_func(y_pred, y_true, target_names)
     return metrics
 
-def loss_batch(loss_func, output, target, opt=None, gradient_clip = None, model=None, add_losses: dict = {}):
+
+def loss_batch(
+    loss_func,
+    output,
+    target,
+    opt=None,
+    gradient_clip=None,
+    model=None,
+    add_losses: dict = {},
+):
     if target.shape[-1] == 1:
         target = torch.squeeze(target)
         output = torch.squeeze(output)
@@ -18,7 +26,7 @@ def loss_batch(loss_func, output, target, opt=None, gradient_clip = None, model=
     for k in add_losses:
         loss += add_losses[k]
 
-    if opt is not None: 
+    if opt is not None:
         opt.zero_grad()
         loss.backward()
 
@@ -39,9 +47,8 @@ def train_val(
     optimizer,
     lr_scheduler,
     dp_weights,
-    device
+    device,
 ):
-
     loss_history = {"train": [], "val": []}
     metric_history = {f"train_{target}": [] for target in trainer.P.target_names}
     metric_history.update({f"val_{target}": [] for target in trainer.P.target_names})
@@ -51,12 +58,11 @@ def train_val(
     epoch_iterator = tqdm(range(epochs)) if tqdm_support else range(epochs)
 
     for epoch in epoch_iterator:
-
         model.train()
 
-        # set time indices for training 
+        # set time indices for training
         # This has effect only if the trainer overload the method (i.e. for RNN)
-        trainer.temporal_index([train_loader, val_loader])  
+        trainer.temporal_index([train_loader, val_loader])
 
         train_loss, train_metric = trainer.epoch_step(
             model, train_loader, device, opt=optimizer
@@ -64,10 +70,9 @@ def train_val(
 
         model.eval()
         with torch.no_grad():
-            
             # set time indices for validation
             # This has effect only if the trainer overload the method (i.e. for RNN)
-            trainer.temporal_index([train_loader, val_loader])  
+            trainer.temporal_index([train_loader, val_loader])
 
             val_loss, val_metric = trainer.epoch_step(
                 model, val_loader, device, opt=None
@@ -88,7 +93,8 @@ def train_val(
             trainer.save_weights(model, dp_weights)
             print("Copied best model weights!")
 
-        if not tqdm_support: print(f"Epoch: {epoch}") 
+        if not tqdm_support:
+            print(f"Epoch: {epoch}")
         print(f"Losses - train: {train_loss.item():.6f}  val: {val_loss.item():.6f}")
 
     model.load_state_dict(best_model_weights)

@@ -1,5 +1,6 @@
 from . import *
 
+
 class BasinLumpedTrainer(RNNTrainer):
     def __init__(self, params):
         super(BasinLumpedTrainer, self).__init__(params)
@@ -89,5 +90,3 @@ class BasinLumpedTrainer(RNNTrainer):
         )
 
         return loss, metric
-
-

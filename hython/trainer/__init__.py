@@ -12,10 +12,13 @@ from .train import metric_epoch, loss_batch, train_val
 
 tqdm_support = True if importlib.util.find_spec("tqdm") is not None else False
 
-if tqdm_support: from tqdm.auto import tqdm
+if tqdm_support:
+    from tqdm.auto import tqdm
+
 
 class BaseTrainParams:
     pass
+
 
 # TODO: consider dataclass
 class RNNTrainParams(BaseTrainParams):
@@ -29,7 +32,7 @@ class RNNTrainParams(BaseTrainParams):
         temporal_subsampling: bool = None,
         temporal_subset: list = None,
         seq_length: int = None,
-        gradient_clip: dict = None
+        gradient_clip: dict = None,
     ):
         self.loss_func = loss_func
         self.metric_func = metric_func
@@ -54,7 +57,6 @@ class AbstractTrainer(ABC):
 
     def predict_step(self):
         pass
-
 
     def save_weights(self, model, fp, onnx=False):
         if onnx:
