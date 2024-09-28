@@ -10,9 +10,12 @@ def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
             metrics = {}
             for idx, target in enumerate(target_names):
                 metrics[target] = wrapped(y_true[:, idx], y_pred[:, idx], sample_weight)
-            return metrics 
+            return metrics
+
         return wrapper
+
     return target
+
 
 class Metric:
     """
@@ -24,8 +27,10 @@ class Metric:
     TODO: In forecasting, the shape of y_true and y_pred is going to be (N,T,C), where T is the n of future time steps.
 
     """
+
     def __init__(self):
         pass
+
 
 class MSEMetric(Metric):
     """
@@ -40,37 +45,38 @@ class MSEMetric(Metric):
     Returns
     -------
     Dictionary of MSE metric for each target. {'target': mse_metric}
-    
+
     """
+
     def __call__(self, y_pred, y_true, target_names: list[str]):
         return metric_decorator(y_pred, y_true, target_names)(compute_mse)()
+
 
 class RMSEMetric(Metric):
     def __call__(self, y_pred, y_true, target_names: list[str]):
         return metric_decorator(y_pred, y_true, target_names)(compute_rmse)()
-    
+
 
 # == METRICS
 # The metrics below should work for both numpy or xarray inputs. The usage of xarray inputs is supported as it is handy for lazy computations
 # e.g. compute_mse(y_true.chunk(lat=100,lon=100), y_pred.chunk(lat=100,lon=100)).compute()
 
 
+# DISCHARGE
 
-# DISCHARGE 
 
 def compute_fdc_fms():
-    """
-    """
-    pass 
+    """ """
+    pass
+
 
 def compute_fdc_fhv():
-    """
-    """
-    pass 
+    """ """
+    pass
+
 
 def compute_fdc_flv():
-    """
-    """
+    """ """
     pass
 
 
@@ -79,14 +85,16 @@ def compute_fdc_flv():
 
 def compute_hr():
     """Hit Rate, proportion of time soil is correctly simulated as wet.
-        Wet threshold is when x >= 0.8 percentile
-        Dry threshold is when x <= 0.2 percentile
+    Wet threshold is when x >= 0.8 percentile
+    Dry threshold is when x <= 0.2 percentile
     """
-    pass 
+    pass
+
 
 def compute_far():
     """False Alarm Rate"""
-    pass 
+    pass
+
 
 def compute_csi():
     """Critical success index"""
@@ -95,41 +103,50 @@ def compute_csi():
 
 # GENERAL
 
-def compute_variance(ds,dim="time", axis=0, std=False):
+
+def compute_variance(ds, dim="time", axis=0, std=False):
     if isinstance(ds, xr.DataArray):
         return ds.std(dim=dim) if std else ds.var(dim=dim)
     else:
-        return np.std(ds, axis=axis) if std else np.var(ds, axis=axis) 
-    
+        return np.std(ds, axis=axis) if std else np.var(ds, axis=axis)
+
+
 def compute_gamma(y_true: xr.DataArray, y_pred, axis=0):
     m1, m2 = np.mean(y_true, axis=axis), np.mean(y_pred, axis=axis)
     return (np.std(y_pred, axis=axis) / m2) / (np.std(y_true, axis=axis) / m1)
-    
+
+
 def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-         return 100 * ( (y_pred - y_true).mean(dim=dim, skipna=False) / np.abs(y_true).mean(dim=dim, skipna=False))
+        return 100 * (
+            (y_pred - y_true).mean(dim=dim, skipna=False)
+            / np.abs(y_true).mean(dim=dim, skipna=False)
+        )
     else:
-        return 100 * ( np.mean(y_pred - y_true, axis=axis) / np.mean(np.abs(y_true), axis=axis) )
+        return 100 * (
+            np.mean(y_pred - y_true, axis=axis) / np.mean(np.abs(y_true), axis=axis)
+        )
+
 
 def compute_bias(y_true: xr.DataArray, y_pred, dim="time", axis=0):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-         return  (y_pred - y_true).mean(dim=dim, skipna=False)
+        return (y_pred - y_true).mean(dim=dim, skipna=False)
     else:
-        return np.mean(y_pred - y_true, axis=axis) 
+        return np.mean(y_pred - y_true, axis=axis)
+
 
 def compute_rmse(y_true, y_pred, dim="time", axis=0):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=False))
     else:
         return np.sqrt(np.mean((y_pred - y_true) ** 2, axis=axis))
-    
+
+
 def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return ((y_pred - y_true) ** 2).mean(dim=dim, skipna=False)
     else:
         return np.average((y_pred - y_true) ** 2, axis=axis, weights=sample_weight)
-
-
 
 
 def kge_metric(y_true, y_pred, target_names):
@@ -163,4 +180,3 @@ def kge_metric(y_true, y_pred, target_names):
         metrics[target] = kge
 
     return metrics
-

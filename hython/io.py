@@ -4,6 +4,7 @@ from dask.array.core import Array as DaskArray
 import zarr
 import cf_xarray as cfxr
 
+
 def write_to_zarr(
     arr: DaskArray | xr.DataArray,
     url,
@@ -35,12 +36,11 @@ def write_to_zarr(
             overwrite = "r"
         if chunks:
             arr = arr.chunk(chunks=chunks)
-        
+
         if isinstance(arr, xr.DataArray):
             shape = arr.shape
         else:
             shape = list(arr.sizes.values())
-
 
         if append_attrs:
             arr.attrs.update(append_attrs)
@@ -57,13 +57,11 @@ def write_to_zarr(
             if clear_zarr_storage:
                 fs_store.clear()
 
-
             # initialize
             init = arr.isel(time=slice(0, time_chunk_size)).persist()
             # init[group].attrs.clear()
 
             init.to_zarr(fs_store, consolidated=True, group=group, mode=overwrite)
-
 
             for t in range(time_chunk_size, shape[1], time_chunk_size):  # append time
                 arr.isel(time=slice(t, t + time_chunk_size)).to_zarr(
@@ -73,6 +71,7 @@ def write_to_zarr(
             arr.to_zarr(
                 store=url, storage_options=storage_options, mode=overwrite, group=group
             )
+
 
 def read_from_zarr(url, group=None, multi_index=None, engine="xarray"):
     if engine == "xarray":

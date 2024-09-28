@@ -10,6 +10,7 @@ from cartopy.io.img_tiles import QuadtreeTiles
 
 from hython.metrics import compute_bias, compute_rmse, compute_pbias
 
+
 def set_norm(color_norm, color_bounds, ticks, ncolors, clip=False):
     if color_norm == "bounded":
         norm = BoundaryNorm(ticks, ncolors=ncolors, clip=clip)
@@ -79,7 +80,7 @@ def map_kge(
     kwargs_imshow={},
     return_kge=False,
     ticks=None,
-    title = None
+    title=None,
 ):
     cmap = plt.colormaps["Greens"]
     vmin = kwargs_imshow.get("vmin", False)
@@ -126,7 +127,7 @@ def map_kge(
         # i = ax.imshow(rmse, cmap=cmap, norm= norm, **kwargs_imshow)
 
         fig.colorbar(i, ax=ax, shrink=0.5, label=f"KGE")
-    if title:    
+    if title:
         plt.title(title)
     if return_kge:
         return fig, ax, kge
@@ -136,6 +137,7 @@ def map_kge(
 
 # MAPS
 
+
 def map_rmse(
     y_true: xr.DataArray,
     y_pred: xr.DataArray,
@@ -143,19 +145,18 @@ def map_rmse(
     label_1="wflow",
     label_2="LSTM",
     title="",
-    color_norm = "unbounded",
-    color_bounds = [-100,100],
-    color_bad = None,
-    color_ticks = None,
-    matplot_kwargs = dict(alpha=1),
-    alpha_gridlines = 0.1,
-    tiles = QuadtreeTiles(),
-    scale = 13,
-    map_extent = [],
+    color_norm="unbounded",
+    color_bounds=[-100, 100],
+    color_bad=None,
+    color_ticks=None,
+    matplot_kwargs=dict(alpha=1),
+    alpha_gridlines=0.1,
+    tiles=QuadtreeTiles(),
+    scale=13,
+    map_extent=[],
     return_computation=False,
-    unit = "mm"
-    ):
-    
+    unit="mm",
+):
     # COMPUTE
     rmse = compute_rmse(y_true, y_pred)
 
@@ -179,8 +180,14 @@ def map_rmse(
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
     ax.set_extent([minx, maxx, miny, maxy], crs=ccrs.PlateCarree())
 
-    gl = ax.gridlines(draw_labels=True, dms=False, x_inline=False, y_inline=False, alpha=alpha_gridlines)
-    
+    gl = ax.gridlines(
+        draw_labels=True,
+        dms=False,
+        x_inline=False,
+        y_inline=False,
+        alpha=alpha_gridlines,
+    )
+
     if tiles is not None:
         ax.add_image(tiles, scale)
 
@@ -189,8 +196,8 @@ def map_rmse(
         norm=norm,
         cmap=cmap,
         transform=ccrs.PlateCarree(),
-        add_colorbar = False,
-        **matplot_kwargs
+        add_colorbar=False,
+        **matplot_kwargs,
     )
 
     fig.colorbar(
@@ -202,11 +209,12 @@ def map_rmse(
     )
 
     plt.title(title)
-    
+
     if return_computation:
         return fig, ax, rmse
     else:
         return fig, ax
+
 
 def map_gamma(
     y_true: xr.DataArray,
@@ -215,27 +223,25 @@ def map_gamma(
     label_1="wflow",
     label_2="LSTM",
     title="",
-    color_norm = "bounded",
-    color_bounds = [0, 2],
-    color_bad = None,
-    color_ticks = None,
-    matplot_kwargs = dict(alpha=1),
-    alpha_gridlines = 0.1,
-    tiles = QuadtreeTiles(),
-    scale = 13,
-    map_extent = [],
+    color_norm="bounded",
+    color_bounds=[0, 2],
+    color_bad=None,
+    color_ticks=None,
+    matplot_kwargs=dict(alpha=1),
+    alpha_gridlines=0.1,
+    tiles=QuadtreeTiles(),
+    scale=13,
+    map_extent=[],
     return_computation=False,
-    unit = ""
-    ):
-    
+    unit="",
+):
     # COMPUTE
     out = compute_gamma(y_true, y_pred)
-
 
     # MATPLOTLIB PARAMETERS
     cmap = plt.colormaps["RdYlGn"]
     if color_ticks is None:
-        color_ticks = [c*0.1 for c in range(0, 21, 1)]
+        color_ticks = [c * 0.1 for c in range(0, 21, 1)]
     norm = set_norm(color_norm, color_bounds, color_ticks, cmap.N, clip=True)
 
     if color_bad is not None:
@@ -253,8 +259,14 @@ def map_gamma(
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
     ax.set_extent([minx, maxx, miny, maxy], crs=ccrs.PlateCarree())
 
-    gl = ax.gridlines(draw_labels=True, dms=False, x_inline=False, y_inline=False, alpha=alpha_gridlines)
-    
+    gl = ax.gridlines(
+        draw_labels=True,
+        dms=False,
+        x_inline=False,
+        y_inline=False,
+        alpha=alpha_gridlines,
+    )
+
     if tiles is not None:
         ax.add_image(tiles, scale)
 
@@ -263,8 +275,8 @@ def map_gamma(
         norm=norm,
         cmap=cmap,
         transform=ccrs.PlateCarree(),
-        add_colorbar = False,
-        **matplot_kwargs
+        add_colorbar=False,
+        **matplot_kwargs,
     )
 
     fig.colorbar(
@@ -276,11 +288,12 @@ def map_gamma(
     )
 
     plt.title(title)
-    
+
     if return_computation:
         return fig, ax, bias
     else:
         return fig, ax
+
 
 def map_bias(
     y_true: xr.DataArray,
@@ -289,20 +302,19 @@ def map_bias(
     label_1="wflow",
     label_2="LSTM",
     title="",
-    color_norm = "bounded",
-    color_bounds = [-100,100],
-    color_bad = None,
-    color_ticks = None,
-    matplot_kwargs = dict(alpha=1),
-    alpha_gridlines = 0.1,
-    tiles = QuadtreeTiles(),
-    scale = 13,
-    map_extent = [],
+    color_norm="bounded",
+    color_bounds=[-100, 100],
+    color_bad=None,
+    color_ticks=None,
+    matplot_kwargs=dict(alpha=1),
+    alpha_gridlines=0.1,
+    tiles=QuadtreeTiles(),
+    scale=13,
+    map_extent=[],
     return_computation=False,
     percentage_bias=True,
-    unit = None
-    ):
-    
+    unit=None,
+):
     # COMPUTE
     if percentage_bias:
         bias = compute_pbias(y_true, y_pred)
@@ -314,7 +326,7 @@ def map_bias(
     # MATPLOTLIB PARAMETERS
     cmap = plt.colormaps["RdYlGn"]
     if color_ticks is None and percentage_bias is True:
-        color_ticks = [c*10 for c in range(-10, 11, 1)]
+        color_ticks = [c * 10 for c in range(-10, 11, 1)]
     norm = set_norm(color_norm, color_bounds, color_ticks, cmap.N, clip=True)
 
     if color_bad is not None:
@@ -332,8 +344,14 @@ def map_bias(
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
     ax.set_extent([minx, maxx, miny, maxy], crs=ccrs.PlateCarree())
 
-    gl = ax.gridlines(draw_labels=True, dms=False, x_inline=False, y_inline=False, alpha=alpha_gridlines)
-    
+    gl = ax.gridlines(
+        draw_labels=True,
+        dms=False,
+        x_inline=False,
+        y_inline=False,
+        alpha=alpha_gridlines,
+    )
+
     if tiles is not None:
         ax.add_image(tiles, scale)
 
@@ -342,8 +360,8 @@ def map_bias(
         norm=norm,
         cmap=cmap,
         transform=ccrs.PlateCarree(),
-        add_colorbar = False,
-        **matplot_kwargs
+        add_colorbar=False,
+        **matplot_kwargs,
     )
 
     fig.colorbar(
@@ -355,7 +373,7 @@ def map_bias(
     )
 
     plt.title(title)
-    
+
     if return_computation:
         return fig, ax, bias
     else:

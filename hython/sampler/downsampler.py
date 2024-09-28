@@ -1,4 +1,4 @@
-from . import * 
+from . import *
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -7,7 +7,12 @@ import itertools
 from typing import Any, Tuple, List
 from numpy.typing import NDArray
 
-from hython.utils import compute_grid_indices, get_unique_spatial_idxs, get_unique_time_idxs
+from hython.utils import (
+    compute_grid_indices,
+    get_unique_spatial_idxs,
+    get_unique_time_idxs,
+)
+
 
 class AbstractDownSampler(ABC):
     def __init__(self):
@@ -38,30 +43,37 @@ class AbstractDownSampler(ABC):
         pass
 
 
-
 class CubeletsDownsampler(AbstractDownSampler):
-    def __init__(self, temporal_downsample_fraction: float = 0.5, spatial_downsample_fraction: float = 0.5):
+    def __init__(
+        self,
+        temporal_downsample_fraction: float = 0.5,
+        spatial_downsample_fraction: float = 0.5,
+    ):
         self.temporal_frac = temporal_downsample_fraction
         self.spatial_frac = spatial_downsample_fraction
 
     def sampling_idx(self, indexes):
-        
         idxs_sampled = {}
-        
+
         time_idx = get_unique_time_idxs(indexes)
         spatial_idx = get_unique_spatial_idxs(indexes)
 
-        time_sub_idx = np.random.choice(time_idx, size=int(self.temporal_frac*len(time_idx)), replace=False)
+        time_sub_idx = np.random.choice(
+            time_idx, size=int(self.temporal_frac * len(time_idx)), replace=False
+        )
 
-        spatial_sub_idx = np.random.choice(spatial_idx, size=int(self.spatial_frac*len(spatial_idx)), replace=False)
-        
+        spatial_sub_idx = np.random.choice(
+            spatial_idx, size=int(self.spatial_frac * len(spatial_idx)), replace=False
+        )
+
         for filter in itertools.product(spatial_sub_idx, time_sub_idx):
-
             value = indexes.get(filter, None)
             if value is not None:
                 idxs_sampled[filter] = value
-                
+
         return idxs_sampled
+
+
 class RegularIntervalDownsampler(AbstractDownSampler):
     def __init__(self, intervals: list[int], origin: list[int]):
         self.intervals = intervals
@@ -73,9 +85,7 @@ class RegularIntervalDownsampler(AbstractDownSampler):
         if origin[0] != origin[1]:
             raise NotImplementedError("Different x,y origins not yet implemented!")
 
-    def sampling_idx(
-        self, indexes, shape
-    ):  # remove missing is a 2D mask
+    def sampling_idx(self, indexes, shape):  # remove missing is a 2D mask
         """Sample a N-dimensional array by regularly-spaced points along the spatial axes.
 
         mask_missing, removes missing values from grid where mask is True
@@ -92,7 +102,7 @@ class RegularIntervalDownsampler(AbstractDownSampler):
             self.origin[0],
             self.intervals[0],
         )  # rows (y, lat)
-        
+
         jshape, jorigin, jintervals = (
             shape[1],
             self.origin[1],
@@ -103,6 +113,5 @@ class RegularIntervalDownsampler(AbstractDownSampler):
         jrange = np.arange(jorigin, jshape, jintervals)
 
         idxs_sampled = indexes[irange[:, None], jrange].flatten()  # broadcasting
-
 
         return idxs_sampled
