@@ -1,7 +1,7 @@
 import numpy as np
 import xarray as xr
 
-__all__ = ["MSEMetric", "RMSEMetric"]
+__all__ = ["Metric", "MSEMetric", "RMSEMetric"]
 
 
 def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
