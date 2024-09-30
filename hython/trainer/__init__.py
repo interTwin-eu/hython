@@ -8,7 +8,6 @@ import copy
 
 from hython.metrics import Metric
 from hython.losses import PhysicsLossCollection
-from .train import metric_epoch, loss_batch, train_val
 
 tqdm_support = True if importlib.util.find_spec("tqdm") is not None else False
 
@@ -65,7 +64,7 @@ class AbstractTrainer(ABC):
             print(f"save weights to: {fp}")
             torch.save(model.state_dict(), fp)
 
-
+from .train import train_val, metric_epoch, loss_batch
 from .rnn import *
 from .conv import *
 from .lumped import *

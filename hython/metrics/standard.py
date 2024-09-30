@@ -1,8 +1,6 @@
 import numpy as np
 import xarray as xr
 
-__all__ = ["Metric", "MSEMetric", "RMSEMetric"]
-
 
 def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
     def target(wrapped):
@@ -82,7 +80,6 @@ def compute_fdc_flv():
 
 # SOIL MOISTURE
 
-
 def compute_hr():
     """Hit Rate, proportion of time soil is correctly simulated as wet.
     Wet threshold is when x >= 0.8 percentile
@@ -116,11 +113,11 @@ def compute_gamma(y_true: xr.DataArray, y_pred, axis=0):
     return (np.std(y_pred, axis=axis) / m2) / (np.std(y_true, axis=axis) / m1)
 
 
-def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0):
+def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return 100 * (
-            (y_pred - y_true).mean(dim=dim, skipna=False)
-            / np.abs(y_true).mean(dim=dim, skipna=False)
+            (y_pred - y_true).mean(dim=dim, skipna=skipna)
+            / np.abs(y_true).mean(dim=dim, skipna=skipna)
         )
     else:
         return 100 * (
@@ -128,23 +125,23 @@ def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0):
         )
 
 
-def compute_bias(y_true: xr.DataArray, y_pred, dim="time", axis=0):
+def compute_bias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-        return (y_pred - y_true).mean(dim=dim, skipna=False)
+        return (y_pred - y_true).mean(dim=dim, skipna=skipna)
     else:
         return np.mean(y_pred - y_true, axis=axis)
 
 
-def compute_rmse(y_true, y_pred, dim="time", axis=0):
+def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-        return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=False))
+        return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna))
     else:
         return np.sqrt(np.mean((y_pred - y_true) ** 2, axis=axis))
 
 
-def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None):
+def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None, skipna=False ):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-        return ((y_pred - y_true) ** 2).mean(dim=dim, skipna=False)
+        return ((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna)
     else:
         return np.average((y_pred - y_true) ** 2, axis=axis, weights=sample_weight)
 

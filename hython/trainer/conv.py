@@ -57,7 +57,7 @@ class ConvTrainer(AbstractTrainer):
 
             running_batch_loss += batch_sequence_loss.detach()
 
-        epoch_loss = running_batch_loss / len(dataloader.dataset)
+        epoch_loss = running_batch_loss / len(dataloader)
 
         metric = metric_epoch(
             self.P.metric_func, epoch_targets, epoch_preds, self.P.target_names
