@@ -1,3 +1,9 @@
+.vscode/settings.json
+.vscode/
+*.zarr
+*.zgroup
+*.zmetadata
+*.pt
 checkpoints/
 data/demo
 # Byte-compiled / optimized / DLL files

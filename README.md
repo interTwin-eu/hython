@@ -5,7 +5,7 @@
 
 A python package aims to exploit state-of-the-art hydrological timeseries prediction and forcasting.
 
-The package should supports the **surrogate training**, **parameter learning** and **inference application** components of the drought forecasting InterTwin's use case.
+The package should supports the **surrogate training**, **parameter learning** and **prediction** application components of the interTwin's drought forecasting use case.
 
 <p align="center">
  <a href="https://github.com/interTwin-eu/hython/"><img src="https://github.com/interTwin-eu/hython/blob/dev/data/static/overview.png" alt="layout"></a>
@@ -13,6 +13,7 @@ The package should supports the **surrogate training**, **parameter learning** a
 
 
 ## Installation
+
 This package is currently under development.
 
 
@@ -26,60 +27,72 @@ pip install .
 ```
 
 ## Usage
-Please review the workflow notebook for a demonstration of the expected inputs, outputs, and how to use the package.
 
+### Demo
+
+The goal of the demo is to show how to train and evaluate the models offered in hython.
+
+Every package needed to run the notebooks can be installed by running:
+
+```bash
+
+cd ./hython
+
+pip install .[complete]
+
+```
+
+There are two notebooks showcasing the training of a simple LSTM model and a Convolutional LSTM.
+
+```bash
+./demo/train_lstm.ipynb
+./demo/train_convlstm.ipynb
+```
+
+Todo: evaluation notebooks
+
+
+### Command Line Interface
+
+```bash
+
+python preprocess.py --config preprocessing.yaml
+
+python train.py --config training.yaml
+
+python evaluate.py --config evaluating.yaml
+
+```
 
 ## Support
 Please open an issue if you have a bug, feature request or have an idea to improve the package.
 
+## Design
+
+Class diagram
 
 ## Roadmap
 
+- [x] Predict vertical fluxes and storages 
+    - [x] surface soil moisture 
+    - [x] evapotranspiration 
 
-* Domain sampling
+- [] Predict streamflow 
 
-Training the model on large domains is time and energy consuming. 
-This functionality samples the full domain producing a smaller subsample, with different degree of representativeness based on the sampling strategy, enabling decisions about the trade-off between model performance and computation time. It is likely that good enough performance can be achieved with representative sampling scheme.
+- [] Parameter learning
 
-Planned strategies: 
-    - no sampling (implemented)
-    - regular grid sampling (implemented)
-    - stratified sampling (coming soon)
-    - spatial correlation sampling (coming soon)
+- [] Seasonal forecast
 
+- [] Evaluation 
+    - [] Hydrological metrics
 
-* Spatio-temporal validation consisting in (at least) three options: space, time and spacetime. 
+- [] Distributed training
 
-This feature generates (spatially, temporally or spatiotemporally) disjointed training and validation subsets for testing how well the model is performing in extrapolation tasks.
-
-
-* Simulation of river discharge
-
-Surrogate's simulation of river discharge in addition to soil moisture and evapotranspiration 
-
-
-* Parameter learning
-Calibratig the surrogate
-
-* Add metrics with hydrological meaning 
-
-
-* Parallel and Distributed ML tasks.
-
-
-* Uncertainty & Explainable AI
-
-
-* Model evaluation
-
-Assessing different model architectures and structures
-
-
+- [] Uncertainty & Explainable AI
 
 
 ## Contact
-For further information please contact:
 
-mohammadhussein.alasawedah@eurac.edu
+For further information please contact:
 
 iacopofederico.ferrario@eurac.edu

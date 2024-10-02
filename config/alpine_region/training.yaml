@@ -1,0 +1,131 @@
+# === GENERAL I/O ==============================================================
+
+## inputs
+
+# wflow model name, i.e. surrogate input file produced by the preprocessing step
+surr_input: "adg1km_eobs.zarr"
+
+# input directory 
+dir_surr_input: "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input"
+
+## outputs
+
+surr_model_output: "adg1km_eobs.pt"
+experiment: "time60" # prefix to surr_output to distinguish experiments TODO: to improve
+
+# directory to save the model weights 
+dir_surr_output: "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model"
+# directory to save the statistics computed during the normalization
+dir_stats_output: "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_stats"
+
+
+# === FILTER ==============================================================
+
+# select temporal range
+train_temporal_range: ["2016-01-01", "2018-12-31"] 
+test_temporal_range: ["2019-01-01", "2019-12-31"] 
+
+# select variable names
+dynamic_names: ["precip", "pet", "temp"]
+static_names: [ 'thetaS', 'thetaR', 'RootingDepth', 'Swood','KsatVer', "Sl"]
+target_names: [ "vwc","actevap"]
+
+# === MASK ==================================================================================
+
+mask_names: ["mask_missing", "mask_lake"] # names depends on preprocessing application
+
+# === SAMPLER =========================================================================================
+
+train_sampler_builder:
+  class_path: hython.sampler.SamplerBuilder
+  init_args:
+    sampling_method: "downsampling_regular"
+    sampling_method_kwargs:
+      intervals: [4, 4]
+      origin: [0, 0]
+    minibatch_sampling: "random"
+    processing: "single-gpu"
+
+test_sampler_builder:
+  class_path: hython.sampler.SamplerBuilder
+  init_args:
+    sampling_method: "downsampling_regular"
+    sampling_method_kwargs:
+      intervals: [4, 4]
+      origin: [2, 2]
+    minibatch_sampling: "sequential"
+    processing: "single-gpu"
+
+
+# === MODEL ==============================================================
+
+model:
+  class_path: hython.models.cudnnLSTM.CuDNNLSTM
+  init_args:
+    hidden_size: 24
+    dynamic_input_size: 3
+    static_input_size: 6
+    output_size: 2
+    
+
+# === DATASET ==============================================================
+
+dataset: "LSTMDataset"
+
+# === NORMALIZER ================================================================
+
+# TODO: change type names 
+
+normalizer_static:
+  class_path: hython.normalizer.Normalizer
+  init_args: 
+    method: "standardize"
+    type: "space"
+    save_stats: True
+  
+normalizer_dynamic:
+  class_path: hython.normalizer.Normalizer
+  init_args: 
+    method: "standardize"
+    type: "spacetime"
+    save_stats: True
+
+normalizer_target:
+  class_path: hython.normalizer.Normalizer
+  init_args: 
+    method: "standardize"
+    type: "spacetime"
+    save_stats: True
+
+# === TRAINER ==============================================================
+
+seed: 191123
+epochs: 50
+batch: 256
+device: "cuda:0"
+
+trainer:
+  class_path: hython.trainer.RNNTrainer
+  init_args:
+    params:
+      class_path: hython.trainer.RNNTrainParams
+      init_args:
+        experiment: "demo"
+        # temporal subsampling = False if using the entire timeseries
+        temporal_subsampling: True
+        # [100] training and test same indices, spatial validation
+        # [100, 100] training and test different indices, spatiotemporal validation  
+        temporal_subset: [150, 150] 
+        seq_length: 60
+        target_names: [ "vwc","actevap"]
+        loss_func:
+          class_path: hython.losses.RMSELoss
+          init_args:
+            target_weight:
+              vwc: 0.5
+              actevap: 0.5
+        metric_func: 
+          class_path: hython.metrics.MSEMetric
+          init_args: 
+            target_names: [ "vwc","actevap"]
+
