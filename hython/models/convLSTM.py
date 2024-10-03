@@ -32,39 +32,39 @@ class ConvLSTMCell(nn.Module):
         # input layer convolution
         self.conv_x = nn.Conv2d(
             in_channels=self.input_dim,
-            out_channels= self.hidden_dim * 4, # will split in 4 input weight matrices
+            out_channels=self.hidden_dim * 4,  # will split in 4 input weight matrices
             kernel_size=self.kernel_size,
-            dilation = 1,
+            dilation=1,
             padding=self.padding,
-            bias= self.bias 
+            bias=self.bias,
         )
         # hidden layer convolution
         self.conv_h = nn.Conv2d(
             in_channels=self.hidden_dim,
-            out_channels= self.hidden_dim * 4, # will split in 4 hidden weight matrices
+            out_channels=self.hidden_dim * 4,  # will split in 4 hidden weight matrices
             kernel_size=self.kernel_size,
-            dilation = 1,
+            dilation=1,
             padding=self.padding,
-            bias= self.bias 
+            bias=self.bias,
         )
 
         self.conv = nn.Conv2d(
             in_channels=self.input_dim + self.hidden_dim,
             out_channels=4 * self.hidden_dim,
-            dilation = 1, # FIXME: HARDCODED 
-            kernel_size=self.kernel_size, 
+            dilation=1,  # FIXME: HARDCODED
+            kernel_size=self.kernel_size,
             padding=self.padding,
             bias=self.bias,
         )
 
     def forward(self, input_tensor, cur_state):
         h_cur, c_cur = cur_state
-        
+
         x_concat = self.conv_x(input_tensor)
         h_concat = self.conv_h(h_cur)
 
-        i_x, f_x, o_x, g_x = torch.split(x_concat, self.hidden_dim, dim=1) # split 
-        i_h, f_h, o_h, g_h = torch.split(h_concat, self.hidden_dim, dim=1) # split 
+        i_x, f_x, o_x, g_x = torch.split(x_concat, self.hidden_dim, dim=1)  # split
+        i_h, f_h, o_h, g_h = torch.split(h_concat, self.hidden_dim, dim=1)  # split
 
         i = torch.sigmoid(i_x + i_h)
         f = torch.sigmoid(f_x + f_h)
@@ -100,14 +100,14 @@ class ConvLSTMCell(nn.Module):
 class ConvLSTM(nn.Module):
     def __init__(
         self,
-        input_dim:int = 2,
-        output_dim:int = 2,
-        hidden_dim:int = 24,
-        kernel_size:list[int] | tuple[int] = [3,3],
-        num_layers:int = 1,
-        batch_first:bool=False,
-        bias:bool=True,
-        return_all_layers:bool=False,
+        input_dim: int = 2,
+        output_dim: int = 2,
+        hidden_dim: int = 24,
+        kernel_size: list[int] | tuple[int] = [3, 3],
+        num_layers: int = 1,
+        batch_first: bool = False,
+        bias: bool = True,
+        return_all_layers: bool = False,
     ):
         """_summary_
 
@@ -150,7 +150,7 @@ class ConvLSTM(nn.Module):
         cell_list = []
         for i in range(0, self.num_layers):
             cur_input_dim = self.input_dim if i == 0 else self.hidden_dim[i - 1]
- 
+
             cell_list.append(
                 ConvLSTMCell(
                     input_dim=cur_input_dim,
@@ -162,8 +162,7 @@ class ConvLSTM(nn.Module):
 
         self.cell_list = nn.ModuleList(cell_list)
 
-
-        # output 
+        # output
 
         self.fc1 = nn.Linear(hidden_dim[-1], output_dim)
 
@@ -174,7 +173,7 @@ class ConvLSTM(nn.Module):
         input_tensor:
             5-D Tensor either of shape (t, n, c, h, w) or (n, t, c, h, w)
         hidden_state:
-            None. 
+            None.
 
         Returns
         -------
@@ -215,13 +214,13 @@ class ConvLSTM(nn.Module):
             last_state_list.append([h, c])
 
         if not self.return_all_layers:
-            layer_output_list = layer_output_list[-1:] # N L C H W
+            layer_output_list = layer_output_list[-1:]  # N L C H W
             last_state_list = last_state_list[-1:]
 
         # FC Head
-        out = torch.permute(layer_output_list[0], (0, 1, 3, 4, 2)) # N L H W Ch
+        out = torch.permute(layer_output_list[0], (0, 1, 3, 4, 2))  # N L H W Ch
 
-        out = self.fc1(torch.relu(out)) # N L H W Cout
+        out = self.fc1(torch.relu(out))  # N L H W Cout
 
         return out, last_state_list
 
@@ -236,5 +235,3 @@ class ConvLSTM(nn.Module):
         if not isinstance(param, list) or not isinstance(param, tuple):
             param = [param] * num_layers
         return param
-
-

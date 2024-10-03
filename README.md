@@ -28,9 +28,29 @@ pip install .
 
 ## Usage
 
-### Demo Jupyter Notebooks 
+### Demo
 
-Please review the workflow notebook for a demonstration of the expected inputs, outputs, and how to use the package.
+The goal of the demo is to show how to train and evaluate the models offered in hython.
+
+Every package needed to run the notebooks can be installed by running:
+
+```bash
+
+cd ./hython
+
+pip install .[complete]
+
+```
+
+There are two notebooks showcasing the training of a simple LSTM model and a Convolutional LSTM.
+
+```bash
+./demo/train_lstm.ipynb
+./demo/train_convlstm.ipynb
+```
+
+Todo: evaluation notebooks
+
 
 ### Command Line Interface
 
