@@ -10,8 +10,8 @@ class CuDNNLSTM(nn.Module):
         static_input_size: int = 5,
         output_size: int = 2,
         static_to_dynamic: bool = True,
-        num_layers:int = 1,
-        dropout:float = 0.0,
+        num_layers: int = 1,
+        dropout: float = 0.0,
     ):
         super(CuDNNLSTM, self).__init__()
 
@@ -19,20 +19,24 @@ class CuDNNLSTM(nn.Module):
 
         self.fc0 = nn.Linear(dynamic_input_size + static_input_size, hidden_size)
 
-        self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers = num_layers, batch_first=True, dropout=dropout)
+        self.lstm = nn.LSTM(
+            hidden_size,
+            hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout,
+        )
 
         self.fc1 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-
         l1 = self.fc0(x)
 
         lstm_output, (h_n, c_n) = self.lstm(l1)
-    
+
         out = self.fc1(lstm_output)
 
         return out
-
 
 
 class LSTMModule(nn.Module):
@@ -40,36 +44,39 @@ class LSTMModule(nn.Module):
         self,
         hidden_size: int = 34,
         input_size: int = 3,
-        num_layers:int = 1,
-        dropout:float = 0.0,
+        num_layers: int = 1,
+        dropout: float = 0.0,
     ):
         super(LSTMModule, self).__init__()
 
         self.fc0 = nn.Linear(input_size, hidden_size)
 
-        self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers = num_layers, batch_first=True, dropout=dropout)
+        self.lstm = nn.LSTM(
+            hidden_size,
+            hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout,
+        )
 
     def forward(self, x):
-
         l1 = self.fc0(x)
 
         lstm_output, (h_n, c_n) = self.lstm(l1)
 
         return lstm_output
-    
+
 
 from hython.models.cudnnLSTM import LSTMModule
 from torch import nn
-class LandSurfaceLSTM(nn.Module):
 
-    def __init__(self, 
-                 module_dict,
-                 output_size,
-                 device=None):
+
+class LandSurfaceLSTM(nn.Module):
+    def __init__(self, module_dict, output_size, device=None):
         super(LandSurfaceLSTM, self).__init__()
-        
+
         self.model_modules = nn.ModuleDict(
-            {k:LSTMModule(**v) for k,v in module_dict.items()}
+            {k: LSTMModule(**v) for k, v in module_dict.items()}
         )
         if device:
             self.model_modules = self.model_modules.to(device)
@@ -80,16 +87,13 @@ class LandSurfaceLSTM(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-
-        distr_out = [] 
+        distr_out = []
         for variable in self.model_modules:
-            distr_out.append(
-                self.model_modules[variable](x)
-            )
-            
+            distr_out.append(self.model_modules[variable](x))
+
         out = torch.cat(distr_out, dim=-1)
 
         # Interaction
         out = self.relu(self.fc0(out))
-        
+
         return out
