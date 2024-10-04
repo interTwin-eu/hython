@@ -233,8 +233,9 @@ def compute_hr(observed: xr.DataArray, simulated: xr.DataArray, wet_threshold_pe
     observed (xr.DataArray): Observed soil moisture data (lat, lon, time).
     simulated (xr.DataArray): Simulated soil moisture data (lat, lon, time).
     
-    Returns:
-    tuple: Wet threshold hit rate (%), Dry threshold hit rate (%).
+    dict: A dictionary containing:
+    - Wet threshold hit rate (%) 
+    - Dry threshold hit rate (%)
     """
     
     # Compute the 80th and 20th percentiles for observed and simulated data along the time dimension
@@ -295,7 +296,9 @@ def compute_far(observed: xr.DataArray, simulated: xr.DataArray, wet_threshold_p
     simulated (xr.DataArray): Simulated soil moisture data (lat, lon, time).
 
     Returns:
-    tuple: FAR for wet predictions (%), FAR for dry predictions (%).
+    dict: A dictionary containing:
+    - FAR for wet predictions (%) 
+    - FAR for dry predictions (%)
     """
     
     # Compute the 80th and 20th percentiles for observed and simulated data along the time dimension
@@ -359,7 +362,9 @@ def compute_csi(observed: xr.DataArray, simulated: xr.DataArray, wet_threshold_p
     simulated (xr.DataArray): Simulated soil moisture data (lat, lon, time).
 
     Returns:
-    tuple: CSI for wet predictions (%), CSI for dry predictions (%).
+    dict: A dictionary containing:
+        - CSI for wet predictions (%), 
+        - CSI for dry predictions (%).
     """
     
     # Compute the 80th and 20th percentiles for observed and simulated data along the time dimension
