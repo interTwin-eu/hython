@@ -1,4 +1,4 @@
- from . import *
+from . import *
    
 class ParameterLearningTrainer(AbstractTrainer):
 
@@ -81,7 +81,7 @@ class ParameterLearningTrainer(AbstractTrainer):
 
             running_batch_loss += batch_sequence_loss.detach()
 
-        epoch_loss = running_batch_loss / (len(dataloader.dataset) - flag_counter)
+        epoch_loss = running_batch_loss / (len(dataloader) - flag_counter)
         metric = metric_epoch(
             self.P.metric_func, epoch_targets, epoch_preds, self.P.target_names, valid_masks
         )
