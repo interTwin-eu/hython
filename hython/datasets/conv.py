@@ -20,6 +20,8 @@ class CubeletsDataset(Dataset):
         persist=False,
         lstm_1d=False,
         static_to_dynamic=False,
+        keep_spatial_degenerate_cubelet=False,
+        keep_temporal_degenerate_cubelets=False
     ):
         self.xd = xd
         self.y = y
@@ -48,7 +50,7 @@ class CubeletsDataset(Dataset):
             batch_size["ysize"],
             overlap["xover"],
             overlap["yover"],
-            KEEP_DEGENERATE_CUBELETS,
+            keep_spatial_degenerate_cubelet,
             masks=self.mask,
             missing_policy=self.missing_policy,
         )
@@ -62,7 +64,7 @@ class CubeletsDataset(Dataset):
             shape,
             batch_size["tsize"],
             overlap["tover"],
-            KEEP_DEGENERATE_CUBELETS,
+            keep_temporal_degenerate_cubelets,
             masks=self.mask,
         )
 
