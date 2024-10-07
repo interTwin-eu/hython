@@ -356,12 +356,7 @@ class PyramidDataset(Dataset):
                  lstm_1d = False, 
                  static_to_dynamic=False
                  ):
-        """
-        CAN I USE IT FOR PARAM LEARNING?
 
-        IN THE CASE I WANT TO PRECOMPUTE THE DUMMY TIME DIMENSION FOR THE STATIC PARAMETERS I COULD MERGE XS WITH XD AND PASS IT AS XD AND SET XS=NONE
-        """
-        
         self.forcing = forcing
         self.target = target
         self.predictor = predictor
