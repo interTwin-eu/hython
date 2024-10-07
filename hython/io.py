@@ -10,7 +10,7 @@ def write_to_zarr(
     url,
     group=None,
     storage_options={},
-    overwrite=True,
+    overwrite="w",
     chunks="auto",
     clear_zarr_storage=False,
     append_on_time=False,
@@ -30,10 +30,6 @@ def write_to_zarr(
     if isinstance(arr, xr.DataArray) or isinstance(arr, xr.Dataset):
         original_dataarray_attrs = arr.attrs
 
-        if overwrite:
-            overwrite = "w"
-        else:
-            overwrite = "r"
         if chunks:
             arr = arr.chunk(chunks=chunks)
 

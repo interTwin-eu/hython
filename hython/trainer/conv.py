@@ -52,7 +52,8 @@ class ConvTrainer(AbstractTrainer):
                 opt,
                 self.P.gradient_clip,
                 model,
-                add_losses,
+                valid_mask = None,
+                add_losses=add_losses,
             )
 
             running_batch_loss += batch_sequence_loss.detach()

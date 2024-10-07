@@ -290,6 +290,8 @@ def map_bias(
     percentage_bias=False,
     unit=None,
     skipna=False,
+    fig = None,
+    ax = None
 ):
     # COMPUTE
     if percentage_bias:
@@ -316,8 +318,10 @@ def map_bias(
         minx, miny, maxx, maxy = map_extent
 
     # PLOT
-    fig = plt.figure(figsize=figsize)
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    if fig is None:
+        fig = plt.figure(figsize=figsize)
+    if ax is None:
+        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
     ax.set_extent([minx, maxx, miny, maxy], crs=ccrs.PlateCarree())
 
     gl = ax.gridlines(
