@@ -13,12 +13,16 @@ class LSTMDataset(Dataset):
         normalizer_dynamic=None,
         normalizer_static=None,
         normalizer_target=None,
+        persist=False,
     ):
         self.shape = original_domain_shape
 
+        self.persist = persist
         self.xd = xd
         self.y = y
         self.xs = xs
+
+        self.xs = self.xs.astype(np.float32)
 
         self.downsampler = downsampler
 
@@ -62,41 +66,27 @@ class LSTMDataset(Dataset):
         # NORMALIZE BASED IF MAKS AND IF DOWNSAMPLING
         if normalizer_dynamic is not None:
             # this normalize the data corresponding to valid indexes
-
-            if normalizer_dynamic.stats_iscomputed:  # validation or test
-                self.xd = normalizer_dynamic.normalize(self.xd)
-            else:
-                # compute stats for training
+            if not normalizer_dynamic.stats_iscomputed:  # compute only when train_data initialized
                 normalizer_dynamic.compute_stats(self.xd[self.grid_idx_1d_valid])
-                self.xd = normalizer_dynamic.normalize(self.xd)
 
         if normalizer_static is not None:
-            if normalizer_static.stats_iscomputed:  # validation or test
-                self.xs = normalizer_static.normalize(self.xs)
-            else:
-                if downsampler:
-                    normalizer_static.compute_stats(self.xs[self.grid_idx_1d_valid])
-                else:
-                    normalizer_static.compute_stats(self.xs)
+            if not normalizer_static.stats_iscomputed:  # compute only when train_data initialized
+                normalizer_static.compute_stats(self.xs[self.grid_idx_1d_valid])
 
-                self.xs = normalizer_static.normalize(self.xs)
         if normalizer_target is not None:
-            if normalizer_target.stats_iscomputed:  # validation or test
-                self.y = normalizer_target.normalize(self.y)
-            else:
+            if not normalizer_target.stats_iscomputed:  # compute only when train_data initialized
                 normalizer_target.compute_stats(self.y[self.grid_idx_1d_valid])
-                self.y = normalizer_target.normalize(self.y)
 
-        self.xs = self.xs.astype(np.float32)
+        self.n_dynamic = normalizer_dynamic
+        self.n_static = normalizer_static
+        self.n_target = normalizer_target
 
-        if isinstance(self.xd, xr.DataArray):
-            self.xd = torch.tensor(self.xd.values)
-            self.y = torch.tensor(self.y.values)
-            self.xs = torch.tensor(self.xs.values)
-        else:
-            self.xd = torch.tensor(self.xd)
-            self.y = torch.tensor(self.y)
-            self.xs = torch.tensor(self.xs)
+        if self.persist:
+            self.xd = self.xd.persist().values
+            self.y = self.y.persist().values
+            self.xs = self.xs.persist().values
+
+        
 
     def __len__(self):
         return len(self.grid_idx_1d_valid)
@@ -106,8 +96,31 @@ class LSTMDataset(Dataset):
 
     def __getitem__(self, index):
         item_index = self.grid_idx_1d_valid[index]
+        
+        if self.persist:
+            xd = self.xd[item_index]
+            xs = self.xs[item_index]
+            y = self.y[item_index]
+        else:
+            xd = self.xd[item_index].values
+            xs = self.xs[item_index].values
+            y = self.y[item_index].values     
+
+        # Normalize
+        #import pdb;pdb.set_trace()
+        if self.n_dynamic is not None:
+            xd = self.n_dynamic.normalize(xd)[0]
+        if self.n_static is not None:
+            xs = self.n_static.normalize(xs)[0]
+        if self.n_target is not None:
+            y = self.n_target.normalize(y)[0]
+
+        # to tensor 
+        xd = torch.tensor(xd)
+        y = torch.tensor(y)
+        xs = torch.tensor(xs)
 
         if self.xs is not None:
-            return self.xd[item_index], self.xs[item_index], self.y[item_index]
+            return  xd, xs, y
         else:
-            return self.xd[item_index], self.y[item_index]
+            return xd, xs

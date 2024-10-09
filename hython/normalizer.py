@@ -6,8 +6,8 @@ from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 FUNCS = {"minmax": [nanmin, nanmax], "standardize": [nanmean, nanstd]}
 
 SCALER = {
-    "minmax": lambda arr, axis, m1, m2: (arr - np.expand_dims(m1, axis=axis))
-    / (np.expand_dims(m2, axis=axis) - np.expand_dims(m1, axis=axis)),
+    "minmax": lambda arr, axis, m1, m2: (arr - expand_dims(m1, axis=axis))
+    / (expand_dims(m2, axis=axis) - expand_dims(m1, axis=axis)),
     "standardize": lambda arr, axis, m1, m2: (arr - expand_dims(m1, axis=axis))
     / expand_dims(m2, axis=axis),
 }
