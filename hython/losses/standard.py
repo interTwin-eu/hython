@@ -3,6 +3,8 @@ from typing import Optional, List
 import torch
 from torch import nn
 from torch.nn.modules.loss import _Loss
+import torch.nn.functional as F
+
 
 class RMSELoss(_Loss):
     __name__ = "RMSE"

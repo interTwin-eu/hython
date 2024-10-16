@@ -3,7 +3,7 @@ import xarray as xr
 import pandas as pd
 import math
 
-__all__ = ["MSEMetric", "RMSEMetric"]
+from hython.utils import keep_valid
 
 
 def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
@@ -12,9 +12,12 @@ def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
             metrics = {}
             for idx, target in enumerate(target_names):
                 metrics[target] = wrapped(y_true[:, idx], y_pred[:, idx], sample_weight)
-            return metrics 
+            return metrics
+
         return wrapper
+
     return target
+
 
 class Metric:
     """
@@ -26,8 +29,10 @@ class Metric:
     TODO: In forecasting, the shape of y_true and y_pred is going to be (N,T,C), where T is the n of future time steps.
 
     """
+
     def __init__(self):
         pass
+
 
 class MSEMetric(Metric):
     """
@@ -42,23 +47,25 @@ class MSEMetric(Metric):
     Returns
     -------
     Dictionary of MSE metric for each target. {'target': mse_metric}
-    
+
     """
+
     def __call__(self, y_pred, y_true, target_names: list[str]):
         return metric_decorator(y_pred, y_true, target_names)(compute_mse)()
+
 
 class RMSEMetric(Metric):
     def __call__(self, y_pred, y_true, target_names: list[str]):
         return metric_decorator(y_pred, y_true, target_names)(compute_rmse)()
-    
+
 
 # == METRICS
 # The metrics below should work for both numpy or xarray inputs. The usage of xarray inputs is supported as it is handy for lazy computations
 # e.g. compute_mse(y_true.chunk(lat=100,lon=100), y_pred.chunk(lat=100,lon=100)).compute()
 
 
+# DISCHARGE
 
-# DISCHARGE 
 
 def compute_fdc_fms(observed_flow: pd.DataFrame, observed_col: str, 
                  simulated_flow: pd.DataFrame, simulated_col: str) -> float:
@@ -218,9 +225,7 @@ def compute_fdc_flv(observed_flow: pd.DataFrame, observed_col: str,
     
     return float(biasFLV)
 
-
 # SOIL MOISTURE
-
 
 def compute_hr(observed: xr.DataArray, simulated: xr.DataArray, wet_threshold_percentile: float = 0.8, dry_threshold_percentile: float = 0.2) -> dict:
     """
@@ -419,41 +424,104 @@ def compute_csi(observed: xr.DataArray, simulated: xr.DataArray, wet_threshold_p
 
 # GENERAL
 
-def compute_variance(ds,dim="time", axis=0, std=False):
+
+def compute_variance(ds, dim="time", axis=0, std=False):
     if isinstance(ds, xr.DataArray):
         return ds.std(dim=dim) if std else ds.var(dim=dim)
     else:
-        return np.std(ds, axis=axis) if std else np.var(ds, axis=axis) 
-    
+        return np.nanstd(ds, axis=axis) if std else np.nanvar(ds, axis=axis)
+
+
 def compute_gamma(y_true: xr.DataArray, y_pred, axis=0):
-    m1, m2 = np.mean(y_true, axis=axis), np.mean(y_pred, axis=axis)
-    return (np.std(y_pred, axis=axis) / m2) / (np.std(y_true, axis=axis) / m1)
-    
-def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0):
-    if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-         return 100 * ( (y_pred - y_true).mean(dim=dim, skipna=False) / np.abs(y_true).mean(dim=dim, skipna=False))
+    if isinstance(ds, xr.DataArray):
+        pass    
     else:
-        return 100 * ( np.mean(y_pred - y_true, axis=axis) / np.mean(np.abs(y_true), axis=axis) )
+        y_true, y_pred = keep_valid(y_true, y_pred)
+        m1, m2 = np.mean(y_true, axis=axis), np.mean(y_pred, axis=axis)
+    return (np.nanstd(y_pred, axis=axis) / m2) / (np.nanstd(y_true, axis=axis) / m1)
 
-def compute_bias(y_true: xr.DataArray, y_pred, dim="time", axis=0):
-    if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-         return  (y_pred - y_true).mean(dim=dim, skipna=False)
-    else:
-        return np.mean(y_pred - y_true, axis=axis) 
 
-def compute_rmse(y_true, y_pred, dim="time", axis=0):
+def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-        return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=False))
+        return 100 * (
+            (y_pred - y_true).mean(dim=dim, skipna=skipna)
+            / np.abs(y_true).mean(dim=dim, skipna=skipna)
+        )
     else:
+        return 100 * (
+            np.mean(y_pred - y_true, axis=axis) / np.mean(np.abs(y_true), axis=axis)
+        )
+
+
+def compute_bias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False):
+    if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
+        return (y_pred - y_true).mean(dim=dim, skipna=skipna)
+    else:
+        return np.mean(y_pred - y_true, axis=axis)
+
+
+def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False):
+    if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
+        return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna))
+    else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
         return np.sqrt(np.mean((y_pred - y_true) ** 2, axis=axis))
-    
-def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None):
+
+
+def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None, skipna=False ):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
-        return ((y_pred - y_true) ** 2).mean(dim=dim, skipna=False)
+        return ((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna)
     else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
         return np.average((y_pred - y_true) ** 2, axis=axis, weights=sample_weight)
 
 
+def compute_pearson(y_true, y_pred, axis=0, dim="time", sample_weight=None):
+    if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
+        return xr.corr(y_true, y_pred, dim=dim, weights=sample_weight)
+    else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
+        raise NotImplementedError
+
+
+def compute_kge(y_true, y_pred):
+    if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)):
+        return np.array([np.nan, np.nan, np.nan, np.nan])
+
+    # r = np.corrcoef(observed, simulated)[1, 0]
+    # alpha = np.std(simulated, ddof=1) /np.std(observed, ddof=1)
+    # beta = np.mean(simulated) / np.mean(observed)
+    # kge = 1 - np.sqrt(np.power(r-1, 2) + np.power(alpha-1, 2) + np.power(beta-1, 2))
+    y_true, y_pred = keep_valid(y_true, y_pred)
+
+    m_ytrue, m_ypred = np.mean(y_true, axis=0), np.mean(y_pred, axis=0)
+    num_r = np.sum((y_true - m_ytrue) * (y_pred - m_ypred), axis=0)
+    den_r = np.sqrt(np.sum((y_true - m_ytrue) ** 2, axis=0)) * np.sqrt(
+        np.sum((y_pred - m_ypred) ** 2, axis=0)
+    )
+    r = num_r / den_r
+    beta = m_ypred / m_ytrue
+    gamma = (np.std(y_pred, axis=0) / m_ypred) / (np.std(y_true, axis=0) / m_ytrue)
+    kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (beta - 1.0) ** 2 + (gamma - 1.0) ** 2)
+
+    return np.array([kge, r, gamma, beta])
+
+
+def compute_kge_parallel(y_target, y_pred):
+    kge = xr.apply_ufunc(
+        compute_kge,
+        y_target,
+        y_pred,
+        input_core_dims=[["time"], ["time"]],
+        output_core_dims=[["kge"]],
+        output_dtypes=[float],
+        vectorize=True,
+        dask="parallelized",
+        dask_gufunc_kwargs={"output_sizes": {"kge": 4}},
+    )
+
+    kge = kge.assign_coords({"kge": ["kge", "r", "alpha", "beta"]})
+    return kge
 
 
 def kge_metric(y_true, y_pred, target_names):
@@ -487,4 +555,3 @@ def kge_metric(y_true, y_pred, target_names):
         metrics[target] = kge
 
     return metrics
-
