@@ -2,17 +2,21 @@ import os, random
 import numpy as np
 import xarray as xr
 import torch
-import cf_xarray as cfxr
+
 from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
-import zarr
+
 from typing import Any
 from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
 import itertools
 
+
 def generate_model_name(surr_model_prefix, experiment, target_names, hidden_size, seed):
     TARGET_INITIALS = "".join([i[0].capitalize() for i in target_names])
-    return f"{surr_model_prefix}_{experiment}_v{TARGET_INITIALS}_h{hidden_size}_s{seed}.pt"
+    return (
+        f"{surr_model_prefix}_{experiment}_v{TARGET_INITIALS}_h{hidden_size}_s{seed}.pt"
+    )
+
 
 def reclass(arr, classes):
     """Returns a 2D array with reclassified values
@@ -79,9 +83,6 @@ def to_xr(arr, coords, dims=["lat", "lon", "time"]):
     return xr.DataArray(arr, dims=dims, coords=coords)
 
 
-
-
-
 def reconstruct_from_missing(
     a: NDArray, original_shape: tuple, missing_location_idx: NDArray
 ) -> NDArray:
@@ -121,87 +122,10 @@ def reconstruct_from_missing(
     return a_new
 
 
-def write_to_zarr(
-    arr: DaskArray | xr.DataArray,
-    url,
-    group=None,
-    storage_options={},
-    overwrite=True,
-    chunks="auto",
-    clear_zarr_storage=False,
-    append_on_time=False,
-    time_chunk_size=200,
-    multi_index=None,
-    append_attrs: dict = None,
-):
-    if isinstance(arr, DaskArray):
-        arr = arr.rechunk(chunks=chunks)
-        arr.to_zarr(
-            url=url,
-            storage_options=storage_options,
-            overwrite=overwrite,
-            component=group,
-        )
-
-    if isinstance(arr, xr.DataArray) or isinstance(arr, xr.Dataset):
-        original_dataarray_attrs = arr.attrs
-
-        if overwrite:
-            overwrite = "w"
-        else:
-            overwrite = "r"
-        if chunks:
-            arr = arr.chunk(chunks=chunks)
-        
-        if isinstance(arr, xr.DataArray):
-            shape = arr.shape
-        else:
-            shape = list(arr.sizes.values())
-
-
-        if append_attrs:
-            arr.attrs.update(append_attrs)
-
-        if multi_index:
-            arr = arr.to_dataset(name=group)
-            arr = cfxr.encode_multi_index_as_compress(arr, multi_index)
-
-        if append_on_time:
-            fs_store = zarr.storage.FSStore(
-                url, storage_options=storage_options, mode=overwrite
-            )
-
-            if clear_zarr_storage:
-                fs_store.clear()
-
-
-            # initialize
-            init = arr.isel(time=slice(0, time_chunk_size)).persist()
-            # init[group].attrs.clear()
-
-            init.to_zarr(fs_store, consolidated=True, group=group, mode=overwrite)
-
-
-            for t in range(time_chunk_size, shape[1], time_chunk_size):  # append time
-                arr.isel(time=slice(t, t + time_chunk_size)).to_zarr(
-                    fs_store, append_dim="time", consolidated=True, group=group
-                )
-        else:
-            arr.to_zarr(
-                store=url, storage_options=storage_options, mode=overwrite, group=group
-            )
-
-
-def read_from_zarr(url, group=None, multi_index=None, engine="xarray"):
-    if engine == "xarray":
-        ds = xr.open_dataset(url, group=group, engine="zarr")
-        if multi_index:
-            ds = cfxr.decode_compress_to_multi_index(ds, multi_index)
-        return ds
-
 def reshape_to_2Dspatial(a, lat_size, lon_size, time_size, feat_size, coords=None):
     tmp = a.reshape(lat_size, lon_size, time_size, feat_size)
     return tmp
+
 
 def prepare_for_plotting(
     y_target: NDArray,
@@ -231,6 +155,7 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = True
 
+
 def compute_grid_indices(shape=None, grid=None):
     if grid is not None:
         if isinstance(grid, np.ndarray):
@@ -247,32 +172,42 @@ def compute_grid_indices(shape=None, grid=None):
 
     return grid_idx
 
-def compute_cubelet_spatial_idxs(shape, xsize, ysize, xover, yover, keep_degenerate_cbs=False, masks = None,
-                                 missing_policy = "all"): # assume time,lat,lon
 
-    time_size,lat_size,lon_size = shape
+def compute_cubelet_spatial_idxs(
+    shape,
+    xsize,
+    ysize,
+    xover,
+    yover,
+    keep_degenerate_cbs=False,
+    masks=None,
+    missing_policy="all",
+):  # assume time,lat,lon
+    time_size, lat_size, lon_size = shape
 
-    # compute 
-    space_idx = compute_grid_indices(shape = (lat_size,lon_size))
-    
+    # compute
+    space_idx = compute_grid_indices(shape=(lat_size, lon_size))
+
     idx = 0
-    cbs_indexes, cbs_indexes_missing, cbs_indexes_degenerate, cbs_slices = [],[],[],[]
-    
+    cbs_indexes, cbs_indexes_missing, cbs_indexes_degenerate, cbs_slices = (
+        [],
+        [],
+        [],
+        [],
+    )
+
     for ix in range(0, lon_size, xsize - xover):
         for iy in range(0, lat_size, ysize - yover):
             xslice = slice(ix, ix + xsize)
             yslice = slice(iy, iy + ysize)
-            # don't need the original data, but a derived 2D array of indices, very light! 
+            # don't need the original data, but a derived 2D array of indices, very light!
             cubelet = space_idx[yslice, xslice]
 
-            
-            
             # decide whether keep or not degenerate cubelets, otherwise these can be restored in the dataset using the collate function, which will fill with zeros
             if cubelet.shape[0] < ysize or cubelet.shape[1] < xsize:
                 cbs_indexes_degenerate.append(idx)
                 if not keep_degenerate_cbs:
                     continue
-
 
             if masks is not None:
                 # keep or not cubelets that are all nans
@@ -288,68 +223,81 @@ def compute_cubelet_spatial_idxs(shape, xsize, ysize, xover, yover, keep_degener
                 else:
                     nmissing = mask_cubelet.sum()
                     total = mask_cubelet.shape[0] * mask_cubelet.shape[1]
-                    missing_fraction = nmissing/total
+                    missing_fraction = nmissing / total
                     if missing_fraction > missing_policy:
                         cbs_indexes_missing.append(idx)
                         continue
-                
-            cbs_slices.append([yslice, xslice]) # latlon
+
+            cbs_slices.append([yslice, xslice])  # latlon
             cbs_indexes.append(idx)
-                
+
             idx += 1
 
     assert len(cbs_slices) == len(cbs_indexes)
-    
-    return list(map(np.array, [cbs_indexes,cbs_indexes_missing, cbs_indexes_degenerate, cbs_slices]))
 
-def compute_cubelet_time_idxs(shape, tsize, tover, keep_degenerate_cbs = False, masks = None): # assume time,lat,lon
+    return list(
+        map(
+            np.array,
+            [cbs_indexes, cbs_indexes_missing, cbs_indexes_degenerate, cbs_slices],
+        )
+    )
 
-    time_size,lat_size,lon_size = shape
+
+def compute_cubelet_time_idxs(
+    shape, tsize, tover, keep_degenerate_cbs=False, masks=None
+):  # assume time,lat,lon
+    time_size, lat_size, lon_size = shape
 
     idx = 0
-    cbs_indexes, cbs_indexes_degenerate, cbs_slices = [],[], []
+    cbs_indexes, cbs_indexes_degenerate, cbs_slices = [], [], []
 
     for it in range(0, time_size, tsize - tover):
-        
         tslice = slice(it, it + tsize)
-                
+
         if len(range(time_size)[tslice]) < tsize:
             cbs_indexes_degenerate.append(idx)
             if not keep_degenerate_cbs:
                 continue
-                
+
         cbs_indexes.append(idx)
         cbs_slices.append(tslice)
         idx += 1
 
     return list(map(np.array, [cbs_indexes, cbs_indexes_degenerate, cbs_slices]))
 
+
 def cbs_mapping_idx_slice(cbs_tuple_idxs, cbs_slices):
     mapping = {}
     for ic, islice in zip(cbs_tuple_idxs, cbs_slices):
-        m = {"time":"", "lat":"", "lon":""}
-        sp_slice, t_slice = islice # lat,lon,time
-        tot_slice = (sp_slice[0], sp_slice[1], t_slice) # T C H W
-        m.update({"time":t_slice})
-        m.update({"lat":sp_slice[0]})
-        m.update({"lon":sp_slice[1]})
-        mapping[ic] = m # (sp_slice[0], sp_slice[1], t_slice)    
+        m = {"time": "", "lat": "", "lon": ""}
+        sp_slice, t_slice = islice  # lat,lon,time
+        tot_slice = (sp_slice[0], sp_slice[1], t_slice)  # T C H W
+        m.update({"time": t_slice})
+        m.update({"lat": sp_slice[0]})
+        m.update({"lon": sp_slice[1]})
+        mapping[ic] = m  # (sp_slice[0], sp_slice[1], t_slice)
     return mapping
 
 
-
 def compute_cubelet_tuple_idxs(cbs_spatial_idxs, cbs_time_idxs):
-     return list(itertools.product(*(cbs_spatial_idxs, cbs_time_idxs))) # lat,lon,time
+    return list(itertools.product(*(cbs_spatial_idxs, cbs_time_idxs)))  # lat,lon,time
+
 
 def compute_cubelet_slices(cbs_spatial_slices, cbs_time_slices):
-     return list(itertools.product(*(cbs_spatial_slices, cbs_time_slices))) # lat,lon,time
-
+    return list(
+        itertools.product(*(cbs_spatial_slices, cbs_time_slices))
+    )  # lat,lon,time
 
 
 def get_unique_time_idxs(cbs_mapping_idxs):
     return np.unique([i[-1] for i in cbs_mapping_idxs.keys()]).tolist()
+
+
 def get_unique_spatial_idxs(cbs_mapping_idxs):
     return np.unique([i[0] for i in cbs_mapping_idxs.keys()]).tolist()
 
-
-
+def keep_valid(a, b):
+    m1 = ~np.isnan(a)
+    m2 = ~np.isnan(b)
+    m3 = (m1) & (m2)
+    return a[m3], b[m3]

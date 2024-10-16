@@ -46,8 +46,6 @@ def plot_sampler(
     # #ax.set_xlim([6, 7.5])
     # #ax.set_ylim([45.5, 46.5])
 
-    
-
     cmap = plt.colormaps["terrain"]
     # cmap = ListedColormap(["black", "gold", "lightseagreen", "purple", "blue"])
     vmin = 0
@@ -234,7 +232,14 @@ def map_points(lat=[], lon=[], bkg_map=None):
 
 
 def ts_compare(
-    y: xr.DataArray, yhat, lat=[], lon=[], label_1="wflow", label_2="LSTM", bkg_map=None, save = False
+    y: xr.DataArray,
+    yhat,
+    lat=[],
+    lon=[],
+    label_1="wflow",
+    label_2="LSTM",
+    bkg_map=None,
+    save=False,
 ):
     time = y.time.values
     for ilat, ilon in zip(lat, lon):
@@ -270,76 +275,77 @@ def ts_compare(
             fig.savefig(save)
 
 
-
-def show_cubelet_tile(dataset,n = 10, 
-                      dynamic_var_idx = 0, 
-                      static_var_idx = 0, 
-                      target_var_idx = 0, 
-                      seq_step_idx = 10,
-                      data_idx = 1,
-                      target_names = None,
-                      dynamic_names = None,
-                      static_names = None):  
-    
-    idx = np.random.randint(0,len(dataset), n)
+def show_cubelet_tile(
+    dataset,
+    n=10,
+    dynamic_var_idx=0,
+    static_var_idx=0,
+    target_var_idx=0,
+    seq_step_idx=10,
+    data_idx=1,
+    target_names=None,
+    dynamic_names=None,
+    static_names=None,
+):
+    idx = np.random.randint(0, len(dataset), n)
     if isinstance(seq_step_idx, list):
         tx, ts, ty = dataset[data_idx]
-        for t in range(seq_step_idx[0],seq_step_idx[-1]):
-            fig, axs = plt.subplots(1,3, figsize=(10,5))
-            p1 = axs[0].imshow(tx[t, dynamic_var_idx , ...]) # L C H W
+        for t in range(seq_step_idx[0], seq_step_idx[-1]):
+            fig, axs = plt.subplots(1, 3, figsize=(10, 5))
+            p1 = axs[0].imshow(tx[t, dynamic_var_idx, ...])  # L C H W
             if dynamic_names:
                 title = f"{dynamic_names[dynamic_var_idx]} (forcing)"
             else:
                 title = "forcing"
             axs[0].set_title(title)
-            plt.colorbar(p1,fraction=0.046, pad=0.04)
+            plt.colorbar(p1, fraction=0.046, pad=0.04)
             axs[0].axis("off")
-            
-            p2 = axs[1].imshow(ts[t, static_var_idx , ...])
+
+            p2 = axs[1].imshow(ts[t, static_var_idx, ...])
             if static_names:
                 title = f"{static_names[static_var_idx]} (static)"
             else:
                 title = "static"
             axs[1].set_title(title)
             axs[1].axis("off")
-            plt.colorbar(p2,fraction=0.046, pad=0.04)
-            
+            plt.colorbar(p2, fraction=0.046, pad=0.04)
+
             p3 = axs[2].imshow(ty[t, target_var_idx, ...])
             if target_names:
                 title = f"{target_names[target_var_idx]} (target)"
             else:
                 title = "target"
             axs[2].set_title(title)
-            plt.colorbar(p3,fraction=0.046, pad=0.04)
-            axs[2].axis("off")       
+            plt.colorbar(p3, fraction=0.046, pad=0.04)
+            axs[2].axis("off")
 
-    else:    
+    else:
         for i in idx:
-            tx,ts,ty = dataset[i]
-            fig, axs = plt.subplots(1,3, figsize=(10,5))
-            p1 = axs[0].imshow(tx[seq_step_idx, dynamic_var_idx , ...]) # L C H W
+            tx, ts, ty = dataset[i]
+            fig, axs = plt.subplots(1, 3, figsize=(10, 5))
+            p1 = axs[0].imshow(tx[seq_step_idx, dynamic_var_idx, ...])  # L C H W
             if dynamic_names:
                 title = f"{dynamic_names[dynamic_var_idx]} (forcing)"
             else:
                 title = "forcing"
             axs[0].set_title(title)
-            plt.colorbar(p1,fraction=0.046, pad=0.04)
+            plt.colorbar(p1, fraction=0.046, pad=0.04)
             axs[0].axis("off")
-            
-            p2 = axs[1].imshow(ts[seq_step_idx, static_var_idx , ...])
+
+            p2 = axs[1].imshow(ts[seq_step_idx, static_var_idx, ...])
             if static_names:
                 title = f"{static_names[static_var_idx]} (static)"
             else:
                 title = "static"
             axs[1].set_title(title)
             axs[1].axis("off")
-            plt.colorbar(p2,fraction=0.046, pad=0.04)
-            
+            plt.colorbar(p2, fraction=0.046, pad=0.04)
+
             p3 = axs[2].imshow(ty[seq_step_idx, target_var_idx, ...])
             if target_names:
                 title = f"{target_names[target_var_idx]} (target)"
             else:
                 title = "target"
             axs[2].set_title(title)
-            plt.colorbar(p3,fraction=0.046, pad=0.04)
+            plt.colorbar(p3, fraction=0.046, pad=0.04)
             axs[2].axis("off")
