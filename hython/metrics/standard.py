@@ -1,6 +1,6 @@
 import numpy as np
 import xarray as xr
-
+from hython.utils import keep_valid
 
 def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
     def target(wrapped):
@@ -105,12 +105,16 @@ def compute_variance(ds, dim="time", axis=0, std=False):
     if isinstance(ds, xr.DataArray):
         return ds.std(dim=dim) if std else ds.var(dim=dim)
     else:
-        return np.std(ds, axis=axis) if std else np.var(ds, axis=axis)
+        return np.nanstd(ds, axis=axis) if std else np.nanvar(ds, axis=axis)
 
 
 def compute_gamma(y_true: xr.DataArray, y_pred, axis=0):
-    m1, m2 = np.mean(y_true, axis=axis), np.mean(y_pred, axis=axis)
-    return (np.std(y_pred, axis=axis) / m2) / (np.std(y_true, axis=axis) / m1)
+    if isinstance(ds, xr.DataArray):
+        pass    
+    else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
+        m1, m2 = np.mean(y_true, axis=axis), np.mean(y_pred, axis=axis)
+    return (np.nanstd(y_pred, axis=axis) / m2) / (np.nanstd(y_true, axis=axis) / m1)
 
 
 def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False):
@@ -136,6 +140,7 @@ def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna))
     else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
         return np.sqrt(np.mean((y_pred - y_true) ** 2, axis=axis))
 
 
@@ -143,6 +148,7 @@ def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None, skipna=F
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return ((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna)
     else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
         return np.average((y_pred - y_true) ** 2, axis=axis, weights=sample_weight)
 
 
@@ -150,6 +156,7 @@ def compute_pearson(y_true, y_pred, axis=0, dim="time", sample_weight=None):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return xr.corr(y_true, y_pred, dim=dim, weights=sample_weight)
     else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
         raise NotImplementedError
 
 
@@ -161,15 +168,16 @@ def compute_kge(y_true, y_pred):
     # alpha = np.std(simulated, ddof=1) /np.std(observed, ddof=1)
     # beta = np.mean(simulated) / np.mean(observed)
     # kge = 1 - np.sqrt(np.power(r-1, 2) + np.power(alpha-1, 2) + np.power(beta-1, 2))
+    y_true, y_pred = keep_valid(y_true, y_pred)
 
-    m1, m2 = np.nanmean(y_true, axis=0), np.nanmean(y_pred, axis=0)
-    num_r = np.nansum((y_true - m1) * (y_pred - m2), axis=0)
-    den_r = np.sqrt(np.nansum((y_true - m1) ** 2, axis=0)) * np.sqrt(
-        np.nansum((y_pred - m2) ** 2, axis=0)
+    m_ytrue, m_ypred = np.mean(y_true, axis=0), np.mean(y_pred, axis=0)
+    num_r = np.sum((y_true - m_ytrue) * (y_pred - m_ypred), axis=0)
+    den_r = np.sqrt(np.sum((y_true - m_ytrue) ** 2, axis=0)) * np.sqrt(
+        np.sum((y_pred - m_ypred) ** 2, axis=0)
     )
     r = num_r / den_r
-    beta = m2 / m1
-    gamma = (np.nanstd(y_pred, axis=0) / m2) / (np.nanstd(y_true, axis=0) / m1)
+    beta = m_ypred / m_ytrue
+    gamma = (np.std(y_pred, axis=0) / m_ypred) / (np.std(y_true, axis=0) / m_ytrue)
     kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (beta - 1.0) ** 2 + (gamma - 1.0) ** 2)
 
     return np.array([kge, r, gamma, beta])

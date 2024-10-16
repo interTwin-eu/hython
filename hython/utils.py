@@ -295,3 +295,9 @@ def get_unique_time_idxs(cbs_mapping_idxs):
 
 def get_unique_spatial_idxs(cbs_mapping_idxs):
     return np.unique([i[0] for i in cbs_mapping_idxs.keys()]).tolist()
+
+def keep_valid(a, b):
+    m1 = ~np.isnan(a)
+    m2 = ~np.isnan(b)
+    m3 = (m1) & (m2)
+    return a[m3], b[m3]
