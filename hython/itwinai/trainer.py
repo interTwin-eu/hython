@@ -195,22 +195,15 @@ class RNNDistributedTrainer(TorchTrainer):
 
                 if avg_val_loss < best_loss:
                     best_loss = avg_val_loss
-                    # The code `best_model_weights` appears to be a variable
-                    # name in Python. It is not assigned any value
-                    # or operation in the provided snippet, so it is
-                    # difficult to determine its specific purpose
-                    # without additional context. It could potentially be
-                    # used to store the weights of a machine learning model
-                    # or any other relevant data  related to a model.
-                    best_model_weights = copy.deepcopy(self.model.state_dict())
-                    # trainer.save_weights(self.model, self.config.dp_weights)
-                    print("Copied best model weights!")
+                    best_model = self.model.state_dict()
 
-                    print(f"train loss: {train_loss}")
-                    print(f"val loss: {avg_val_loss}")
-
-                # self.model.load_state_dict(best_model_weights)
-
+            if self.strategy.is_main_worker:
+                self.model.load_state_dict(best_model)
+                self.log(
+                    item=self.model,
+                    identifier='LSTM',
+                    kind='model'
+                )
         return loss_history, metric_history
 
     def create_dataloaders(self, train_dataset, validation_dataset, test_dataset):
