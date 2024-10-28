@@ -66,164 +66,120 @@ class RMSEMetric(Metric):
 
 # DISCHARGE
 
-
-def compute_fdc_fms(observed_flow: pd.DataFrame, observed_col: str, 
-                 simulated_flow: pd.DataFrame, simulated_col: str) -> float:
+def compute_fdc_fms(observed_flow: np.ndarray, simulated_flow: np.ndarray) -> float:
     """
     Compute the bias between observed and simulated discharge values
     at specified exceedance probabilities (0.2 and 0.7).
 
     Parameters:
-    observed_flow (pd.DataFrame): DataFrame containing observed flow data.
-    observed_col (str): Column name for observed discharge values.
-    simulated_flow (pd.DataFrame): DataFrame containing simulated flow data.
-    simulated_col (str): Column name for simulated discharge values.
+    observed_flow (np.ndarray): Array containing observed discharge values.
+    simulated_flow (np.ndarray): Array containing simulated discharge values.
 
     Returns:
     float: Bias percentage.
     """
-
-    # Check if both DataFrames have the same number of records
+    
     if len(observed_flow) != len(simulated_flow):
-        raise ValueError("The observed and simulated DataFrames must have the same number of records.")
+        raise ValueError("Observed and simulated arrays must have the same number of records.")
     
-    # Step 1: Sort simulated flow data
-    data_simulated_sorted = simulated_flow.sort_values(by=simulated_col, ascending=False).reset_index(drop=True)
+    # Step 1: Sort discharge values in descending order
+    data_simulated_sorted = np.sort(simulated_flow)[::-1]
+    data_observed_sorted = np.sort(observed_flow)[::-1]
     
-    # Step 2: Calculate exceedance probabilities for simulated data
-    n_simulated = len(data_simulated_sorted)
-    data_simulated_sorted['exceedance_probability'] = (data_simulated_sorted.index + 1) / (n_simulated + 1)
+    # Step 2: Calculate exceedance probabilities
+    n = len(data_simulated_sorted)
+    exceedance_probs = (np.arange(1, n + 1)) / (n + 1)
     
-    # Step 3: Extract discharge values for exceedance probabilities 0.2 and 0.7 (simulated)
-    QSM1 = data_simulated_sorted.loc[data_simulated_sorted['exceedance_probability'] >= 0.2, simulated_col].iloc[0]
-    QSM2 = data_simulated_sorted.loc[data_simulated_sorted['exceedance_probability'] >= 0.7, simulated_col].iloc[0]
+    # Step 3: Extract discharge values for exceedance probabilities 0.2 and 0.7
+    QSM1 = data_simulated_sorted[exceedance_probs >= 0.2][0]
+    QSM2 = data_simulated_sorted[exceedance_probs >= 0.7][0]
+    QOM1 = data_observed_sorted[exceedance_probs >= 0.2][0]
+    QOM2 = data_observed_sorted[exceedance_probs >= 0.7][0]
 
-    # Step 4: Sort observed flow data
-    data_observed_sorted = observed_flow.sort_values(by=observed_col, ascending=False).reset_index(drop=True)
-    
-    # Step 5: Calculate exceedance probabilities for observed data
-    n_observed = len(data_observed_sorted)
-    data_observed_sorted['exceedance_probability'] = (data_observed_sorted.index + 1) / (n_observed + 1)
-    
-    # Step 6: Extract discharge values for exceedance probabilities 0.2 and 0.7 (observed)
-    QOM1 = data_observed_sorted.loc[data_observed_sorted['exceedance_probability'] >= 0.2, observed_col].iloc[0]
-    QOM2 = data_observed_sorted.loc[data_observed_sorted['exceedance_probability'] >= 0.7, observed_col].iloc[0]
-
-    # Step 7: Calculate bias
-    biasFMS = (((math.log(QSM1) - math.log(QSM2)) - (math.log(QOM1) - math.log(QOM2))) /
-                (math.log(QOM1) - math.log(QOM2))) * 100
-    
+    # Step 4: Calculate bias
+    biasFMS = (((math.log(QSM1) - math.log(QSM2)) - (math.log(QOM1) - math.log(QOM2))) / 
+               (math.log(QOM1) - math.log(QOM2))) * 100
     print(f'BiasFMS : {biasFMS}')
-
+    
     return biasFMS
 
-def compute_fdc_fhv(observed_flow: pd.DataFrame, observed_col: str, 
-                     simulated_flow: pd.DataFrame, simulated_col: str) -> float:
+def compute_fdc_fhv(observed_flow: np.ndarray, simulated_flow: np.ndarray) -> float:
     """
     Compute the Bias FHV (Flow Volume Bias) between observed and simulated discharge values
     at an exceedance probability of 0.02.
 
     Parameters:
-    observed_flow (pd.DataFrame): DataFrame containing observed flow data.
-    observed_col (str): Column name for observed discharge values.
-    simulated_flow (pd.DataFrame): DataFrame containing simulated flow data.
-    simulated_col (str): Column name for simulated discharge values.
+    observed_flow (np.ndarray): Array containing observed discharge values.
+    simulated_flow (np.ndarray): Array containing simulated discharge values.
 
     Returns:
     float: Bias FHV percentage.
     """
     
-    # Check if both DataFrames have the same number of records
     if len(observed_flow) != len(simulated_flow):
-        raise ValueError("The observed and simulated DataFrames must have the same number of records.")
+        raise ValueError("Observed and simulated arrays must have the same number of records.")
     
-    # Sort simulated flow data
-    data_simulated_sorted = simulated_flow.sort_values(by=simulated_col, ascending=False).reset_index(drop=True)
+    # Sort and calculate exceedance probabilities
+    data_simulated_sorted = np.sort(simulated_flow)[::-1]
+    data_observed_sorted = np.sort(observed_flow)[::-1]
+    n = len(data_simulated_sorted)
+    exceedance_probs = (np.arange(1, n + 1)) / (n + 1)
     
-    # Calculate exceedance probabilities for simulated data
-    n_simulated = len(data_simulated_sorted)
-    data_simulated_sorted['exceedance_probability'] = (data_simulated_sorted.index + 1) / (n_simulated + 1)
-
-    # Sort observed flow data
-    data_observed_sorted = observed_flow.sort_values(by=observed_col, ascending=False).reset_index(drop=True)
-    
-    # Calculate exceedance probabilities for observed data
-    n_observed = len(data_observed_sorted)
-    data_observed_sorted['exceedance_probability'] = (data_observed_sorted.index + 1) / (n_observed + 1)
-
     # Calculate FHV for exceedance probability <= 0.02
-    fhv_qo = data_observed_sorted.loc[data_observed_sorted['exceedance_probability'] <= 0.02, observed_col]
-    fhv_qs = data_simulated_sorted.loc[data_simulated_sorted['exceedance_probability'] <= 0.02, simulated_col]
+    fhv_qo = data_observed_sorted[exceedance_probs <= 0.02]
+    fhv_qs = data_simulated_sorted[exceedance_probs <= 0.02]
     
-    # Ensure both fhv_qo and fhv_qs are not empty
-    if fhv_qo.empty or fhv_qs.empty:
+    if fhv_qo.size == 0 or fhv_qs.size == 0:
         raise ValueError("No data available for exceedance probability <= 0.02.")
-
+    
     # Calculate FHV
-    fhv = fhv_qs.values - fhv_qo.values
+    fhv = fhv_qs - fhv_qo
     FHV_numerator = fhv.sum()
     FHV_denominator = fhv_qo.sum()
     
-    # Calculate bias for FHV
     biasFHV = (FHV_numerator / FHV_denominator) * 100
-
     print(f'BiasFHV : {biasFHV}')
     
-    return float(biasFHV)
+    return biasFHV
 
-
-def compute_fdc_flv(observed_flow: pd.DataFrame, observed_col: str, 
-                     simulated_flow: pd.DataFrame, simulated_col: str) -> float:
+def compute_fdc_flv(observed_flow: np.ndarray, simulated_flow: np.ndarray) -> float:
     """
     Compute the Bias FLV (Flow Volume Bias) between observed and simulated discharge values
     at an exceedance probability of 0.7.
 
     Parameters:
-    observed_flow (pd.DataFrame): DataFrame containing observed flow data.
-    observed_col (str): Column name for observed discharge values.
-    simulated_flow (pd.DataFrame): DataFrame containing simulated flow data.
-    simulated_col (str): Column name for simulated discharge values.
+    observed_flow (np.ndarray): Array containing observed discharge values.
+    simulated_flow (np.ndarray): Array containing simulated discharge values.
 
     Returns:
     float: Bias FLV percentage.
     """
-
-    # Check if both DataFrames have the same number of records
+    
     if len(observed_flow) != len(simulated_flow):
-        raise ValueError("The observed and simulated DataFrames must have the same number of records.")
+        raise ValueError("Observed and simulated arrays must have the same number of records.")
     
-    # Sort simulated flow data
-    data_simulated_sorted = simulated_flow.sort_values(by=simulated_col, ascending=False).reset_index(drop=True)
+    # Sort and calculate exceedance probabilities
+    data_simulated_sorted = np.sort(simulated_flow)[::-1]
+    data_observed_sorted = np.sort(observed_flow)[::-1]
+    n = len(data_simulated_sorted)
+    exceedance_probs = (np.arange(1, n + 1)) / (n + 1)
     
-    # Calculate exceedance probabilities for simulated data
-    n_simulated = len(data_simulated_sorted)
-    data_simulated_sorted['exceedance_probability'] = (data_simulated_sorted.index + 1) / (n_simulated + 1)
-
-    # Sort observed flow data
-    data_observed_sorted = observed_flow.sort_values(by=observed_col, ascending=False).reset_index(drop=True)
-    
-    # Calculate exceedance probabilities for observed data
-    n_observed = len(data_observed_sorted)
-    data_observed_sorted['exceedance_probability'] = (data_observed_sorted.index + 1) / (n_observed + 1)
-
     # Calculate FLV for exceedance probability >= 0.7
-    flv_qo = data_observed_sorted.loc[data_observed_sorted['exceedance_probability'] >= 0.7, observed_col]
-    flv_qs = data_simulated_sorted.loc[data_simulated_sorted['exceedance_probability'] >= 0.7, simulated_col]
+    flv_qo = data_observed_sorted[exceedance_probs >= 0.7]
+    flv_qs = data_simulated_sorted[exceedance_probs >= 0.7]
 
-    # Ensure both flv_qo and flv_qs are not empty
-    if flv_qo.empty or flv_qs.empty:
+    if flv_qo.size == 0 or flv_qs.size == 0:
         raise ValueError("No data available for exceedance probability >= 0.7.")
-
+    
     # Calculate FLV numerators
     FLV_numerator1 = (np.log(flv_qs) - np.log(flv_qs.min())).sum()
     FLV_numerator2 = (np.log(flv_qo) - np.log(flv_qo.min())).sum()
-
-    # Calculate bias for FLV
+    
     biasFLV = (-100 * (FLV_numerator1 - FLV_numerator2)) / FLV_numerator2
-
     print(f'BiasFLV : {biasFLV}')
     
-    return float(biasFLV)
+    return biasFLV
+
 
 # SOIL MOISTURE
 
