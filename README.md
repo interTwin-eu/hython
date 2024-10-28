@@ -14,7 +14,7 @@ The package should supports the **surrogate training**, **parameter learning** a
 
 ## Installation
 
-This package is currently under development.
+This package is currently under heavy development.
 
 
 ```bash
