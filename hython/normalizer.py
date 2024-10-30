@@ -1,5 +1,6 @@
 import numpy as np
 import xarray as xr
+import torch
 from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 
 
@@ -195,3 +196,18 @@ class Normalizer:
 
     def get_stats(self):
         return self.computed_stats
+
+
+
+class SurrogateParamRescaler:
+
+    def __init__(self, stats, type="minmax"):
+
+        self.stats = torch.tensor(stats).float()
+        self.type = type
+        
+    def rescale(self, param):
+        if self.type == "minmax":
+            return self.stats[0] + torch.sigmoid(param) * ( self.stats[1] - self.stats[0])
+        elif self.type == "standardize":
+            return param*self.stats[1]  + self.stats[0]
