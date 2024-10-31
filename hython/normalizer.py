@@ -198,12 +198,11 @@ class Normalizer:
         return self.computed_stats
 
 
-
 class SurrogateParamRescaler:
 
-    def __init__(self, stats, type="minmax"):
+    def __init__(self, stats, device="cpu", type="minmax"):
 
-        self.stats = torch.tensor(stats).float()
+        self.stats = torch.tensor(stats).float().to(device)
         self.type = type
         
     def rescale(self, param):
