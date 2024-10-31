@@ -25,18 +25,19 @@ class RMSELoss(_Loss):
         self.mseloss = nn.MSELoss()
         self.target_weight = target_weight
 
-    def forward(self, y_true, y_pred):
+    def forward(self, y_true, y_pred, valid_mask=None):
         """
         Calculate the Root Mean Squared Error (RMSE) between two tensors.
 
         Parameters:
         y_true (torch.Tensor): The true values.
         y_pred (torch.Tensor): The predicted values.
+        valid_mask: A boolean mask to pre-filter the y_true and y_pred before they are used in the loss function. 
 
         Shape
-        y_true: torch.Tensor of shape (N, T).
-        y_pred: torch.Tensor of shape (N, T).
-        (256,3) means 256 samples with 3 targets.
+        y_true: torch.Tensor of shape (N, C).
+        y_pred: torch.Tensor of shape (N, C).
+        valid_mask: 
 
         Returns:
         torch.Tensor: The RMSE loss.
@@ -46,14 +47,29 @@ class RMSELoss(_Loss):
         else:
             if len(self.target_weight.keys()) > 1:
                 total_rmse_loss = 0
-                for idx, k in enumerate(self.target_weight):
-                    w = self.target_weight[k]
-                    rmse_loss = torch.sqrt(self.mseloss(y_true[:, idx], y_pred[:, idx]))
+                for itarget, target in enumerate(self.target_weight):
+                    iypred = y_pred[:, itarget]
+                    iytrue = y_true[:, itarget]
+                    if valid_mask is not None:
+                        imask = valid_mask[:, itarget]
+                        iypred = iypred[imask]
+                        iytrue = iytrue[imask]
+                    w = self.target_weight[target]
+                    rmse_loss = torch.sqrt(self.mseloss(iytrue, iypred))
                     loss = rmse_loss * w
                     total_rmse_loss += loss
-            else:
-                total_rmse_loss = torch.sqrt(self.mseloss(y_true, y_pred))
-
+            else: # case when only one target is available
+                if len(y_pred.shape) > 1:
+                    iypred = y_pred[:, 0]
+                    iytrue = y_true[:, 0]
+                else:
+                    iypred = y_pred 
+                    iytrue = y_true
+                if valid_mask is not None:
+                    imask = valid_mask[:, 0]
+                    iypred = iypred[imask]
+                    iytrue = iytrue[imask]
+                total_rmse_loss = torch.sqrt(self.mseloss(iytrue, iypred))
         return total_rmse_loss
 
 

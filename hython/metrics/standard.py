@@ -6,12 +6,18 @@ import math
 from hython.utils import keep_valid
 
 
-def metric_decorator(y_true, y_pred, target_names, sample_weight=None):
+def metric_decorator(y_true, y_pred, target_names, valid_mask = None, sample_weight=None):
     def target(wrapped):
         def wrapper():
             metrics = {}
             for idx, target in enumerate(target_names):
-                metrics[target] = wrapped(y_true[:, idx], y_pred[:, idx], sample_weight)
+                iypred = y_pred[:, idx]
+                iytrue = y_true[:, idx]
+                if valid_mask is not None:
+                    imask = valid_mask[:, idx]
+                    iypred = iypred[imask]
+                    iytrue = iytrue[imask]
+                metrics[target] = wrapped(iytrue, iypred, valid_mask=valid_mask, sample_weight = sample_weight)
             return metrics
 
         return wrapper
@@ -50,8 +56,8 @@ class MSEMetric(Metric):
 
     """
 
-    def __call__(self, y_pred, y_true, target_names: list[str]):
-        return metric_decorator(y_pred, y_true, target_names)(compute_mse)()
+    def __call__(self, y_pred, y_true, target_names: list[str], valid_mask = None):
+        return metric_decorator(y_pred, y_true, target_names, valid_mask=valid_mask)(compute_mse)()
 
 
 class RMSEMetric(Metric):
@@ -424,7 +430,7 @@ def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False):
         return np.sqrt(np.mean((y_pred - y_true) ** 2, axis=axis))
 
 
-def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None, skipna=False ):
+def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None, valid_mask=None, skipna=False ):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return ((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna)
     else:

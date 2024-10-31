@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from hython.hython.metrics.standard import MSEMetric, RMSEMetric, compute_mse
+from hython.metrics.standard import MSEMetric, RMSEMetric, compute_mse
 
 TARGETS = ["vwc", "actevap"]
 
@@ -22,4 +22,12 @@ def test_mse_class():
     b = a = np.random.randn(100, 2)
     ret = MSEMetric()(a, b, TARGETS)
 
+    assert np.all([ret[t] == 0 for t in TARGETS])
+
+
+def test_mse_class_valid_mask():
+    b = a = np.random.randn(100, 2)
+    mask = np.random.randint(0,2, (100,2)).astype(bool)
+    ret = MSEMetric()(a, b, TARGETS, valid_mask=mask)
+    
     assert np.all([ret[t] == 0 for t in TARGETS])

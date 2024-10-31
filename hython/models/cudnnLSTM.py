@@ -1,8 +1,8 @@
 import torch
 from torch import nn
+from . import ParamRescalerMixin
 
-
-class CuDNNLSTM(nn.Module):
+class CuDNNLSTM(nn.Module, ParamRescalerMixin):
     def __init__(
         self,
         hidden_size: int = 34,
@@ -12,10 +12,18 @@ class CuDNNLSTM(nn.Module):
         static_to_dynamic: bool = True,
         num_layers: int = 1,
         dropout: float = 0.0,
+        batch_norm: bool = False,
+        rescaler = None
     ):
         super(CuDNNLSTM, self).__init__()
 
         self.static_to_dynamic = static_to_dynamic
+
+        self.bn_flag = batch_norm
+        if batch_norm: 
+            self.bn_layer = nn.BatchNorm1d(dynamic_input_size + static_input_size) # expects N C T
+
+        self.rescaler = rescaler
 
         self.fc0 = nn.Linear(dynamic_input_size + static_input_size, hidden_size)
 
@@ -30,6 +38,10 @@ class CuDNNLSTM(nn.Module):
         self.fc1 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
+
+        if self.bn_flag:
+            x  = self.bn_layer(x.permute(0,2,1)).permute(0,2,1)
+
         l1 = self.fc0(x)
 
         lstm_output, (h_n, c_n) = self.lstm(l1)

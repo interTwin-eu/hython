@@ -279,6 +279,19 @@ def cbs_mapping_idx_slice(cbs_tuple_idxs, cbs_slices):
     return mapping
 
 
+def cbs_mapping_idx_slice_notime(cbs_tuple_idxs, cbs_slices):
+    mapping = {}
+    for ic, islice in zip(cbs_tuple_idxs, cbs_slices):
+        m = {"lat":"", "lon":""}
+        #sp_slice= islice # lat,lon,time
+        #tot_slice = (sp_slice[0], sp_slice[1], t_slice) # T C H W
+        #m.update({"time":t_slice})
+        m.update({"lat":islice[0]})
+        m.update({"lon":islice[1]})
+        mapping[ic] = m # (sp_slice[0], sp_slice[1], t_slice)    
+    return mapping
+
+
 def compute_cubelet_tuple_idxs(cbs_spatial_idxs, cbs_time_idxs):
     return list(itertools.product(*(cbs_spatial_idxs, cbs_time_idxs)))  # lat,lon,time
 
