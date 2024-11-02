@@ -79,9 +79,6 @@ class LSTMModule(nn.Module):
         return lstm_output
 
 
-from hython.models.cudnnLSTM import LSTMModule
-from torch import nn
-
 
 class LandSurfaceLSTM(nn.Module):
     def __init__(self, module_dict, output_size, device=None):

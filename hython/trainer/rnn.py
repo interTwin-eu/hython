@@ -106,7 +106,8 @@ class RNNTrainer(AbstractTrainer):
                     opt,
                     self.P.gradient_clip,
                     model,
-                    add_losses,
+                    valid_mask = None, 
+                    add_losses = add_losses,
                 )
 
                 batch_temporal_loss += batch_sequence_loss
