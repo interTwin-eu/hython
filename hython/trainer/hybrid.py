@@ -79,7 +79,7 @@ class HybridTrainer(AbstractTrainer):
 
                 len_valid = sum(valid_mask) # n of valid samples in a batch
                 
-                batch_temporal_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model, valid_mask)
+                mini_batch_loss = loss_batch(self.P.loss_func, output, target, opt, self.P.gradient_clip, model, valid_mask)
 
                 if epoch_preds is None:
                     epoch_preds = output.detach().cpu().numpy()
@@ -95,10 +95,11 @@ class HybridTrainer(AbstractTrainer):
                     valid_masks = np.concatenate( (
                          valid_masks, valid_mask.detach().cpu().numpy()), axis=0)
                 
+                # Accumulate mini-batch loss, only valid samples   
+                running_batch_loss += len_valid #(mini_batch_loss
 
-            running_batch_loss += batch_temporal_loss
-
-        epoch_loss = running_batch_loss 
+        # 
+        epoch_loss = running_batch_loss / (len(dataloader)*len(self.time_index))
         
         metric = metric_epoch(
             self.P.metric_func, epoch_targets, epoch_preds, self.P.target_names, valid_masks
