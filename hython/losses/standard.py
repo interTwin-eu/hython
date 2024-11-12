@@ -25,7 +25,7 @@ class RMSELoss(_Loss):
         self.mseloss = nn.MSELoss()
         self.target_weight = target_weight
 
-    def forward(self, y_true, y_pred, valid_mask=None):
+    def forward(self, y_true, y_pred, valid_mask=None, scaling_factor = None):
         """
         Calculate the Root Mean Squared Error (RMSE) between two tensors.
 
@@ -70,6 +70,10 @@ class RMSELoss(_Loss):
                     iypred = iypred[imask]
                     iytrue = iytrue[imask]
                 total_rmse_loss = torch.sqrt(self.mseloss(iytrue, iypred))
+
+        if scaling_factor:
+            total_rmse_loss = total_rmse_loss*scaling_factor
+            
         return total_rmse_loss
 
 
@@ -81,7 +85,7 @@ class MSELoss(_Loss):
         target_weight: dict = None,
     ):
         """
-        Root Mean Squared Error (RMSE) loss for regression task.
+        Mean Squared Error (MSE) loss for regression task.
 
          Parameters:
          target_weight: List of targets that contribute in the loss computation, with their associated weights.
@@ -92,9 +96,9 @@ class MSELoss(_Loss):
         self.mseloss = nn.MSELoss()
         self.target_weight = target_weight
 
-    def forward(self, y_true, y_pred):
+    def forward(self, y_true, y_pred, valid_mask=None, scaling_factor = None):
         """
-        Calculate the Root Mean Squared Error (RMSE) between two tensors.
+        Calculate the Mean Squared Error (RMSE) between two tensors.
 
         Parameters:
         y_true (torch.Tensor): The true values.
@@ -109,14 +113,35 @@ class MSELoss(_Loss):
         torch.Tensor: The RMSE loss.
         """
         if self.target_weight is None:
-            total_mse_loss = self.mseloss(y_true, y_pred)
-
+            loss = self.mseloss(y_true, y_pred)
         else:
-            total_mse_loss = 0
-            for idx, k in enumerate(self.target_weight):
-                w = self.target_weight[k]
-                mse_loss = self.mseloss(y_true[:, idx], y_pred[:, idx])
-                loss = mse_loss * w
-                total_mse_loss += loss
+            if len(self.target_weight.keys()) > 1:
+                total_loss = 0
+                for itarget, target in enumerate(self.target_weight):
+                    iypred = y_pred[:, itarget]
+                    iytrue = y_true[:, itarget]
+                    if valid_mask is not None:
+                        imask = valid_mask[:, itarget]
+                        iypred = iypred[imask]
+                        iytrue = iytrue[imask]
+                    w = self.target_weight[target]
+                    loss = torch.sqrt(self.mseloss(iytrue, iypred))
+                    loss = loss * w
+                    total_loss += loss
+            else: # case when only one target is available
+                if len(y_pred.shape) > 1:
+                    iypred = y_pred[:, 0]
+                    iytrue = y_true[:, 0]
+                else:
+                    iypred = y_pred 
+                    iytrue = y_true
+                if valid_mask is not None:
+                    imask = valid_mask[:, 0]
+                    iypred = iypred[imask]
+                    iytrue = iytrue[imask]
+                total_loss = self.mseloss(iytrue, iypred)
 
-        return total_mse_loss
+        if scaling_factor:
+            total_loss = total_loss*scaling_factor
+            
+        return total_loss
