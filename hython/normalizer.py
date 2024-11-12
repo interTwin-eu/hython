@@ -200,13 +200,21 @@ class Normalizer:
 
 class SurrogateParamRescaler:
 
-    def __init__(self, stats, device="cpu", type="minmax"):
+    def __init__(self, stats=None, device="cpu", type="minmax"):
 
-        self.stats = torch.tensor(stats).float().to(device)
+        self.stats = torch.tensor(stats).float().to(device) if stats is not None else None 
         self.type = type
         
     def rescale(self, param):
+
+        if self.stats is None:
+            #import pdb;pdb.set_trace()
+            #minv = torch.nan_to_num(param, nan = 10e14)
+            #maxv = torch.nan_to_num(param, nan = -10e14)
+            return torch.sigmoid(param*0.5) #(param - minv.min(0)[0]) / ( maxv.max(0)[0] - minv.min(0)[0] )
+                                           
         if self.type == "minmax":
-            return self.stats[0] + torch.sigmoid(param) * ( self.stats[1] - self.stats[0])
+            temp = self.stats[0] + torch.sigmoid(param) * ( self.stats[1] - self.stats[0])
+            return (temp - self.stats[0]) / (self.stats[1] - self.stats[0] )
         elif self.type == "standardize":
             return param*self.stats[1]  + self.stats[0]

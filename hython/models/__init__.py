@@ -1,5 +1,5 @@
 
 
 class ParamRescalerMixin:
-    def rescale(self, param):
-        return self.rescaler.rescale(param)
+    def rescale(self, param, *args):
+        return self.rescaler.rescale(param, *args)

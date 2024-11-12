@@ -15,12 +15,13 @@ def loss_batch(
     model=None,
     valid_mask = None,
     add_losses: dict = {},
+    scaling_factor: float = None
 ):
     if target.shape[-1] == 1:
         target = torch.squeeze(target)
         output = torch.squeeze(output)
 
-    loss = loss_func(target, output, valid_mask=valid_mask)
+    loss = loss_func(target, output, valid_mask=valid_mask, scaling_factor=scaling_factor)
 
     # compound more losses, in case dict is not empty
     # TODO: add user-defined weights
@@ -97,6 +98,8 @@ def train_val(
         if not tqdm_support:
             print(f"Epoch: {epoch}")
         print(f"Losses - train: {train_loss.item():.6f}  val: {val_loss.item():.6f}")
+
+        print(model.scale_factor)
 
     model.load_state_dict(best_model_weights)
 
