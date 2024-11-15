@@ -1,11 +1,29 @@
 from . import * 
 from hython.preprocessor import reshape
+import numpy as np
+
+def downsample_time(coords,frac):
+    un = np.unique(coords[:,0])
+    for i, u in enumerate(un):
+        idx = np.argwhere(coords[:,0] == u)
+        l = int(len(idx)* frac)
+        idx2 = np.random.randint(idx[0], idx[-1] + 1, l )
+        if i == 0:
+            arr = coords[idx2]
+        else:
+            arr = np.concatenate([arr,coords[idx2]], axis=0)
+    return arr
+
+def downsample_spacetime(coords, frac):
+        l = int(len(coords)*frac)
+        idx = np.random.randint(0, len(coords), l )
+        return coords[idx]
 
 class CalDataset(Dataset):
     def __init__(self, static_predictor, dynamic_input, observation, period, mask, seq_len = 120, downsample = None, frac = 0.01, norm_pred=None, norm_dyn=None, norm_obs=None):
         super().__init__()
         
-        self.static = static_predictor
+        self.static = static_predictor.astype(np.float32)
         
         self.dynamic = dynamic_input.sel(time=period)
         
@@ -76,4 +94,4 @@ class CalDataset(Dataset):
         xd = self.dynamic.isel(gridcell=gridcell, time=time_delta).values
         yo = self.obs.isel(gridcell=gridcell, time=time_delta).values
 
-        return xs, xd, yo
+        return xd, xs, yo

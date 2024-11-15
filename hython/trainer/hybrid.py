@@ -108,3 +108,7 @@ class HybridTrainer(AbstractTrainer):
         """Return the n steps that should be predicted"""
         
         return arr[:, -1] # N Ch H W  
+
+
+
+

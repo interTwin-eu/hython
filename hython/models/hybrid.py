@@ -42,8 +42,9 @@ class Hybrid(nn.Module):
         #print("after: ", param.min(0)[0],param.max(0)[0])
         # concat to x_head, as of now add time dimension ot static params
         x_head_concat = torch.concat([
+                            x_head,
                             param.unsqueeze(1).repeat(1, x_head.size(1), 1),
-                            x_head], dim=2)
+                            ], dim=2)
         
         # run head layer
         output = self.head_layer(x_head_concat)
