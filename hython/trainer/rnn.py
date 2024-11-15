@@ -27,7 +27,7 @@ class RNNTrainer(AbstractTrainer):
                 else:
                     time_range = next(iter(data_loaders[0]))[0].shape[1]
                     temporal_subset = self.P.temporal_subset[0]
-
+                
                 self.time_index = np.random.randint(
                     0, time_range - self.P.seq_length, temporal_subset
                 )
@@ -106,7 +106,8 @@ class RNNTrainer(AbstractTrainer):
                     opt,
                     self.P.gradient_clip,
                     model,
-                    add_losses,
+                    valid_mask = None, 
+                    add_losses = add_losses,
                 )
 
                 batch_temporal_loss += batch_sequence_loss

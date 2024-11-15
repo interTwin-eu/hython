@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 from . import ParamRescalerMixin
 
 class CuDNNLSTM(nn.Module, ParamRescalerMixin):
@@ -13,11 +14,13 @@ class CuDNNLSTM(nn.Module, ParamRescalerMixin):
         num_layers: int = 1,
         dropout: float = 0.0,
         batch_norm: bool = False,
+        output_activation: str = "linear",
         rescaler = None
     ):
         super(CuDNNLSTM, self).__init__()
 
         self.static_to_dynamic = static_to_dynamic
+        self.output_activation = output_activation
 
         self.bn_flag = batch_norm
         if batch_norm: 
@@ -45,9 +48,12 @@ class CuDNNLSTM(nn.Module, ParamRescalerMixin):
         l1 = self.fc0(x)
 
         lstm_output, (h_n, c_n) = self.lstm(l1)
-
-        out = self.fc1(lstm_output)
-
+        
+        if self.output_activation == "linear":
+            out = self.fc1(lstm_output)
+        else:
+            out = getattr(F, self.output_activation)(self.fc1(lstm_output))
+            
         return out
 
 
@@ -78,9 +84,6 @@ class LSTMModule(nn.Module):
 
         return lstm_output
 
-
-from hython.models.cudnnLSTM import LSTMModule
-from torch import nn
 
 
 class LandSurfaceLSTM(nn.Module):
