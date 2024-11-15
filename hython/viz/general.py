@@ -350,7 +350,7 @@ def show_cubelet_tile(
             plt.colorbar(p3, fraction=0.046, pad=0.04)
             axs[2].axis("off")
 
-def plot_spatio_temporal_data_cluster(spatio_temporal_data, categorical_data, num_points=10, method='random_sampling', cluster_name=None):
+def plot_spatio_temporal_data_cluster(spatio_temporal_data, categorical_data, num_points=10, method='random_sampling', cluster_name=None, seed = None, plot_kwargs = {}):
     """
     Plot spatio-temporal data based on categorical values.
     
@@ -363,6 +363,9 @@ def plot_spatio_temporal_data_cluster(spatio_temporal_data, categorical_data, nu
     # Initialize dictionary to store sampled points for each category
     samples = {}
     time = spatio_temporal_data.time.to_numpy()
+
+    if seed is not None:
+        np.random.seed(seed)
     
     categories = np.unique(categorical_data.values[~np.isnan(categorical_data.values)])
     
@@ -418,7 +421,7 @@ def plot_spatio_temporal_data_cluster(spatio_temporal_data, categorical_data, nu
     if num_categories == 0:
         raise ValueError("No valid categories found in the data to plot.")
     
-    fig, axs = plt.subplots(num_categories, 1, figsize=(25, 20), sharex=True)
+    fig, axs = plt.subplots(num_categories, 1 , sharex=True, **plot_kwargs)
 
     # If there's only one category, axs is not a list, so we need to handle it
     if num_categories == 1:
