@@ -42,3 +42,6 @@ addopts = "-ra -q -v"
 testpaths = [
     "tests"
 ]
+
+
+lint.pydocstyle.convention = "numpy"
