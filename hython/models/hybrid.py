@@ -3,14 +3,12 @@ from torch import nn
 
 class Hybrid(nn.Module):
 
-    def __init__(self, transfernn, head_layer, rescale_transf_out=True, freeze_head=True, scale_factor = 5., device="cpu"):
+    def __init__(self, transfernn, head_layer, freeze_head=True, head_input_rescaler = None, scale_factor = 5.):
         super(Hybrid, self).__init__()
-
-        self.rescale_flag = rescale_transf_out
         
         self.transfernn = transfernn
         self.head_layer = head_layer
-
+        self.rescaler = head_input_rescaler
         self.scale_factor = nn.Parameter(torch.tensor(scale_factor).float())
 
         # freeze weights
@@ -38,7 +36,7 @@ class Hybrid(nn.Module):
         # rescale to head_layer
         #print(self.scale_factor)
 
-        if self.rescale_flag: param = self.head_layer.rescale(param, self.scale_factor) # output: N T C or N C
+        if self.rescaler is not None: param = self.rescale(param, self.scale_factor) # output: N T C or N C
         #print("after: ", param.min(0)[0],param.max(0)[0])
         # concat to x_head, as of now add time dimension ot static params
         x_head_concat = torch.concat([

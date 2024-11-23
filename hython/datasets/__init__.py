@@ -18,6 +18,10 @@ try:
 except:
     pass
 
+class BaseDataset():
+    pass
+
+
 
 from .conv import *
 from .rnn import *
@@ -31,3 +35,5 @@ DATASETS = {
 
 def get_dataset(dataset):
     return DATASETS.get(dataset)
+
+

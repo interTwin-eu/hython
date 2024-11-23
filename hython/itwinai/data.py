@@ -1,11 +1,10 @@
 from typing import Optional, Tuple, Any
 import xarray as xr
 from itwinai.components import DataProcessor, DataSplitter, monitor_exec
-from hython.utils import read_from_zarr
+from hython.io import read_from_zarr
 from hython.sampler import AbstractDownSampler
-from hython.datasets.datasets import LSTMDataset
+from hython.datasets import LSTMDataset, get_dataset
 from hython.normalizer import Normalizer
-from hython.datasets.datasets import get_dataset
 
 
 class RNNDatasetGetterAndSplitter(DataSplitter):
@@ -88,15 +87,14 @@ class RNNProcessor(DataProcessor):
         self.normalizer_dynamic = Normalizer(
             method="standardize", type="spacetime", axis_order="NTC"
         )
-        # save_stats=f"{TMP_STATS}/{EXPERIMENT}_xd.npy")
+
         self.normalizer_static = Normalizer(
             method="standardize", type="space", axis_order="NTC"
         )
-        # save_stats=f"{TMP_STATS}/{EXPERIMENT}_xs.npy")
+
         self.normalizer_target = Normalizer(
             method="standardize", type="spacetime", axis_order="NTC"
         )
-        # save_stats=f"{TMP_STATS}/{EXPERIMENT}_y.npy")
 
     @monitor_exec
     def execute(
