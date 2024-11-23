@@ -14,8 +14,7 @@ class CuDNNLSTM(nn.Module, ParamRescalerMixin):
         num_layers: int = 1,
         dropout: float = 0.0,
         batch_norm: bool = False,
-        output_activation: str = "linear",
-        rescaler = None
+        output_activation: str = "linear"
     ):
         super(CuDNNLSTM, self).__init__()
 
@@ -26,7 +25,7 @@ class CuDNNLSTM(nn.Module, ParamRescalerMixin):
         if batch_norm: 
             self.bn_layer = nn.BatchNorm1d(dynamic_input_size + static_input_size) # expects N C T
 
-        self.rescaler = rescaler
+        self.dropout = nn.Dropout(p=dropout)
 
         self.fc0 = nn.Linear(dynamic_input_size + static_input_size, hidden_size)
 
@@ -35,7 +34,6 @@ class CuDNNLSTM(nn.Module, ParamRescalerMixin):
             hidden_size,
             num_layers=num_layers,
             batch_first=True,
-            dropout=dropout,
         )
 
         self.fc1 = nn.Linear(hidden_size, output_size)
@@ -48,6 +46,8 @@ class CuDNNLSTM(nn.Module, ParamRescalerMixin):
         l1 = self.fc0(x)
 
         lstm_output, (h_n, c_n) = self.lstm(l1)
+
+        lstm_output = self.dropout(lstm_output)
         
         if self.output_activation == "linear":
             out = self.fc1(lstm_output)

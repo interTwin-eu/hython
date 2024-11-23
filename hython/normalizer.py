@@ -26,7 +26,8 @@ DENORM_XARRAY = {
 
 DENORM = {
     "standardize": lambda arr, axis, m1, m2: (arr * expand_dims(m2, axis=axis))
-    + expand_dims(m1, axis=axis)
+    + expand_dims(m1, axis=axis),
+    "minmax": lambda arr, axis, m1, m2: (arr * (expand_dims(m2, axis=axis) - expand_dims(m1, axis=axis) )) + expand_dims(m1, axis=axis)
 }
 
 TYPE = {
@@ -196,6 +197,12 @@ class Normalizer:
 
     def get_stats(self):
         return self.computed_stats
+
+
+class Scaler:
+    pass
+
+
 
 
 class SurrogateParamRescaler:

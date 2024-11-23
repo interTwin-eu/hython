@@ -99,7 +99,7 @@ def train_val(
             print(f"Epoch: {epoch}")
         print(f"Losses - train: {train_loss.item():.6f}  val: {val_loss.item():.6f}")
 
-        print(model.scale_factor)
+
 
     model.load_state_dict(best_model_weights)
 

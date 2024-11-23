@@ -1,54 +1,52 @@
 # General configuration
-surrogate_input: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
-surrogate_model_output: ./
-tmp_stats: ./
 
-experiment: "drought use case demo"
-run_name: "test"
-epochs: 2
-random_seed: 1010
+experiment: "drought use case lstm"
+run_name: "alps_test"
 
-training_pipeline:
+
+rnn_training_pipeline:
   class_path: itwinai.pipeline.Pipeline
   init_args:
     steps:
-      - class_path: hython.itwinai.data.RNNDatasetGetterAndSplitter
+      - class_path: data.RNNDatasetGetterAndSplitter
         init_args:
-          surrogate_input: ${surrogate_input}
+          surrogate_input: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/adg1km_eobs_preprocessed.zarr
           dynamic_names: ["precip", "pet", "temp"]
-          static_names: [ 'thetaS', 'RootingDepth', 'Swood','KsatVer', "Sl"]
-          target_names: [ "vwc","actevap"]
+          static_names: [ 'thetaS', 'thetaR', 'SoilThickness','RootingDepth', 'Swood','KsatVer', 'Sl', 'f', 'Kext']
+          target_names: ["vwc", "actevap"]
           mask_names: ["mask_missing", "mask_lake"]
           train_temporal_range: ["2016-01-01", "2018-12-31"] 
           test_temporal_range: ["2019-01-01", "2020-12-31"] 
-      - class_path: hython.itwinai.data.RNNProcessor
+      - class_path: data.RNNProcessor
         init_args:
           dataset: LSTMDataset
-      - class_path: hython.itwinai.trainer.RNNDistributedTrainer
+      - class_path: trainer.RNNDistributedTrainer
         init_args:
           config:
             experiment: ${run_name}
             batch_size: 256
             lr: 0.001
-            rnn_config:
-              temporal_subsampling: True
-              temporal_subset: [150, 150]
-              seq_length: 60
-              target_names:  [ "vwc","actevap"]
-              dp_weights: ${surrogate_model_output}
-              distributed: False
+            num_workers_dataloader: 1
+            temporal_subsampling: True
+            temporal_subset: [150, 150]
+            seq_length: 360
+            target_names: ["vwc", "actevap"]
+            dp_weights: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model
+            distributed: False
+            lr_reduction_factor: 0.5
+            lr_reduction_patience: 10
           model:
             class_path: hython.models.cudnnLSTM.CuDNNLSTM
             init_args:
-              hidden_size: 24
+              hidden_size: 64
               dynamic_input_size: 3
-              static_input_size: 5
+              static_input_size: 9
               output_size: 2
               num_layers: 1
               dropout: 0.0
-          strategy: ddp
-          epochs: ${epochs}
-          random_seed: ${random_seed}
+          strategy: sequential
+          epochs: 20
+          random_seed: 44
           logger:
             class_path: itwinai.loggers.LoggersCollection
             init_args:
@@ -56,7 +54,10 @@ training_pipeline:
                 - class_path: itwinai.loggers.ConsoleLogger
                   init_args:
                     log_freq: 100
-                - class_path: itwinai.loggers.MLFlowLogger
-                  init_args:
-                    experiment_name: ${experiment}
-                    log_freq: batch
+                # - class_path: itwinai.loggers.MLFlowLogger
+                #   init_args:
+                #     experiment_name: ${experiment}
+                #     run_name: ${run_name}
+                #     log_freq: batch
+                #     savedir: /p/project1/intertwin/ferrario1/itwinai/use-cases/eurac/mllogs
+                    
