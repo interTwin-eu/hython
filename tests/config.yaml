@@ -1,0 +1,9 @@
+experiment_name: "test"
+experiment_run: "01"
+
+
+
+scaling_variant: minmax
+
+working_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_stats
+
