@@ -1,6 +1,10 @@
 import numpy as np
 import xarray as xr
 import torch
+import yaml
+from pathlib import Path
+from typing import Union, Dict
+from omegaconf import DictConfig, OmegaConf
 from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 
 
@@ -199,8 +203,80 @@ class Normalizer:
         return self.computed_stats
 
 
+def generate_experiment_id(cfg):
+    return "_".join([cfg.experiment_name, cfg.experiment_run])
+
 class Scaler:
-    pass
+    """Class for performing scaling of input features. Currently supports minmax and standard scaling."""
+    def __init__(self, cfg: Union[Dict, DictConfig], is_train: bool = True, use_cached:bool = True):
+        self.cfg = OmegaConf.create(cfg) if isinstance(cfg, dict) else OmegaConf.load(cfg) 
+        self.is_train = is_train
+        self.use_cached = use_cached
+        self.exp_id = generate_experiment_id(self.cfg)
+
+        self.archive = {}
+
+    def load_or_compute(self, data, type = "dynamic_input", is_train = True):
+
+        if is_train:
+            if self.use_cached:
+                try:
+                    self.load(type)
+                except FileNotFoundError:
+                    self.compute(data, type)
+            else:
+                self.compute(data, type)
+        else:
+            try:
+                self.load(type)
+            except FileNotFoundError as e:
+                raise e("Missing statistics: compute stats form training dataset.")
+            
+    def transform(self, data, type):
+        stats_dist = self.archive.get(type)
+
+        if stats_dist is not None:
+            return (data - stats_dist["center"]) / stats_dist["scale"]
+
+    def transform_inverse(self):
+        pass 
+        
+    def compute(self, data, type):
+        "Compute assumes the features are the last dimension of the array."
+        if self.cfg.scaling_variant == "minmax":
+            center = data.min((0,1))
+            scale = data.max((0,1))  - center 
+        elif self.cfg.scaling_variant == "standard":
+            center = data.mean((0,1))
+            scale = data.std((0,1))
+        else: 
+            raise NotImplementedError(f"{self.cfg.scaling_variant} not yet implemented.")
+
+        self.archive.update({type:{"center":center, "scale":scale}})
+
+    def load(self, type):
+        path = Path(self.cfg.working_dir) /  self.exp_id / f"{type}.yaml"
+        if path.exists():
+            with open(path, 'r') as file:
+                self.archive.update({type:yaml.load(file, Loader= yaml.Loader)})
+        else:
+            raise FileNotFoundError() 
+    
+    def write(self, type):
+        stats_dict = self.archive[type]
+        path = Path(self.cfg.working_dir) /  self.exp_id 
+
+        if not path.exists():
+            path.mkdir()
+
+        with open(path / f"{type}.yaml", 'w') as file:
+            yaml.dump(stats_dict, file)
+            
+
+        
+        
+        
+
 
 
 
