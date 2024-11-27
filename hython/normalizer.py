@@ -246,6 +246,11 @@ class Scaler:
         
     def compute(self, data, type, axes = (0, 1)):
         "Compute assumes the features are the last dimension of the array."
+
+        if isinstance(axes[0], int): # if == "string" it's an xarray object
+            # workaraound for handling missing values in numpy arrays
+            data = np.ma.array(data, mask=np.isnan(data))
+
         if self.cfg.scaling_variant == "minmax":
             center = data.min(axes)
             scale = data.max(axes)  - center 
