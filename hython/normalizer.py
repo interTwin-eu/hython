@@ -216,16 +216,16 @@ class Scaler:
 
         self.archive = {}
 
-    def load_or_compute(self, data, type = "dynamic_input", is_train = True):
+    def load_or_compute(self, data, type = "dynamic_input", is_train = True, axes = (0,1)):
 
         if is_train:
             if self.use_cached:
                 try:
                     self.load(type)
                 except FileNotFoundError:
-                    self.compute(data, type)
+                    self.compute(data, type, axes)
             else:
-                self.compute(data, type)
+                self.compute(data, type, axes)
         else:
             try:
                 self.load(type)
@@ -238,17 +238,20 @@ class Scaler:
         if stats_dist is not None:
             return (data - stats_dist["center"]) / stats_dist["scale"]
 
-    def transform_inverse(self):
-        pass 
+    def transform_inverse(self, data, type):
+        stats_dist = self.archive.get(type)
+
+        if stats_dist is not None:
+            return (data * stats_dist["scale"]) + stats_dist["center"] 
         
-    def compute(self, data, type):
+    def compute(self, data, type, axes = (0, 1)):
         "Compute assumes the features are the last dimension of the array."
         if self.cfg.scaling_variant == "minmax":
-            center = data.min((0,1))
-            scale = data.max((0,1))  - center 
+            center = data.min(axes)
+            scale = data.max(axes)  - center 
         elif self.cfg.scaling_variant == "standard":
-            center = data.mean((0,1))
-            scale = data.std((0,1))
+            center = data.mean(axes)
+            scale = data.std(axes)
         else: 
             raise NotImplementedError(f"{self.cfg.scaling_variant} not yet implemented.")
 
