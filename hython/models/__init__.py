@@ -1,5 +1,7 @@
+import torch 
+from torch import nn
 
 
-class ParamRescalerMixin:
-    def rescale(self, param, *args):
-        return self.rescaler.rescale(param, *args)
+class BaseModel(nn.Module):
+    def rescale_input(self, param):
+        return torch.sigmoid(param)
