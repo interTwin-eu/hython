@@ -52,13 +52,25 @@ class MSEMetric(Metric):
 
     """
 
-    def __call__(self, y_pred, y_true, target_names: list[str], valid_mask = None):
-        return metric_decorator(y_pred, y_true, target_names, valid_mask=valid_mask)(compute_mse)()
+    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask = None):
+        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(compute_mse)()
 
 
 class RMSEMetric(Metric):
-    def __call__(self, y_pred, y_true, target_names: list[str]):
-        return metric_decorator(y_pred, y_true, target_names)(compute_rmse)()
+    def __call__(self, y_true, y_pred, target_names: list[str]):
+        return metric_decorator(y_true, y_pred, target_names)(compute_rmse)()
+
+class KGEMetric(Metric):
+    def __call__(self, y_true, y_pred, target_names: list[str]):
+        return metric_decorator(y_true, y_pred, target_names)(compute_kge)()
+    
+class PearsonMetric(Metric):
+    def __call__(self, y_true, y_pred, target_names: list[str]):
+        return metric_decorator(y_true, y_pred, target_names)(compute_pearson)()
+
+class PBIASMetric(Metric):
+    def __call__(self, y_true, y_pred, target_names: list[str]):
+        return metric_decorator(y_true, y_pred, target_names)(compute_pbias)()
 
 
 # == METRICS
@@ -189,10 +201,10 @@ def compute_kge(y_true, y_pred):
     return np.array([kge, r, gamma, beta])
 
 
-def compute_kge_parallel(y_target, y_pred):
+def compute_kge_parallel(y_true, y_pred):
     kge = xr.apply_ufunc(
         compute_kge,
-        y_target,
+        y_true,
         y_pred,
         input_core_dims=[["time"], ["time"]],
         output_core_dims=[["kge"]],
