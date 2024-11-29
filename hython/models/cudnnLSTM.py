@@ -1,9 +1,9 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from . import ParamRescalerMixin
+from . import BaseModel
 
-class CuDNNLSTM(nn.Module, ParamRescalerMixin):
+class CuDNNLSTM(BaseModel):
     def __init__(
         self,
         hidden_size: int = 34,
