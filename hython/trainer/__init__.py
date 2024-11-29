@@ -44,6 +44,7 @@ class RNNTrainParams(BaseTrainParams):
         self.target_names = target_names
         self.gradient_clip = gradient_clip
         self.device = device
+        self.target_weight = {t:1/len(target_names) for t in target_names}
 
 class AbstractTrainer(ABC):
     def __init__(self, experiment: str):

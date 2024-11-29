@@ -108,6 +108,7 @@ class RNNTrainer(AbstractTrainer):
                     model,
                     valid_mask = None, 
                     add_losses = add_losses,
+                    target_weight=self.P.target_weight
                 )
 
                 batch_temporal_loss += batch_sequence_loss

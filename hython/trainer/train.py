@@ -1,8 +1,8 @@
 from . import *
 
 
-def metric_epoch(metric_func, y_pred, y_true, target_names, valid_mask=None):
-    metrics = metric_func(y_pred, y_true, target_names, valid_mask)
+def metric_epoch(metric_func, y_true, y_pred, target_names, valid_mask=None):
+    metrics = metric_func(y_true, y_pred, target_names, valid_mask)
     return metrics
 
 
@@ -15,13 +15,14 @@ def loss_batch(
     model=None,
     valid_mask = None,
     add_losses: dict = {},
-    scaling_factor: float = None
+    scaling_factor: float = None,
+    target_weight = None
 ):
     if target.shape[-1] == 1:
         target = torch.squeeze(target)
         output = torch.squeeze(output)
 
-    loss = loss_func(target, output, valid_mask=valid_mask, scaling_factor=scaling_factor)
+    loss = loss_func(target, output, valid_mask=valid_mask, scaling_factor=scaling_factor, target_weight = target_weight)
 
     # compound more losses, in case dict is not empty
     # TODO: add user-defined weights

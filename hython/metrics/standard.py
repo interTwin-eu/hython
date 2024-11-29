@@ -20,7 +20,6 @@ def metric_decorator(y_true, y_pred, target_names, valid_mask = None, sample_wei
 
     return target
 
-
 class Metric:
     """
     Hython is currently supporting sequence-to-one training (predicting the last time step of the sequence). Therefore it assumes that
@@ -34,7 +33,6 @@ class Metric:
 
     def __init__(self):
         pass
-
 
 class MSEMetric(Metric):
     """
@@ -54,7 +52,6 @@ class MSEMetric(Metric):
 
     def __call__(self, y_true, y_pred, target_names: list[str], valid_mask = None):
         return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(compute_mse)()
-
 
 class RMSEMetric(Metric):
     def __call__(self, y_true, y_pred, target_names: list[str]):
