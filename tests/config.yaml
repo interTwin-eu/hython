@@ -1,9 +1,78 @@
+# === Experiment =============================================================================
 experiment_name: "test"
 experiment_run: "01"
 
+working_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_stats
 
+train_temporal_range: ["2016-01-01", "2018-12-31"]
+valid_temporal_range: ["2019-01-01", "2020-12-31"]
+test_temporal_range: ["2019-01-01", "2020-12-31"]
+
+seed: 10 
+
+device: "cuda:0"
+
+# === Model =============================================================================
+
+model: cudalstm
+
+hidden_size: 128
+
+dropout: 0.4
+
+# === Training =============================================================================
+
+loss_fn:
+  _target_: hython.losses.RMSELoss
+    
+metric_fn:
+  _target_: hython.metrics.MSEMetric
+
+optimizer: adam
+
+seq_length: 120
+
+learning_rate: 0.001
+
+batch: 256
+
+epochs: 30
+
+# > Donwsampling < 
+
+# spatial downsampling
+downsampling: True
+train_interval: [3,3]
+train_origin: [0,0]
+valid_interval: [3,3]
+valid_origin: [0,0]
+
+# temporal downsampling
+temporal_downsampling: True
+temporal_subset: [200, 150]
+
+
+# === Data =============================================================================
+
+dataset: LSTMDataset
 
 scaling_variant: minmax
 
-working_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_stats
+static_inputs:
+  - thetaS
+  - thetaR
+  - KsatVer
+  - c
+  - RootingDepth
 
+dynamic_inputs:
+  - precip
+  - pet
+  - temp
+  
+target_variables:
+  - vwc
+
+mask_variables:
+  - mask_missing
+  - mask_lake

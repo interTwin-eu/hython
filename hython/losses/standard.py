@@ -1,18 +1,21 @@
 from typing import Optional, List
-
 import torch
 from torch import nn
 from torch.nn.modules.loss import _Loss
 import torch.nn.functional as F
+from omegaconf import DictConfig, OmegaConf
+
+
+# class BaseLoss(_Loss):
+
+#     def __init__(self, cfg = {},):
+#         self.cfg = OmegaConf.create(cfg) if isinstance(cfg, dict) else OmegaConf.load(cfg)
 
 
 class RMSELoss(_Loss):
     __name__ = "RMSE"
 
-    def __init__(
-        self,
-        target_weight: dict = None,
-    ):
+    def __init__(self):
         """
         Root Mean Squared Error (RMSE) loss for regression task.
 
@@ -23,9 +26,8 @@ class RMSELoss(_Loss):
 
         super(RMSELoss, self).__init__()
         self.mseloss = nn.MSELoss()
-        self.target_weight = target_weight
 
-    def forward(self, y_true, y_pred, valid_mask=None, scaling_factor = None):
+    def forward(self, y_true, y_pred, valid_mask=None, scaling_factor = None, target_weight:dict = None):
         """
         Calculate the Root Mean Squared Error (RMSE) between two tensors.
 
@@ -42,19 +44,19 @@ class RMSELoss(_Loss):
         Returns:
         torch.Tensor: The RMSE loss.
         """
-        if self.target_weight is None:
+        if target_weight is None:
             total_rmse_loss = torch.sqrt(self.mseloss(y_true, y_pred))
         else:
-            if len(self.target_weight.keys()) > 1:
+            if len(target_weight.keys()) > 1:
                 total_rmse_loss = 0
-                for itarget, target in enumerate(self.target_weight):
+                for itarget, target in enumerate(target_weight):
                     iypred = y_pred[:, itarget]
                     iytrue = y_true[:, itarget]
                     if valid_mask is not None:
                         imask = valid_mask[:, itarget]
                         iypred = iypred[imask]
                         iytrue = iytrue[imask]
-                    w = self.target_weight[target]
+                    w = target_weight[target]
                     rmse_loss = torch.sqrt(self.mseloss(iytrue, iypred))
                     loss = rmse_loss * w
                     total_rmse_loss += loss
@@ -76,13 +78,11 @@ class RMSELoss(_Loss):
             
         return total_rmse_loss
 
-
 class MSELoss(_Loss):
     __name__ = "MSE"
 
     def __init__(
-        self,
-        target_weight: dict = None,
+        self
     ):
         """
         Mean Squared Error (MSE) loss for regression task.
@@ -94,9 +94,8 @@ class MSELoss(_Loss):
 
         super(MSELoss, self).__init__()
         self.mseloss = nn.MSELoss()
-        self.target_weight = target_weight
 
-    def forward(self, y_true, y_pred, valid_mask=None, scaling_factor = None):
+    def forward(self, y_true, y_pred, valid_mask=None, scaling_factor = None, target_weight:dict = None):
         """
         Calculate the Mean Squared Error (RMSE) between two tensors.
 
@@ -112,19 +111,19 @@ class MSELoss(_Loss):
         Returns:
         torch.Tensor: The RMSE loss.
         """
-        if self.target_weight is None:
+        if target_weight is None:
             loss = self.mseloss(y_true, y_pred)
         else:
-            if len(self.target_weight.keys()) > 1:
+            if len(target_weight.keys()) > 1:
                 total_loss = 0
-                for itarget, target in enumerate(self.target_weight):
+                for itarget, target in enumerate(target_weight):
                     iypred = y_pred[:, itarget]
                     iytrue = y_true[:, itarget]
                     if valid_mask is not None:
                         imask = valid_mask[:, itarget]
                         iypred = iypred[imask]
                         iytrue = iytrue[imask]
-                    w = self.target_weight[target]
+                    w = target_weight[target]
                     loss = torch.sqrt(self.mseloss(iytrue, iypred))
                     loss = loss * w
                     total_loss += loss
