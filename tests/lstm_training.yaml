@@ -38,6 +38,8 @@ batch: 20
 
 epochs: 2
 
+gradient_clip: null
+
 # > Donwsampling < 
 
 # spatial downsampling

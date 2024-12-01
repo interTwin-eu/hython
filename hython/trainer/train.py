@@ -59,8 +59,8 @@ def train_val(
     device,
 ):
     loss_history = {"train": [], "val": []}
-    metric_history = {f"train_{target}": [] for target in trainer.P.target_names}
-    metric_history.update({f"val_{target}": [] for target in trainer.P.target_names})
+    metric_history = {f"train_{target}": [] for target in trainer.cfg.target_variables}
+    metric_history.update({f"val_{target}": [] for target in trainer.cfg.target_variables})
 
     best_loss = float("inf")
 
@@ -92,7 +92,7 @@ def train_val(
         loss_history["train"].append(train_loss)
         loss_history["val"].append(val_loss)
 
-        for target in trainer.P.target_names:
+        for target in trainer.cfg.target_variables:
             metric_history[f"train_{target}"].append(train_metric[target])
             metric_history[f"val_{target}"].append(val_metric[target])
 

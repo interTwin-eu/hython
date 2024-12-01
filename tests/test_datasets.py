@@ -17,7 +17,7 @@ from hython.losses import RMSELoss
 from hython.io import read_from_zarr
 from hython.utils import set_seed
 from hython.models.cudnnLSTM import CuDNNLSTM
-from hython.normalizer import Normalizer
+from hython.scaler import Scaler
 
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
