@@ -37,6 +37,6 @@ class Hybrid(nn.Module):
                             ], dim=2)
         
         # run head layer
-        output = self.head_layer(x_head_concat)
+        output = self.head_layer(x_head_concat)["y_hat"]
 
-        return output, param
+        return {"y_hat":output, "param":param}

@@ -1,4 +1,4 @@
-"""Test trainer"""
+"""Test cal"""
 import pytest
 import torch
 import numpy as np
@@ -11,13 +11,15 @@ import dask
 from torch import nn
 
 from hython.datasets import LSTMDataset, get_dataset
-from hython.trainer import train_val,RNNTrainer, RNNTrainParams
+from hython.trainer import train_val,RNNTrainer, CalTrainer, RNNTrainParams
 from hython.sampler import SamplerBuilder, RegularIntervalDownsampler
 from hython.metrics import MSEMetric
 from hython.losses import RMSELoss
 from hython.io import read_from_zarr
 from hython.utils import set_seed
 from hython.models.cudnnLSTM import CuDNNLSTM
+from hython.models.paramLearner import TransferNN
+from hython.models.hybrid import Hybrid
 from hython.normalizer import Normalizer, Scaler
 
 import torch.optim as optim
@@ -28,14 +30,14 @@ from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
 # configs 
-def test_train():
-    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/lstm_training.yaml"))
+def test_cal():
+    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/calibration.yaml"))
 
     set_seed(cfg.seed)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model_out_path = f"{cfg.run_dir}/{cfg.experiment_name}_{cfg.experiment_run}.pt"
+    model_out_path = f"{cfg.data_dir}/{cfg.experiment_name}_{cfg.experiment_run}.pt"
 
     scaler = Scaler(cfg)
 
@@ -63,23 +65,31 @@ def test_train():
     train_loader = DataLoader(train_dataset, batch_size=cfg.batch , sampler=train_sampler)
     val_loader = DataLoader(val_dataset, batch_size=cfg.batch , sampler=val_sampler)
 
-    model = CuDNNLSTM(
-                    hidden_size=cfg.hidden_size, 
+    surrogate = CuDNNLSTM(
+                    hidden_size=cfg.model_head_hidden_size, 
                     dynamic_input_size=len(cfg.dynamic_inputs),
-                    static_input_size=len(cfg.static_inputs), 
+                    static_input_size=len(cfg.head_model_inputs), 
                     output_size=len(cfg.target_variables),
-                    dropout=cfg.dropout
+                    dropout=cfg.model_head_dropout
     )
 
-    model.to(device)
+    surrogate.load_state_dict(torch.load(f"{cfg.model_head_dir}/{cfg.model_head_file}"))
+
+    transfer_nn = TransferNN( len(cfg.static_inputs), len(cfg.head_model_inputs) ).to(device)
+    
+    model = Hybrid( 
+                transfernn=transfer_nn,
+                head_layer=surrogate,
+                freeze_head=cfg.freeze_head,
+                scale_head_input_parameter=cfg.scale_head_input_parameter
+    ).to(device)
+
 
     opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
     lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
     
-    trainer = RNNTrainer(
+    trainer = CalTrainer(
         RNNTrainParams(
-                temporal_subsampling=cfg.temporal_downsampling, 
-                temporal_subset=cfg.temporal_subset, 
                 seq_length=cfg.seq_length, 
                 target_names=cfg.target_variables,
                 metric_func=cfg.metric_fn,
