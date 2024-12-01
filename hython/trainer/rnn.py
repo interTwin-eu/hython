@@ -22,10 +22,10 @@ class RNNTrainer(AbstractTrainer):
 
                 if opt is None:
                     # validation
-                    time_range = next(iter(data_loaders[-1]))[0].shape[1]
+                    time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
                     temporal_subset = self.P.temporal_subset[-1]
                 else:
-                    time_range = next(iter(data_loaders[0]))[0].shape[1]
+                    time_range = next(iter(data_loaders[0]))["xd"].shape[1]
                     temporal_subset = self.P.temporal_subset[0]
 
                 self.time_index = np.random.randint(
@@ -33,7 +33,7 @@ class RNNTrainer(AbstractTrainer):
                 )
             else:
                 # use same time indices for training and validation, time indices are from train_loader
-                time_range = next(iter(data_loaders[0]))[0].shape[1]
+                time_range = next(iter(data_loaders[0]))["xd"].shape[1]
                 self.time_index = np.random.randint(
                     0, time_range - self.P.seq_length, self.P.temporal_subset[-1]
                 )
@@ -41,9 +41,9 @@ class RNNTrainer(AbstractTrainer):
         else:
             if opt is None:
                 # validation
-                time_range = next(iter(data_loaders[-1]))[0].shape[1]
+                time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
             else:
-                time_range = next(iter(data_loaders[0]))[0].shape[1]
+                time_range = next(iter(data_loaders[0]))["xd"].shape[1]
 
             self.time_index = np.arange(0, time_range)
 
@@ -54,23 +54,17 @@ class RNNTrainer(AbstractTrainer):
         epoch_preds = None
         epoch_targets = None
 
-        # every epoch
-        # self.temporal_index( next(iter(dataloader))[0].shape[1])
-
-        for dynamic_b, static_b, targets_b in dataloader:
+        for data in dataloader:
             batch_temporal_loss = 0
-
-            # every batch
-            # self.temporal_index( dynamic_b.shape[1])
 
             for t in self.time_index:  # time_index could be a subset of time indices
                 # filter sequence
-                dynamic_bt = dynamic_b[:, t : (t + self.P.seq_length)].to(device)
-                targets_bt = targets_b[:, t : (t + self.P.seq_length)].to(device)
+                dynamic_bt = data["xd"][:, t : (t + self.P.seq_length)].to(device)
+                targets_bt = data["y"][:, t : (t + self.P.seq_length)].to(device)
 
                 # static --> dynamic size (repeat time dim)
                 static_bt = (
-                    static_b.unsqueeze(1).repeat(1, dynamic_bt.size(1), 1).to(device)
+                    data["xs"].unsqueeze(1).repeat(1, dynamic_bt.size(1), 1).to(device)
                 )
 
                 x_concat = torch.cat(
@@ -78,14 +72,16 @@ class RNNTrainer(AbstractTrainer):
                     dim=-1,
                 )
 
-                output = model(x_concat)
+                pred = model(x_concat)
 
+                lstm_output = pred["y_hat"]
+                                   
                 # physics based loss
                 add_losses = self.P.loss_physics_collection["PrecipSoilMoisture"](
-                    targets_bt[..., [0]], output[..., [0]]
+                    targets_bt[..., [0]], lstm_output[..., [0]]
                 )
 
-                output = self.predict_step(output, steps=-1)
+                output = self.predict_step(lstm_output, steps=-1)
                 target = self.predict_step(targets_bt, steps=-1)
 
                 if epoch_preds is None:
@@ -113,7 +109,7 @@ class RNNTrainer(AbstractTrainer):
 
                 batch_temporal_loss += batch_sequence_loss
 
-            data_points += targets_b.size(0)
+            data_points += data["xd"].size(0)
 
             running_batch_loss += batch_temporal_loss
 

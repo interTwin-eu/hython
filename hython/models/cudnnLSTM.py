@@ -53,8 +53,10 @@ class CuDNNLSTM(BaseModel):
             out = self.fc1(lstm_output)
         else:
             out = getattr(F, self.output_activation)(self.fc1(lstm_output))
+
+        pred = {"y_hat":out, "h_n":h_n, "c_n":c_n}
             
-        return out
+        return pred
 
 
 class LSTMModule(nn.Module):
@@ -83,7 +85,6 @@ class LSTMModule(nn.Module):
         lstm_output, (h_n, c_n) = self.lstm(l1)
 
         return lstm_output
-
 
 
 class LandSurfaceLSTM(nn.Module):
