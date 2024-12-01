@@ -32,7 +32,6 @@ DATASETS = {
     "LSTMDataset": LSTMDataset,
     "Wflow1d": Wflow1d,
     "Wflow1dCal": Wflow1dCal,
-    "XBatchDataset": XBatchDataset,
     "CubeletsDataset": CubeletsDataset,
 }
 
