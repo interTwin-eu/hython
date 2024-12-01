@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from hython.normalizer import Scaler
+from hython.scaler import Scaler
 
 
 def test_minmax_lstm():

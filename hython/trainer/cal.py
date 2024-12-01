@@ -2,10 +2,11 @@ from . import *
 
 
 class CalTrainer(AbstractTrainer):
-    def __init__(self, params: RNNTrainParams):
-        self.P = params  # RNNTrainParams(**params)
-        super(CalTrainer, self).__init__(self.P.experiment)
-
+    def __init__(self, cfg):
+        super(CalTrainer, self).__init__()
+        self.cfg = cfg
+        self.cfg["target_weight"] = {t: 1 / len(self.cfg.target_variables) for t in self.cfg.target_variables}
+        
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
         epoch_preds = None
@@ -29,14 +30,16 @@ class CalTrainer(AbstractTrainer):
             )  # scale by number of valid samples in a mini-batch
 
             mini_batch_loss = loss_batch(
-                self.P.loss_func,
-                output,
-                target,
-                opt,
-                self.P.gradient_clip,
-                model,
-                valid_mask,
-                scaling_factor=scaling_factor,
+                    loss_func=self.cfg.loss_fn,
+                    output= output,
+                    target=target,
+                    opt=opt,
+                    gradient_clip= self.cfg.gradient_clip,
+                    model=model,
+                    valid_mask=valid_mask,
+                    #add_losses=add_losses,
+                    target_weight=self.cfg.target_weight,
+                    scaling_factor=scaling_factor,
             )
 
             if epoch_preds is None:
@@ -60,10 +63,10 @@ class CalTrainer(AbstractTrainer):
         epoch_loss = running_batch_loss / len(dataloader)
 
         metric = metric_epoch(
-            self.P.metric_func,
+            self.cfg.metric_fn,
             epoch_targets,
             epoch_preds,
-            self.P.target_names,
+            self.cfg.target_variables,
             valid_masks,
         )
 

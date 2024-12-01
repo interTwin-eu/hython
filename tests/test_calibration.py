@@ -7,14 +7,14 @@ import os
 
 
 from hython.datasets import get_dataset
-from hython.trainer import train_val,CalTrainer, RNNTrainParams
+from hython.trainer import train_val,CalTrainer 
 from hython.sampler import SamplerBuilder
 
 from hython.utils import set_seed
 from hython.models.cudnnLSTM import CuDNNLSTM
-from hython.hython.models.transferNN import TransferNN
+from hython.models.transferNN import TransferNN
 from hython.models.hybrid import Hybrid
-from hython.hython.scaler import Scaler
+from hython.scaler import Scaler
 
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -82,13 +82,7 @@ def test_cal():
     opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
     lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
     
-    trainer = CalTrainer(
-        RNNTrainParams(
-                seq_length=cfg.seq_length, 
-                target_names=cfg.target_variables,
-                metric_func=cfg.metric_fn,
-                loss_func=cfg.loss_fn,
-        ))
+    trainer = CalTrainer(cfg)
 
     model, loss_history, metric_history = train_val(
         trainer,

@@ -9,7 +9,7 @@ from hython.trainer import train_val, RNNTrainer, RNNTrainParams
 from hython.sampler import SamplerBuilder
 from hython.utils import set_seed
 from hython.models.cudnnLSTM import CuDNNLSTM
-from hython.hython.scaler import Scaler
+from hython.scaler import Scaler
 
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -65,14 +65,7 @@ def test_train():
     lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
 
     trainer = RNNTrainer(
-        RNNTrainParams(
-            temporal_subsampling=cfg.temporal_downsampling,
-            temporal_subset=cfg.temporal_subset,
-            seq_length=cfg.seq_length,
-            target_names=cfg.target_variables,
-            metric_func=cfg.metric_fn,
-            loss_func=cfg.loss_fn,
-        )
+        cfg
     )
 
     model, loss_history, metric_history = train_val(

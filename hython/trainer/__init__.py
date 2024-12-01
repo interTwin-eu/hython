@@ -50,9 +50,8 @@ class RNNTrainParams(BaseTrainParams):
 
 
 class AbstractTrainer(ABC):
-    def __init__(self, experiment: str):
-        self.exp = experiment
-
+    def __init__(self):
+        pass
     def temporal_index(self, args):
         pass
 
