@@ -58,7 +58,7 @@ temporal_subset: [200, 150]
 
 # === Data ===
 
-dataset: LSTMDataset
+dataset: Wflow1d
 
 data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
 
