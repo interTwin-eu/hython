@@ -1,0 +1,110 @@
+# === Experiment === 
+experiment_name: "cal"
+experiment_run: "01"
+
+run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+
+train_temporal_range: ["2017-01-01", "2018-12-31"]
+valid_temporal_range: ["2019-01-01", "2020-12-31"]
+test_temporal_range: ["2019-01-01", "2020-12-31"]
+
+seed: 10 
+
+device: "cuda:0"
+
+# === Model ===
+
+# > hybrid < 
+model: hybrid
+
+freeze_head: True
+
+scale_head_input_parameter: True 
+
+# > transfernn < 
+model_transfer_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model/
+
+model_transfer: transfernn
+
+# > head model < 
+model_head_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+
+model_head_file: test_01.pt
+
+model_head_hidden_size: 128
+
+model_head_dropout: 0.4
+
+# === Training ===
+
+loss_fn:
+  _target_: hython.losses.RMSELoss
+    
+metric_fn:
+  _target_: hython.metrics.MSEMetric
+
+optimizer: adam
+
+seq_length: 120
+
+learning_rate: 0.001
+
+batch: 256
+
+epochs: 2
+
+# > Donwsampling < 
+
+# spatial downsampling
+train_downsampler: 
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac: 0.01
+  how: time
+
+valid_downsampler: #None
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac: 0.01
+  how: time
+
+
+# === Data ===
+
+dataset: Wflow1dCal
+
+data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
+
+data_file: adg1km_eobs_preprocessed.zarr
+
+scaling_variant: minmax
+
+head_model_inputs:
+  - thetaS
+  - thetaR
+  - KsatVer
+  - c
+  - RootingDepth
+
+static_inputs:
+  - ch
+  - oc_sl1
+  - sndppt_sl1
+  - bd_sl1
+  - clyppt_sl1
+  - sltppt_sl1
+  - elev
+  - slope
+  - aspect
+
+dynamic_inputs:
+  - precip
+  - pet
+  - temp
+  
+target_variables:
+  - ssm
+
+mask_variables:
+  - mask_missing
+  - mask_lake
+
+min_sample_target: 10

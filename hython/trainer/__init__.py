@@ -2,6 +2,8 @@ import numpy as np
 import torch
 from torch.nn.modules.loss import _Loss
 
+from torch.nn import functional as F
+
 import importlib.util
 from abc import ABC
 import copy
@@ -71,3 +73,4 @@ from .rnn import *
 from .conv import *
 from .lumped import *
 from .hybrid import *
+from .cal import *

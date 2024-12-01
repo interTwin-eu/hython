@@ -314,3 +314,22 @@ def keep_valid(a, b):
     m2 = ~np.isnan(b)
     m3 = (m1) & (m2)
     return a[m3], b[m3]
+
+
+
+def downsample_time(coords,frac):
+    un = np.unique(coords[:,0])
+    for i, u in enumerate(un):
+        idx = np.argwhere(coords[:,0] == u)
+        l = int(len(idx)* frac)
+        idx2 = np.random.randint(idx[0], idx[-1] + 1, l )
+        if i == 0:
+            arr = coords[idx2]
+        else:
+            arr = np.concatenate([arr,coords[idx2]], axis=0)
+    return arr
+
+def downsample_spacetime(coords, frac):
+        l = int(len(coords)*frac)
+        idx = np.random.randint(0, len(coords), l )
+        return coords[idx]

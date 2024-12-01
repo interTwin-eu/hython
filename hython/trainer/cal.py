@@ -13,16 +13,15 @@ class CalTrainer(AbstractTrainer):
         epoch_targets = None
         valid_masks = None
 
-        for forcing_b, predictor_b, target_b in dataloader: # predictors, forcings , observations
+        for data in dataloader: # predictors, forcings , observations
 
-            predictor_b = predictor_b.to(device)
-            target_b = target_b.to(device)
-            forcing_b = forcing_b.to(device)
+            predictor_b = data["xs"].to(device)
+            target_b = data["y"].to(device)
+            forcing_b = data["xd"].to(device)
 
-            output, param = model(predictor_b, forcing_b)
+            pred = model(predictor_b, forcing_b)
 
-            # print(output.mean(), param.mean(0))
-            output = self.predict_step(output)
+            output = self.predict_step(pred["y_hat"])
             target = self.predict_step(target_b)
 
             valid_mask = ~target.isnan() # non null values
@@ -60,3 +59,4 @@ class CalTrainer(AbstractTrainer):
         """Return the n steps that should be predicted"""
         
         return arr[:, -1] # N Ch H W  
+

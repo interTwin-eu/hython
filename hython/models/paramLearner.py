@@ -46,12 +46,22 @@ class TransferNN(nn.Module):
         super(TransferNN, self).__init__()
 
         self.lin = nn.Linear(input_dim, output_dim)
-        self.lin2 = nn.Linear(output_dim, output_dim)
+        self.lin2 = nn.Linear(output_dim, 3)
+        self.lin3 = nn.Linear(3, 3)
+        self.lin4 = nn.Linear(3, output_dim)
     
-        
+        for p in self.parameters():
+            if isinstance(p,nn.Linear):
+                torch.nn.init.xavier_uniform_(p)
+            #print(p)
     def forward(self, x):
-        x = self.lin2(F.relu(self.lin(x)))
-        return x
+        
+        l1 = F.leaky_relu(self.lin(x))
+        l2 = F.leaky_relu(self.lin2(l1))
+        l3 = F.leaky_relu(self.lin3(l2))
+        l4 = self.lin4(l3)
+        
+        return l4
 
 # class TransferNN(nn.Module):
 #     def __init__(self, input_ch, latent_dims, output_dim, shape_bottom, shape_top):
