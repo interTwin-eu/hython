@@ -72,5 +72,4 @@ from .train import train_val, metric_epoch, loss_batch
 from .rnn import *
 from .conv import *
 from .lumped import *
-from .hybrid import *
 from .cal import *

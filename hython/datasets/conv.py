@@ -215,7 +215,6 @@ class CubeletsDataset(Dataset):
         else:
             return xd, torch.tensor([]), y
 
-
 class XBatchDataset(Dataset):
     """
     Returns batches of Ntile,seq L T C H W
@@ -331,8 +330,6 @@ class XBatchDataset(Dataset):
             )
 
         return gen
-
-
 
 class PyramidDataset(Dataset):
 
@@ -525,7 +522,6 @@ class PyramidDataset(Dataset):
             else:
                 predictor = predictor.unsqueeze(0).repeat(forcing.size(0), 1, 1, 1)
         return predictor, forcing, target
-
 
 class TilesDataset(Dataset):
 

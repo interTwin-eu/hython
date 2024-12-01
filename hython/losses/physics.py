@@ -24,10 +24,8 @@ class PhysicsLossCollection:
         else:
             return return_dict
 
-
 def return_dict(*args):
     return {}
-
 
 class PrecipSoilMoistureLoss(_Loss):
     __name__ = "PrecipSoilMoisture"
@@ -47,7 +45,6 @@ class PrecipSoilMoistureLoss(_Loss):
         loss = torch.sum((F.relu(-1 * diff_y[positive_x])) ** 2) / torch.sum(positive_x)
 
         return {self.__name__: loss}
-
 
 class ThetaLoss(_Loss):
     __name__ = "Theta"

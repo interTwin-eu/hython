@@ -106,11 +106,6 @@ class Wflow1d(Dataset):
                 }
         
 
-
-class Wflow2d(Dataset):
-    pass
-
-
 class Wflow1dCal(Dataset):
     def __init__(self, 
                  cfg, 

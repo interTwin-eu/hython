@@ -4,43 +4,6 @@ from torch import nn
 import torch.nn.functional as F
 
 
-class ParamLearner():
-    def __init__(self, model):
-        self.model = model
-    def train(self):
-        self["transfer_nn"].train()
-    def eval(self):
-        self["transfer_nn"].eval()
-    def __getitem__(self, key):
-        try:
-            return self.model[key]
-        except KeyError:
-            pass
-        try:
-            return self.model[key]
-        except KeyError:
-            pass
-        raise KeyError(key)
-
-    def __setitem__(self, key, value):
-        self.model[key] = value
-        
-    def to(self, device):
-        self["transfer_nn"] = self["transfer_nn"].to(device)
-        self["surrogate"] = self["surrogate"].to(device)
-
-    def freeze(self, model_name):
-        for param in self[model_name].parameters():
-            param.requires_grad = False
-
-    def state_dict(self,model_name = "transfer_nn"):
-        return self[model_name].state_dict()
-
-
-    def load_state_dict(self, fp, model_name = "transfer_nn"):
-        self[model_name].load_state_dict(fp)
-
-
 class TransferNN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(TransferNN, self).__init__()
