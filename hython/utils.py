@@ -282,13 +282,13 @@ def cbs_mapping_idx_slice(cbs_tuple_idxs, cbs_slices):
 def cbs_mapping_idx_slice_notime(cbs_tuple_idxs, cbs_slices):
     mapping = {}
     for ic, islice in zip(cbs_tuple_idxs, cbs_slices):
-        m = {"lat":"", "lon":""}
-        #sp_slice= islice # lat,lon,time
-        #tot_slice = (sp_slice[0], sp_slice[1], t_slice) # T C H W
-        #m.update({"time":t_slice})
-        m.update({"lat":islice[0]})
-        m.update({"lon":islice[1]})
-        mapping[ic] = m # (sp_slice[0], sp_slice[1], t_slice)    
+        m = {"lat": "", "lon": ""}
+        # sp_slice= islice # lat,lon,time
+        # tot_slice = (sp_slice[0], sp_slice[1], t_slice) # T C H W
+        # m.update({"time":t_slice})
+        m.update({"lat": islice[0]})
+        m.update({"lon": islice[1]})
+        mapping[ic] = m  # (sp_slice[0], sp_slice[1], t_slice)
     return mapping
 
 
@@ -309,6 +309,7 @@ def get_unique_time_idxs(cbs_mapping_idxs):
 def get_unique_spatial_idxs(cbs_mapping_idxs):
     return np.unique([i[0] for i in cbs_mapping_idxs.keys()]).tolist()
 
+
 def keep_valid(a, b):
     m1 = ~np.isnan(a)
     m2 = ~np.isnan(b)
@@ -316,20 +317,20 @@ def keep_valid(a, b):
     return a[m3], b[m3]
 
 
-
-def downsample_time(coords,frac):
-    un = np.unique(coords[:,0])
+def downsample_time(coords, frac):
+    un = np.unique(coords[:, 0])
     for i, u in enumerate(un):
-        idx = np.argwhere(coords[:,0] == u)
-        l = int(len(idx)* frac)
-        idx2 = np.random.randint(idx[0], idx[-1] + 1, l )
+        idx = np.argwhere(coords[:, 0] == u)
+        l = int(len(idx) * frac)
+        idx2 = np.random.randint(idx[0], idx[-1] + 1, l)
         if i == 0:
             arr = coords[idx2]
         else:
-            arr = np.concatenate([arr,coords[idx2]], axis=0)
+            arr = np.concatenate([arr, coords[idx2]], axis=0)
     return arr
 
+
 def downsample_spacetime(coords, frac):
-        l = int(len(coords)*frac)
-        idx = np.random.randint(0, len(coords), l )
-        return coords[idx]
+    l = int(len(coords) * frac)
+    idx = np.random.randint(0, len(coords), l)
+    return coords[idx]

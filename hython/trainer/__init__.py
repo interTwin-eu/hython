@@ -34,7 +34,7 @@ class RNNTrainParams(BaseTrainParams):
         temporal_subset: list = None,
         seq_length: int = None,
         gradient_clip: dict = None,
-        device: str = "cpu"
+        device: str = "cpu",
     ):
         self.loss_func = loss_func
         self.metric_func = metric_func
@@ -46,7 +46,8 @@ class RNNTrainParams(BaseTrainParams):
         self.target_names = target_names
         self.gradient_clip = gradient_clip
         self.device = device
-        self.target_weight = {t:1/len(target_names) for t in target_names}
+        self.target_weight = {t: 1 / len(target_names) for t in target_names}
+
 
 class AbstractTrainer(ABC):
     def __init__(self, experiment: str):
@@ -67,6 +68,7 @@ class AbstractTrainer(ABC):
         else:
             print(f"save weights to: {fp}")
             torch.save(model.state_dict(), fp)
+
 
 from .train import train_val, metric_epoch, loss_batch
 from .rnn import *

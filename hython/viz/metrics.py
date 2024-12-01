@@ -15,7 +15,7 @@ from hython.metrics.standard import (
     compute_gamma,
     compute_kge_parallel as compute_kge,
     compute_pearson,
-    compute_variance
+    compute_variance,
 )
 
 
@@ -129,7 +129,7 @@ def map_rmse(
     map_extent=[],
     return_computation=False,
     unit="mm",
-    skipna=False
+    skipna=False,
 ):
     # COMPUTE
     rmse = compute_rmse(y_true, y_pred, skipna=skipna)
@@ -290,8 +290,8 @@ def map_bias(
     percentage_bias=False,
     unit=None,
     skipna=False,
-    fig = None,
-    ax = None
+    fig=None,
+    ax=None,
 ):
     # COMPUTE
     if percentage_bias:
@@ -447,20 +447,19 @@ def map_variance(
     ds: xr.DataArray,
     figsize=(10, 10),
     title="",
-    color_bad = None,
-    color_cmap = "viridis",
-    matplot_kwargs = dict(alpha=1),
-    alpha_gridlines = 0.1,
-    tiles = QuadtreeTiles(),
-    scale = 13,
-    map_extent = [],
+    color_bad=None,
+    color_cmap="viridis",
+    matplot_kwargs=dict(alpha=1),
+    alpha_gridlines=0.1,
+    tiles=QuadtreeTiles(),
+    scale=13,
+    map_extent=[],
     return_computation=False,
-    std = True
+    std=True,
 ):
-    
     # COMPUTE
     if std:
-        out = compute_variance(ds,std=True)
+        out = compute_variance(ds, std=True)
         col_lab = "standard deviation"
     else:
         out = compute_variance(ds)
@@ -484,8 +483,14 @@ def map_variance(
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
     ax.set_extent([minx, maxx, miny, maxy], crs=ccrs.PlateCarree())
 
-    gl = ax.gridlines(draw_labels=True, dms=False, x_inline=False, y_inline=False, alpha=alpha_gridlines)
-    
+    gl = ax.gridlines(
+        draw_labels=True,
+        dms=False,
+        x_inline=False,
+        y_inline=False,
+        alpha=alpha_gridlines,
+    )
+
     if tiles is not None:
         ax.add_image(tiles, scale)
 
@@ -493,19 +498,14 @@ def map_variance(
         ax=ax,
         cmap=cmap,
         transform=ccrs.PlateCarree(),
-        add_colorbar = False,
-        **matplot_kwargs
+        add_colorbar=False,
+        **matplot_kwargs,
     )
 
-    fig.colorbar(
-        p,
-        ax=ax,
-        shrink=0.5,
-        label=col_lab
-    )
+    fig.colorbar(p, ax=ax, shrink=0.5, label=col_lab)
 
     plt.title(title)
-    
+
     if return_computation:
         return fig, ax, out
     else:

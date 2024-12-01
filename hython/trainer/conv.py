@@ -52,7 +52,7 @@ class ConvTrainer(AbstractTrainer):
                 opt,
                 self.P.gradient_clip,
                 model,
-                valid_mask = None,
+                valid_mask=None,
                 add_losses=add_losses,
             )
 

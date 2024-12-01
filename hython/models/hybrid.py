@@ -1,20 +1,22 @@
 import torch
 from torch import nn
 
-class Hybrid(nn.Module):
 
-    def __init__(self, transfernn, head_layer, freeze_head=True, scale_head_input_parameter=True):
+class Hybrid(nn.Module):
+    def __init__(
+        self, transfernn, head_layer, freeze_head=True, scale_head_input_parameter=True
+    ):
         super(Hybrid, self).__init__()
-        
+
         self.transfernn = transfernn
         self.head_layer = head_layer
         self.scale_head_input_parameter = scale_head_input_parameter
 
         # freeze weights
         if freeze_head:
-            for weight in self.head_layer.parameters(): 
+            for weight in self.head_layer.parameters():
                 weight.requires_grad = False
-            
+
     def forward(self, x_transf, x_head):
         """
         Parameters
@@ -25,18 +27,21 @@ class Hybrid(nn.Module):
             Tensor of size [batch_size, seq_length, n_param] (N, T, C)
         """
         # run trasnferNN
-        param = self.transfernn(x_transf) # output: N T C or N C
+        param = self.transfernn(x_transf)  # output: N T C or N C
 
-        if self.scale_head_input_parameter: 
-            param = self.head_layer.rescale_input(param) # output: N T C or N C
+        if self.scale_head_input_parameter:
+            param = self.head_layer.rescale_input(param)  # output: N T C or N C
 
         # concat to x_head, as of now add time dimension ot static params
-        x_head_concat = torch.concat([
-                            x_head,
-                            param.unsqueeze(1).repeat(1, x_head.size(1), 1),
-                            ], dim=2)
-        
+        x_head_concat = torch.concat(
+            [
+                x_head,
+                param.unsqueeze(1).repeat(1, x_head.size(1), 1),
+            ],
+            dim=2,
+        )
+
         # run head layer
         output = self.head_layer(x_head_concat)["y_hat"]
 
-        return {"y_hat":output, "param":param}
+        return {"y_hat": output, "param": param}

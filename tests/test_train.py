@@ -11,7 +11,7 @@ import dask
 from torch import nn
 
 from hython.datasets import LSTMDataset, get_dataset
-from hython.trainer import train_val,RNNTrainer, RNNTrainParams
+from hython.trainer import train_val, RNNTrainer, RNNTrainParams
 from hython.sampler import SamplerBuilder, RegularIntervalDownsampler
 from hython.metrics import MSEMetric
 from hython.losses import RMSELoss
@@ -27,7 +27,8 @@ import os
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
-# configs 
+
+# configs
 def test_train():
     cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/lstm_training.yaml"))
 
@@ -39,52 +40,49 @@ def test_train():
 
     scaler = Scaler(cfg)
 
-    train_dataset = get_dataset(cfg.dataset)(
-            cfg, scaler, True, "train"
-    )
+    train_dataset = get_dataset(cfg.dataset)(cfg, scaler, True, "train")
 
-    val_dataset = get_dataset(cfg.dataset)(
-            cfg, scaler, False, "valid"
-    )
+    val_dataset = get_dataset(cfg.dataset)(cfg, scaler, False, "valid")
 
     train_sampler_builder = SamplerBuilder(
-        train_dataset,
-        sampling="random", 
-        processing="single-gpu")
+        train_dataset, sampling="random", processing="single-gpu"
+    )
 
     val_sampler_builder = SamplerBuilder(
-        val_dataset,
-        sampling="sequential", 
-        processing="single-gpu")
+        val_dataset, sampling="sequential", processing="single-gpu"
+    )
 
     train_sampler = train_sampler_builder.get_sampler()
     val_sampler = val_sampler_builder.get_sampler()
 
-    train_loader = DataLoader(train_dataset, batch_size=cfg.batch , sampler=train_sampler)
-    val_loader = DataLoader(val_dataset, batch_size=cfg.batch , sampler=val_sampler)
+    train_loader = DataLoader(
+        train_dataset, batch_size=cfg.batch, sampler=train_sampler
+    )
+    val_loader = DataLoader(val_dataset, batch_size=cfg.batch, sampler=val_sampler)
 
     model = CuDNNLSTM(
-                    hidden_size=cfg.hidden_size, 
-                    dynamic_input_size=len(cfg.dynamic_inputs),
-                    static_input_size=len(cfg.static_inputs), 
-                    output_size=len(cfg.target_variables),
-                    dropout=cfg.dropout
+        hidden_size=cfg.hidden_size,
+        dynamic_input_size=len(cfg.dynamic_inputs),
+        static_input_size=len(cfg.static_inputs),
+        output_size=len(cfg.target_variables),
+        dropout=cfg.dropout,
     )
 
     model.to(device)
 
     opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
     lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
-    
+
     trainer = RNNTrainer(
         RNNTrainParams(
-                temporal_subsampling=cfg.temporal_downsampling, 
-                temporal_subset=cfg.temporal_subset, 
-                seq_length=cfg.seq_length, 
-                target_names=cfg.target_variables,
-                metric_func=cfg.metric_fn,
-                loss_func=cfg.loss_fn,
-        ))
+            temporal_subsampling=cfg.temporal_downsampling,
+            temporal_subset=cfg.temporal_subset,
+            seq_length=cfg.seq_length,
+            target_names=cfg.target_variables,
+            metric_func=cfg.metric_fn,
+            loss_func=cfg.loss_fn,
+        )
+    )
 
     model, loss_history, metric_history = train_val(
         trainer,
@@ -95,5 +93,5 @@ def test_train():
         opt,
         lr_scheduler,
         model_out_path,
-        device
+        device,
     )
