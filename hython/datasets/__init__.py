@@ -27,10 +27,8 @@ class BaseDataset:
 
 from .wflow import *
 from .conv import *
-from .rnn import *
 
 DATASETS = {
-    "LSTMDataset": LSTMDataset,
     "Wflow1d": Wflow1d,
     "Wflow1dCal": Wflow1dCal,
     "CubeletsDataset": CubeletsDataset,
