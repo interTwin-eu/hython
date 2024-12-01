@@ -63,7 +63,9 @@ class RNNDistributedTrainer(TorchTrainer):
         config: Union[Dict, TrainingConfiguration],
         epochs: int,
         model: Optional[nn.Module] = None,
-        strategy: Optional[Literal["ddp", "deepspeed", "horovod", "sequential"]] = "ddp",
+        strategy: Optional[
+            Literal["ddp", "deepspeed", "horovod", "sequential"]
+        ] = "ddp",
         validation_every: Optional[int] = 1,
         test_every: Optional[int] = None,
         random_seed: Optional[int] = None,
@@ -97,7 +99,7 @@ class RNNDistributedTrainer(TorchTrainer):
         self,
         train_dataset: Dataset,
         validation_dataset: Optional[Dataset] = None,
-        test_dataset: Optional[Dataset] = None
+        test_dataset: Optional[Dataset] = None,
     ) -> Tuple[Dataset, Dataset, Dataset, Any]:
         return super().execute(train_dataset, validation_dataset, test_dataset)
 
@@ -107,7 +109,7 @@ class RNNDistributedTrainer(TorchTrainer):
             self.optimizer,
             mode="min",
             factor=self.config.lr_reduction_factor,
-            patience=self.config.lr_reduction_patience
+            patience=self.config.lr_reduction_patience,
         )
 
         target_weights = {
@@ -253,18 +255,14 @@ class RNNDistributedTrainer(TorchTrainer):
 
         if self.strategy.is_main_worker:
             self.model.load_state_dict(best_model)
-            self.log(
-                item=self.model,
-                identifier='LSTM',
-                kind='model'
-            )
+            self.log(item=self.model, identifier="LSTM", kind="model")
 
             # Report training metrics of last epoch to Ray
             try:
                 from ray import train
+
                 train.report(
-                    {"loss": avg_val_loss.item(),
-                    "train_loss": train_loss.item()}
+                    {"loss": avg_val_loss.item(), "train_loss": train_loss.item()}
                 )
             except:
                 pass
@@ -319,4 +317,3 @@ class RNNDistributedTrainer(TorchTrainer):
                 sampler=val_sampler,
                 drop_last=True,
             )
-

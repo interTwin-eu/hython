@@ -71,7 +71,7 @@ def write_to_zarr(
 
 def read_from_zarr(url, group=None, multi_index=None, engine="xarray", chunks=None):
     if engine == "xarray":
-        ds = xr.open_dataset(url, group=group, engine="zarr",chunks=chunks)
+        ds = xr.open_dataset(url, group=group, engine="zarr", chunks=chunks)
         if multi_index:
             ds = cfxr.decode_compress_to_multi_index(ds, multi_index)
         return ds

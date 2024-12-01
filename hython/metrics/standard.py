@@ -2,7 +2,8 @@ import numpy as np
 import xarray as xr
 from hython.utils import keep_valid
 
-def metric_decorator(y_true, y_pred, target_names, valid_mask = None, sample_weight=None):
+
+def metric_decorator(y_true, y_pred, target_names, valid_mask=None, sample_weight=None):
     def target(wrapped):
         def wrapper():
             metrics = {}
@@ -13,12 +14,15 @@ def metric_decorator(y_true, y_pred, target_names, valid_mask = None, sample_wei
                     imask = valid_mask[:, idx]
                     iypred = iypred[imask]
                     iytrue = iytrue[imask]
-                metrics[target] = wrapped(iytrue, iypred, valid_mask=valid_mask, sample_weight = sample_weight)
+                metrics[target] = wrapped(
+                    iytrue, iypred, valid_mask=valid_mask, sample_weight=sample_weight
+                )
             return metrics
 
         return wrapper
 
     return target
+
 
 class Metric:
     """
@@ -33,6 +37,7 @@ class Metric:
 
     def __init__(self):
         pass
+
 
 class MSEMetric(Metric):
     """
@@ -50,20 +55,26 @@ class MSEMetric(Metric):
 
     """
 
-    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask = None):
-        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(compute_mse)()
+    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(
+            compute_mse
+        )()
+
 
 class RMSEMetric(Metric):
     def __call__(self, y_true, y_pred, target_names: list[str]):
         return metric_decorator(y_true, y_pred, target_names)(compute_rmse)()
 
+
 class KGEMetric(Metric):
     def __call__(self, y_true, y_pred, target_names: list[str]):
         return metric_decorator(y_true, y_pred, target_names)(compute_kge)()
-    
+
+
 class PearsonMetric(Metric):
     def __call__(self, y_true, y_pred, target_names: list[str]):
         return metric_decorator(y_true, y_pred, target_names)(compute_pearson)()
+
 
 class PBIASMetric(Metric):
     def __call__(self, y_true, y_pred, target_names: list[str]):
@@ -95,6 +106,7 @@ def compute_fdc_flv():
 
 # SOIL MOISTURE
 
+
 def compute_hr():
     """Hit Rate, proportion of time soil is correctly simulated as wet.
     Wet threshold is when x >= 0.8 percentile
@@ -125,7 +137,7 @@ def compute_variance(ds, dim="time", axis=0, std=False):
 
 def compute_gamma(y_true: xr.DataArray, y_pred, axis=0):
     if isinstance(ds, xr.DataArray):
-        pass    
+        pass
     else:
         y_true, y_pred = keep_valid(y_true, y_pred)
         m1, m2 = np.mean(y_true, axis=axis), np.mean(y_pred, axis=axis)
@@ -159,7 +171,15 @@ def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False):
         return np.sqrt(np.mean((y_pred - y_true) ** 2, axis=axis))
 
 
-def compute_mse(y_true, y_pred, axis=0, dim="time", sample_weight=None, valid_mask=None, skipna=False ):
+def compute_mse(
+    y_true,
+    y_pred,
+    axis=0,
+    dim="time",
+    sample_weight=None,
+    valid_mask=None,
+    skipna=False,
+):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return ((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna)
     else:

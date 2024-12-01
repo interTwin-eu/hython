@@ -27,7 +27,7 @@ def test_mse_class():
 
 def test_mse_class_valid_mask():
     b = a = np.random.randn(100, 2)
-    mask = np.random.randint(0,2, (100,2)).astype(bool)
+    mask = np.random.randint(0, 2, (100, 2)).astype(bool)
     ret = MSEMetric()(a, b, TARGETS, valid_mask=mask)
-    
+
     assert np.all([ret[t] == 0 for t in TARGETS])

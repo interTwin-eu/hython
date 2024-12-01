@@ -20,7 +20,8 @@ try:
 except:
     pass
 
-class BaseDataset():
+
+class BaseDataset:
     pass
 
 
@@ -38,5 +39,3 @@ DATASETS = {
 
 def get_dataset(dataset):
     return DATASETS.get(dataset)
-
-

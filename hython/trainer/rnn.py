@@ -75,7 +75,7 @@ class RNNTrainer(AbstractTrainer):
                 pred = model(x_concat)
 
                 lstm_output = pred["y_hat"]
-                                   
+
                 # physics based loss
                 add_losses = self.P.loss_physics_collection["PrecipSoilMoisture"](
                     targets_bt[..., [0]], lstm_output[..., [0]]
@@ -102,9 +102,9 @@ class RNNTrainer(AbstractTrainer):
                     opt,
                     self.P.gradient_clip,
                     model,
-                    valid_mask = None, 
-                    add_losses = add_losses,
-                    target_weight=self.P.target_weight
+                    valid_mask=None,
+                    add_losses=add_losses,
+                    target_weight=self.P.target_weight,
                 )
 
                 batch_temporal_loss += batch_sequence_loss

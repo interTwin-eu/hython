@@ -21,7 +21,7 @@ class CubeletsDataset(Dataset):
         lstm_1d=False,
         static_to_dynamic=False,
         keep_spatial_degenerate_cubelet=False,
-        keep_temporal_degenerate_cubelets=False
+        keep_temporal_degenerate_cubelets=False,
     ):
         self.xd = xd
         self.y = y
@@ -215,6 +215,7 @@ class CubeletsDataset(Dataset):
         else:
             return xd, torch.tensor([]), y
 
+
 class XBatchDataset(Dataset):
     """
     Returns batches of Ntile,seq L T C H W
@@ -331,29 +332,29 @@ class XBatchDataset(Dataset):
 
         return gen
 
+
 class PyramidDataset(Dataset):
-
-    def __init__(self, 
-                 forcing: xr.Dataset, # time, lat, lon 
-                 predictor:xr.Dataset, # time, lat, lon
-                 target: xr.Dataset = None,  # lat, lon
-                 mask = None,
-                 downsampler = None,
-                 normalizer_forcing = None,
-                 normalizer_predictor = None,
-                 normalizer_target = None,
-                 shape:tuple = (), # time ,lat ,lon
-                 batch_size:dict = {"xsize":20, "ysize":20, "tsize":20},
-                 overlap:dict = {"xover":0, "yover":0, "tover":0},
-                 missing_policy: str | float = "all",
-                 fill_missing = 0, 
-                 keep_spatial_degenerate_cubelets = False,
-                 keep_temporal_degenerate_cubelets = False,
-                 persist=False, 
-                 lstm_1d = False, 
-                 static_to_dynamic=False
-                 ):
-
+    def __init__(
+        self,
+        forcing: xr.Dataset,  # time, lat, lon
+        predictor: xr.Dataset,  # time, lat, lon
+        target: xr.Dataset = None,  # lat, lon
+        mask=None,
+        downsampler=None,
+        normalizer_forcing=None,
+        normalizer_predictor=None,
+        normalizer_target=None,
+        shape: tuple = (),  # time ,lat ,lon
+        batch_size: dict = {"xsize": 20, "ysize": 20, "tsize": 20},
+        overlap: dict = {"xover": 0, "yover": 0, "tover": 0},
+        missing_policy: str | float = "all",
+        fill_missing=0,
+        keep_spatial_degenerate_cubelets=False,
+        keep_temporal_degenerate_cubelets=False,
+        persist=False,
+        lstm_1d=False,
+        static_to_dynamic=False,
+    ):
         self.forcing = forcing
         self.target = target
         self.predictor = predictor
@@ -365,41 +366,57 @@ class PyramidDataset(Dataset):
         self.missing_policy = missing_policy
 
         self.downsampler = downsampler
-        
+
         # compute stuff
 
-        self.cbs_spatial_idxs, self.cbs_missing_idxs, self.cbs_degenerate_idxs, self.cbs_spatial_slices = compute_cubelet_spatial_idxs(shape, 
-                                                                                                                   batch_size['xsize'], 
-                                                                                                                   batch_size['ysize'], 
-                                                                                                                   overlap['xover'], 
-                                                                                                                   overlap['yover'], 
-                                                                                                                   keep_spatial_degenerate_cubelets,
-                                                                                                                   masks = self.mask,
-                                                                                                                   missing_policy=self.missing_policy) 
+        (
+            self.cbs_spatial_idxs,
+            self.cbs_missing_idxs,
+            self.cbs_degenerate_idxs,
+            self.cbs_spatial_slices,
+        ) = compute_cubelet_spatial_idxs(
+            shape,
+            batch_size["xsize"],
+            batch_size["ysize"],
+            overlap["xover"],
+            overlap["yover"],
+            keep_spatial_degenerate_cubelets,
+            masks=self.mask,
+            missing_policy=self.missing_policy,
+        )
 
-        self.cbs_time_idxs, self.cbs_degenerate_idxs, self.cbs_time_slices = compute_cubelet_time_idxs(shape, 
-                                                                                        batch_size['tsize'],
-                                                                                        overlap['tover'], 
-                                                                                        keep_temporal_degenerate_cubelets,
-                                                                                        masks = self.mask)
+        (
+            self.cbs_time_idxs,
+            self.cbs_degenerate_idxs,
+            self.cbs_time_slices,
+        ) = compute_cubelet_time_idxs(
+            shape,
+            batch_size["tsize"],
+            overlap["tover"],
+            keep_temporal_degenerate_cubelets,
+            masks=self.mask,
+        )
 
-        #print(self.cbs_spatial_idxs)
-        
-        cbs_tuple_idxs = compute_cubelet_tuple_idxs(self.cbs_spatial_idxs, self.cbs_time_idxs)
-        cbs_slices = compute_cubelet_slices(self.cbs_spatial_slices, self.cbs_time_slices)
+        # print(self.cbs_spatial_idxs)
+
+        cbs_tuple_idxs = compute_cubelet_tuple_idxs(
+            self.cbs_spatial_idxs, self.cbs_time_idxs
+        )
+        cbs_slices = compute_cubelet_slices(
+            self.cbs_spatial_slices, self.cbs_time_slices
+        )
 
         self.cbs_mapping_idxs = cbs_mapping_idx_slice(cbs_tuple_idxs, cbs_slices)
-        
+
         if self.downsampler is not None:
             # DOWNSAMPLE THE REMAINING INDEXES AFTER REMOVING MISSING AND DEGENERATED
             # return a subset of the cbs_mapping_idxs
-            #TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
+            # TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
             self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
-            
-        
+
         if normalizer_forcing is not None:
             # this normalize the data corresponding to valid indexes
-            if normalizer_forcing.stats_iscomputed: # validation or test
+            if normalizer_forcing.stats_iscomputed:  # validation or test
                 self.forcing = normalizer_forcing.normalize(self.forcing)
             else:
                 # compute stats for training
@@ -407,15 +424,15 @@ class PyramidDataset(Dataset):
                 self.forcing = normalizer_forcing.normalize(self.forcing)
 
         if normalizer_predictor is not None:
-            #import pdb;pdb.set_trace()
-            if normalizer_predictor.stats_iscomputed: # validation or test
+            # import pdb;pdb.set_trace()
+            if normalizer_predictor.stats_iscomputed:  # validation or test
                 self.predictor = normalizer_predictor.normalize(self.predictor)
             else:
-                normalizer_predictor.compute_stats(self.predictor)   
+                normalizer_predictor.compute_stats(self.predictor)
                 self.predictor = normalizer_predictor.normalize(self.predictor)
 
-        if normalizer_target is not None: 
-            if normalizer_target.stats_iscomputed: # validation or test
+        if normalizer_target is not None:
+            if normalizer_target.stats_iscomputed:  # validation or test
                 self.target = normalizer_target.normalize(self.target)
             else:
                 normalizer_target.compute_stats(self.target)
@@ -423,15 +440,21 @@ class PyramidDataset(Dataset):
 
         # either do this here or in the getitem
         # maybe add HERE THE RASHAPE IN CASE IS LSTM 1D
-        self.forcing = self.forcing.to_stacked_array( new_dim="feat", sample_dims = ["time", "lat", "lon"]) # time, lat, lon , feat
-        self.forcing = self.forcing.transpose("time", "feat", "lat" , "lon") # T C H W
+        self.forcing = self.forcing.to_stacked_array(
+            new_dim="feat", sample_dims=["time", "lat", "lon"]
+        )  # time, lat, lon , feat
+        self.forcing = self.forcing.transpose("time", "feat", "lat", "lon")  # T C H W
         self.forcing = self.forcing.astype("float32")
 
-        self.target = self.target.to_stacked_array( new_dim="feat", sample_dims = ["time", "lat", "lon"])
-        self.target = self.target.transpose("time", "feat", "lat" , "lon") # T C H W
+        self.target = self.target.to_stacked_array(
+            new_dim="feat", sample_dims=["time", "lat", "lon"]
+        )
+        self.target = self.target.transpose("time", "feat", "lat", "lon")  # T C H W
         self.target = self.target.astype("float32")
 
-        self.predictor = self.predictor.to_stacked_array( new_dim="feat", sample_dims = ["lat", "lon"]) # H W C
+        self.predictor = self.predictor.to_stacked_array(
+            new_dim="feat", sample_dims=["lat", "lon"]
+        )  # H W C
         self.predictor = self.predictor.transpose("feat", "lat", "lon")
         self.predictor = self.predictor.astype("float32")
 
@@ -444,8 +467,8 @@ class PyramidDataset(Dataset):
         # should the missing flag not be equal to a potential valid value for that quantity? for example zero may be valid for many geophysical variables
         self.forcing = self.forcing.fillna(fill_missing)
 
-        # no fill target        
-        #self.target = self.target.fillna(fill_missing)
+        # no fill target
+        # self.target = self.target.fillna(fill_missing)
 
         self.predictor = self.predictor.fillna(fill_missing)
 
@@ -453,44 +476,41 @@ class PyramidDataset(Dataset):
         self.static_to_dynamic = static_to_dynamic
 
         # top layer resolution
-        self.top_layer_res = -1*self.forcing.lat.diff("lat").values[0] / 2
+        self.top_layer_res = -1 * self.forcing.lat.diff("lat").values[0] / 2
 
-        # expand static to dynamic 
-        #time_da = xr.DataArray(dynamic.time.values, [('time', dynamic.time.values)])
-        #static = static.expand_dims({"time":time_da})
+        # expand static to dynamic
+        # time_da = xr.DataArray(dynamic.time.values, [('time', dynamic.time.values)])
+        # static = static.expand_dims({"time":time_da})
 
     def __len__(self):
         return len(self.cbs_mapping_idxs)
 
     def get_indexes(self):
         return list(range(len(self.cbs_mapping_idxs)))
-    
+
     def __getitem__(self, index):
-        
         cubelet_idx = list(self.cbs_mapping_idxs.keys())[index]
-        
-        #print(index, cubelet_idx)
+
+        # print(index, cubelet_idx)
 
         time_slice = self.cbs_mapping_idxs[cubelet_idx]["time"]
-        lat_slice =  self.cbs_mapping_idxs[cubelet_idx]["lat"]
+        lat_slice = self.cbs_mapping_idxs[cubelet_idx]["lat"]
         lon_slice = self.cbs_mapping_idxs[cubelet_idx]["lon"]
 
         # xr.Dataarray to np.ndarray, this triggers loading in memory, in case persist = False
-        forcing = self.forcing[time_slice,:, lat_slice, lon_slice] #.values # L C H W
-        target = self.target[time_slice,:, lat_slice, lon_slice] #.values # L C H W
+        forcing = self.forcing[time_slice, :, lat_slice, lon_slice]  # .values # L C H W
+        target = self.target[time_slice, :, lat_slice, lon_slice]  # .values # L C H W
 
         latmin = forcing.lat.values.min()
         latmax = forcing.lat.values.max()
         lonmin = forcing.lon.values.min()
         lonmax = forcing.lon.values.max()
 
-        predictor = self.predictor.sel( 
-                          lat = slice( latmax + self.top_layer_res, 
-                                latmin - self.top_layer_res),
-                          lon = slice(lonmin - self.top_layer_res,
-                                lonmax + self.top_layer_res)
-        ).values 
-        
+        predictor = self.predictor.sel(
+            lat=slice(latmax + self.top_layer_res, latmin - self.top_layer_res),
+            lon=slice(lonmin - self.top_layer_res, lonmax + self.top_layer_res),
+        ).values
+
         forcing = forcing.values
         target = target.values
 
@@ -498,48 +518,51 @@ class PyramidDataset(Dataset):
         forcing = torch.FloatTensor(forcing)
         target = torch.FloatTensor(target)
         predictor = torch.FloatTensor(predictor)
-            
+
         if self.lstm_1d:
             # Super slow when persist == False
             # If True means that the xsize and ysize is equal to 1
-            
-            #xd = xd.flatten(2,3) # L C H W => L C N
-            xd = xd.squeeze() # L C H W, but H W is size 1,1 => L C
-            #xd = torch.permute(xd, (2, 0, 1)) # N L C, , but N = 1
-            #xd = x.squeeze(0)
-            
-            #y = y.flatten(2,3) # L C H W => L C N
-            y = y.squeeze() # L C H W, but H W is size 1,1 => L C
-            #y = torch.permute(y, (2, 0, 1)) # N L C, but N = 1
-            #y = y.squeeze(0)
+
+            # xd = xd.flatten(2,3) # L C H W => L C N
+            xd = xd.squeeze()  # L C H W, but H W is size 1,1 => L C
+            # xd = torch.permute(xd, (2, 0, 1)) # N L C, , but N = 1
+            # xd = x.squeeze(0)
+
+            # y = y.flatten(2,3) # L C H W => L C N
+            y = y.squeeze()  # L C H W, but H W is size 1,1 => L C
+            # y = torch.permute(y, (2, 0, 1)) # N L C, but N = 1
+            # y = y.squeeze(0)
             if self.xs is not None:
-                xs = xs.squeeze() # C H W => C N  
+                xs = xs.squeeze()  # C H W => C N
 
         if self.static_to_dynamic:
             if self.lstm_1d:
-                #print(xs.shape)
-                predictor = predictor.unsqueeze(0).repeat(forcing.size(0), 1, )
+                # print(xs.shape)
+                predictor = predictor.unsqueeze(0).repeat(
+                    forcing.size(0),
+                    1,
+                )
             else:
                 predictor = predictor.unsqueeze(0).repeat(forcing.size(0), 1, 1, 1)
         return predictor, forcing, target
 
+
 class TilesDataset(Dataset):
-
-    def __init__(self, 
-                 xs: xr.Dataset = None,  # lat, lon
-                 mask = None,
-                 downsampler = None,
-                 normalizer_static = None,
-                 shape:tuple = (), # time ,lat ,lon
-                 batch_size:dict = {"xsize":20, "ysize":20},
-                 overlap:dict = {"xover":0, "yover":0},
-                 missing_policy: str | float = "all",
-                 fill_missing = 0, 
-                 persist=False, 
-                 lstm_1d = False, 
-                 static_to_dynamic=False
-                 ):
-
+    def __init__(
+        self,
+        xs: xr.Dataset = None,  # lat, lon
+        mask=None,
+        downsampler=None,
+        normalizer_static=None,
+        shape: tuple = (),  # time ,lat ,lon
+        batch_size: dict = {"xsize": 20, "ysize": 20},
+        overlap: dict = {"xover": 0, "yover": 0},
+        missing_policy: str | float = "all",
+        fill_missing=0,
+        persist=False,
+        lstm_1d=False,
+        static_to_dynamic=False,
+    ):
         self.xs = xs
 
         self.shape = shape
@@ -550,47 +573,53 @@ class TilesDataset(Dataset):
 
         self.downsampler = downsampler
 
-        KEEP_DEGENERATE_CUBELETS = False # TODO: hardcoded
-        
+        KEEP_DEGENERATE_CUBELETS = False  # TODO: hardcoded
+
         # compute stuff
 
-        self.cbs_spatial_idxs, self.cbs_missing_idxs, self.cbs_degenerate_idxs, self.cbs_spatial_slices = compute_cubelet_spatial_idxs(shape, 
-                                                                                                                   batch_size['xsize'], 
-                                                                                                                   batch_size['ysize'], 
-                                                                                                                   overlap['xover'], 
-                                                                                                                   overlap['yover'], 
-                                                                                                                   KEEP_DEGENERATE_CUBELETS,
-                                                                                                                   masks = self.mask,
-                                                                                                                   missing_policy=self.missing_policy) 
-        self.cbs_mapping_idxs = cbs_mapping_idx_slice_notime(self.cbs_spatial_idxs, self.cbs_spatial_slices)
-        
+        (
+            self.cbs_spatial_idxs,
+            self.cbs_missing_idxs,
+            self.cbs_degenerate_idxs,
+            self.cbs_spatial_slices,
+        ) = compute_cubelet_spatial_idxs(
+            shape,
+            batch_size["xsize"],
+            batch_size["ysize"],
+            overlap["xover"],
+            overlap["yover"],
+            KEEP_DEGENERATE_CUBELETS,
+            masks=self.mask,
+            missing_policy=self.missing_policy,
+        )
+        self.cbs_mapping_idxs = cbs_mapping_idx_slice_notime(
+            self.cbs_spatial_idxs, self.cbs_spatial_slices
+        )
+
         if self.downsampler is not None:
             # DOWNSAMPLE THE REMAINING INDEXES AFTER REMOVING MISSING AND DEGENERATED
             # return a subset of the cbs_mapping_idxs
-            #TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
+            # TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
             self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
-            
-        
+
         if normalizer_static is not None:
             # this normalize the data corresponding to valid indexes
-            
-                
-            if normalizer_static.stats_iscomputed: # validation or test
+
+            if normalizer_static.stats_iscomputed:  # validation or test
                 self.xs = normalizer_static.normalize(self.xs)
             else:
                 if downsampler:
                     normalizer_static.compute_stats(self.xs)
                 else:
                     normalizer_static.compute_stats(self.xs)
-                    
+
                 self.xs = normalizer_static.normalize(self.xs)
 
-
-        self.xs = xs.to_stacked_array( new_dim="feat", sample_dims = ["lat", "lon"]) # H W C
+        self.xs = xs.to_stacked_array(
+            new_dim="feat", sample_dims=["lat", "lon"]
+        )  # H W C
         self.xs = self.xs.transpose("feat", "lat", "lon")
         self.xs = self.xs.astype("float32")
-            
-
 
         if persist:
             self.xs = self.xs.persist()
@@ -601,29 +630,24 @@ class TilesDataset(Dataset):
         self.lstm_1d = lstm_1d
         self.static_to_dynamic = static_to_dynamic
 
-
     def __len__(self):
         return len(self.cbs_mapping_idxs)
 
     def get_indexes(self):
         return list(range(len(self.cbs_mapping_idxs)))
-    
-    def __getitem__(self, index):
-        
-        cubelet_idx = list(self.cbs_mapping_idxs.keys())[index]
-        
-        #print(index, cubelet_idx)
 
-        lat_slice =  self.cbs_mapping_idxs[cubelet_idx]["lat"]
+    def __getitem__(self, index):
+        cubelet_idx = list(self.cbs_mapping_idxs.keys())[index]
+
+        # print(index, cubelet_idx)
+
+        lat_slice = self.cbs_mapping_idxs[cubelet_idx]["lat"]
         lon_slice = self.cbs_mapping_idxs[cubelet_idx]["lon"]
 
-        xs = self.xs[:, lat_slice,lon_slice].values # C H W
+        xs = self.xs[:, lat_slice, lon_slice].values  # C H W
         xs = torch.tensor(xs)
 
-            
         if self.lstm_1d:
-            xs = xs.squeeze() # C H W => C N  
+            xs = xs.squeeze()  # C H W => C N
 
         return xs
-
-        

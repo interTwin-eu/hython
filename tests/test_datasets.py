@@ -1,4 +1,3 @@
-
 import pytest
 import torch
 import numpy as np
@@ -11,7 +10,7 @@ import dask
 from torch import nn
 
 from hython.datasets import LSTMDataset, get_dataset
-from hython.trainer import train_val,RNNTrainer, RNNTrainParams
+from hython.trainer import train_val, RNNTrainer, RNNTrainParams
 from hython.sampler import SamplerBuilder, RegularIntervalDownsampler
 from hython.metrics import MSEMetric
 from hython.losses import RMSELoss
@@ -28,7 +27,6 @@ from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
 
-
-# configs 
+# configs
 def test_train():
     cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/lstm_training.yaml"))

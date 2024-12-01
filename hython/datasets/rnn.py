@@ -111,5 +111,3 @@ class LSTMDataset(Dataset):
             return self.xd[item_index], self.xs[item_index], self.y[item_index]
         else:
             return self.xd[item_index], self.y[item_index]
-
-
