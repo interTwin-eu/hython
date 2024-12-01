@@ -3,6 +3,7 @@ import xarray as xr
 import numpy as np
 import numpy.typing as npt
 from torch.utils.data import Dataset
+from hython.io import read_from_zarr
 
 from hython.utils import (
     compute_cubelet_spatial_idxs,
@@ -22,12 +23,13 @@ class BaseDataset():
     pass
 
 
-
+from .wflow import *
 from .conv import *
 from .rnn import *
 
 DATASETS = {
     "LSTMDataset": LSTMDataset,
+    "Wflow1d": Wflow1d,
     "XBatchDataset": XBatchDataset,
     "CubeletsDataset": CubeletsDataset,
 }

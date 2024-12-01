@@ -1,5 +1,5 @@
-# === Experiment =============================================================================
-experiment_name: "test"
+# === Experiment === 
+experiment_name: "test_datasets"
 experiment_run: "01"
 
 run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
@@ -12,7 +12,7 @@ seed: 10
 
 device: "cuda:0"
 
-# === Model =============================================================================
+# === Model ===
 
 model: cudalstm
 
@@ -20,7 +20,7 @@ hidden_size: 128
 
 dropout: 0.4
 
-# === Training =============================================================================
+# === Training ===
 
 loss_fn:
   _target_: hython.losses.RMSELoss
@@ -34,29 +34,26 @@ seq_length: 120
 
 learning_rate: 0.001
 
-batch: 256
+batch: 20
 
-epochs: 30
+epochs: 2
 
 # > Donwsampling < 
 
 # spatial downsampling
-downsampling: True
-train_interval: [3,3]
-train_origin: [0,0]
-valid_interval: [3,3]
-valid_origin: [0,0]
+train_downsampler: null
+valid_downsampler: null
 
 # temporal downsampling
 temporal_downsampling: True
 temporal_subset: [200, 150]
 
 
-# === Data =============================================================================
+# === Data ===
 
-dataset: LSTMDataset
+dataset: Wflow1d
 
-data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/adg1km_eobs_preprocessed.zarr/
+data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
 
 data_file: adg1km_eobs_preprocessed.zarr
 

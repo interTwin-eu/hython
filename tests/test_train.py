@@ -18,7 +18,7 @@ from hython.losses import RMSELoss
 from hython.io import read_from_zarr
 from hython.utils import set_seed
 from hython.models.cudnnLSTM import CuDNNLSTM
-from hython.normalizer import Normalizer
+from hython.normalizer import Normalizer, Scaler
 
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -39,85 +39,67 @@ def test_train():
 
     model_out_path = f"{cfg.data_dir}/{cfg.experiment_name}_{cfg.experiment_run}.pt"
 
-    Xd = (
-        read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
-        .sel(time=slice(*cfg.train_temporal_range))
-        .xd.sel(feat=cfg.dynamic_inputs)
-    )
-    Xs = read_from_zarr(url=file_path, group="xs", multi_index="gridcell").xs.sel(
-        feat=cfg.static_inputs
-    )
-    Y = (
-        read_from_zarr(url=file_path, group="y", multi_index="gridcell")
-        .sel(time=slice(*cfg.train_temporal_range))
-        .y.sel(feat=cfg.target_variables)
-    )
+    # Xd = (
+    #     read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
+    #     .sel(time=slice(*cfg.train_temporal_range))
+    #     .xd.sel(feat=cfg.dynamic_inputs)
+    # )
+    # Xs = read_from_zarr(url=file_path, group="xs", multi_index="gridcell").xs.sel(
+    #     feat=cfg.static_inputs
+    # )
+    # Y = (
+    #     read_from_zarr(url=file_path, group="y", multi_index="gridcell")
+    #     .sel(time=slice(*cfg.train_temporal_range))
+    #     .y.sel(feat=cfg.target_variables)
+    # )
 
-    SHAPE = Xd.attrs["shape"]
+    # SHAPE = Xd.attrs["shape"]
 
 
-    # === READ TEST ===================================================================
+    # # === READ TEST ===================================================================
 
-    Y_test = (
-        read_from_zarr(url=file_path, group="y", multi_index="gridcell")
-        .sel(time=slice(*cfg.valid_temporal_range))
-        .y.sel(feat=cfg.target_variables)
-    )
-    Xd_test = (
-        read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
-        .sel(time=slice(*cfg.valid_temporal_range))
-        .xd.sel(feat=cfg.dynamic_inputs)
+    # Y_test = (
+    #     read_from_zarr(url=file_path, group="y", multi_index="gridcell")
+    #     .sel(time=slice(*cfg.valid_temporal_range))
+    #     .y.sel(feat=cfg.target_variables)
+    # )
+    # Xd_test = (
+    #     read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
+    #     .sel(time=slice(*cfg.valid_temporal_range))
+    #     .xd.sel(feat=cfg.dynamic_inputs)
 
-    )
+    # )
 
-    masks = (
-        read_from_zarr(url=file_path, group="mask")
-        .mask.sel(mask_layer=cfg.mask_variables)
-        .any(dim="mask_layer")
-    )
+    # masks = (
+    #     read_from_zarr(url=file_path, group="mask")
+    #     .mask.sel(mask_layer=cfg.mask_variables)
+    #     .any(dim="mask_layer")
+    # )
 
 
 
     method = cfg.scaling_variant
 
-    normalizer_dynamic = Normalizer(method=method,
-                                    type="spacetime", 
-                                    axis_order="NTC")
-    normalizer_static = Normalizer(method=method,
-                                type="space", 
-                                axis_order="NTC")
+    # normalizer_dynamic = Normalizer(method=method,
+    #                                 type="spacetime", 
+    #                                 axis_order="NTC")
+    # normalizer_static = Normalizer(method=method,
+    #                             type="space", 
+    #                             axis_order="NTC")
 
-    normalizer_target = Normalizer(method=method, 
-                                type="spacetime",
-                                axis_order="NTC")
+    # normalizer_target = Normalizer(method=method, 
+    #                             type="spacetime",
+    #                             axis_order="NTC")
 
+    scaler = Scaler(cfg)
 
     train_dataset = get_dataset(cfg.dataset)(
-            Xd,
-            Y,
-            Xs,
-            original_domain_shape=SHAPE,
-            mask=masks,
-            downsampler=cfg.train_downsampler,
-            normalizer_dynamic=normalizer_dynamic,
-            normalizer_static=normalizer_static,
-            normalizer_target=normalizer_target,
-            #persist=True
+            cfg, scaler, True
     )
 
 
-
     val_dataset = get_dataset(cfg.dataset)(
-            Xd_test,
-            Y_test,
-            Xs,
-            original_domain_shape=SHAPE,
-            mask=masks,
-            downsampler=cfg.valid_downsampler,
-            normalizer_dynamic=normalizer_dynamic,
-            normalizer_static=normalizer_static,
-            normalizer_target=normalizer_target, 
-            #persist=True
+            cfg, scaler, False, "valid"
     )
 
 
