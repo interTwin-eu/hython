@@ -35,73 +35,17 @@ def test_train():
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    file_path = f"{cfg.data_dir}/{cfg.data_file}"
-
     model_out_path = f"{cfg.data_dir}/{cfg.experiment_name}_{cfg.experiment_run}.pt"
-
-    # Xd = (
-    #     read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
-    #     .sel(time=slice(*cfg.train_temporal_range))
-    #     .xd.sel(feat=cfg.dynamic_inputs)
-    # )
-    # Xs = read_from_zarr(url=file_path, group="xs", multi_index="gridcell").xs.sel(
-    #     feat=cfg.static_inputs
-    # )
-    # Y = (
-    #     read_from_zarr(url=file_path, group="y", multi_index="gridcell")
-    #     .sel(time=slice(*cfg.train_temporal_range))
-    #     .y.sel(feat=cfg.target_variables)
-    # )
-
-    # SHAPE = Xd.attrs["shape"]
-
-
-    # # === READ TEST ===================================================================
-
-    # Y_test = (
-    #     read_from_zarr(url=file_path, group="y", multi_index="gridcell")
-    #     .sel(time=slice(*cfg.valid_temporal_range))
-    #     .y.sel(feat=cfg.target_variables)
-    # )
-    # Xd_test = (
-    #     read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
-    #     .sel(time=slice(*cfg.valid_temporal_range))
-    #     .xd.sel(feat=cfg.dynamic_inputs)
-
-    # )
-
-    # masks = (
-    #     read_from_zarr(url=file_path, group="mask")
-    #     .mask.sel(mask_layer=cfg.mask_variables)
-    #     .any(dim="mask_layer")
-    # )
-
-
-
-    method = cfg.scaling_variant
-
-    # normalizer_dynamic = Normalizer(method=method,
-    #                                 type="spacetime", 
-    #                                 axis_order="NTC")
-    # normalizer_static = Normalizer(method=method,
-    #                             type="space", 
-    #                             axis_order="NTC")
-
-    # normalizer_target = Normalizer(method=method, 
-    #                             type="spacetime",
-    #                             axis_order="NTC")
 
     scaler = Scaler(cfg)
 
     train_dataset = get_dataset(cfg.dataset)(
-            cfg, scaler, True
+            cfg, scaler, True, "train"
     )
-
 
     val_dataset = get_dataset(cfg.dataset)(
             cfg, scaler, False, "valid"
     )
-
 
     train_sampler_builder = SamplerBuilder(
         train_dataset,
@@ -113,13 +57,11 @@ def test_train():
         sampling="sequential", 
         processing="single-gpu")
 
-
     train_sampler = train_sampler_builder.get_sampler()
     val_sampler = val_sampler_builder.get_sampler()
 
     train_loader = DataLoader(train_dataset, batch_size=cfg.batch , sampler=train_sampler)
     val_loader = DataLoader(val_dataset, batch_size=cfg.batch , sampler=val_sampler)
-
 
     model = CuDNNLSTM(
                     hidden_size=cfg.hidden_size, 
@@ -130,7 +72,6 @@ def test_train():
     )
 
     model.to(device)
-
 
     opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
     lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
