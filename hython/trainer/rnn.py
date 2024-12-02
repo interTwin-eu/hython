@@ -52,9 +52,6 @@ class RNNTrainer(AbstractTrainer):
         running_batch_loss = 0
         data_points = 0
 
-        epoch_preds = None
-        epoch_targets = None
-
         for data in dataloader:
             batch_temporal_loss = 0
 
@@ -85,16 +82,7 @@ class RNNTrainer(AbstractTrainer):
                 output = self.predict_step(lstm_output, steps=-1)
                 target = self.predict_step(targets_bt, steps=-1)
 
-                if epoch_preds is None:
-                    epoch_preds = output.detach().cpu().numpy()
-                    epoch_targets = target.detach().cpu().numpy()
-                else:
-                    epoch_preds = np.concatenate(
-                        (epoch_preds, output.detach().cpu().numpy()), axis=0
-                    )
-                    epoch_targets = np.concatenate(
-                        (epoch_targets, target.detach().cpu().numpy()), axis=0
-                    )
+                self._concat_epoch(output, target)
 
                 batch_sequence_loss = loss_batch(
                     loss_func=self.cfg.loss_fn,
@@ -117,7 +105,7 @@ class RNNTrainer(AbstractTrainer):
         epoch_loss = running_batch_loss / data_points
 
         metric = metric_epoch(
-            self.cfg.metric_fn, epoch_targets, epoch_preds, self.cfg.target_variables
+            self.cfg.metric_fn, self.epoch_targets, self.epoch_preds, self.cfg.target_variables
         )
 
         return epoch_loss, metric

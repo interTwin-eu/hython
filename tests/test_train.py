@@ -5,7 +5,7 @@ import os
 
 
 from hython.datasets import get_dataset
-from hython.trainer import train_val, RNNTrainer, RNNTrainParams
+from hython.trainer import train_val, RNNTrainer
 from hython.sampler import SamplerBuilder
 from hython.utils import set_seed
 from hython.models.cudnnLSTM import CuDNNLSTM
