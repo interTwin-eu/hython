@@ -9,9 +9,7 @@ class CalTrainer(AbstractTrainer):
         
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
-        epoch_preds = None
-        epoch_targets = None
-        valid_masks = None
+
 
         for data in dataloader:  # predictors, forcings , observations
             predictor_b = data["xs"].to(device)
@@ -42,20 +40,7 @@ class CalTrainer(AbstractTrainer):
                     scaling_factor=scaling_factor,
             )
 
-            if epoch_preds is None:
-                epoch_preds = output.detach().cpu().numpy()
-                epoch_targets = target.detach().cpu().numpy()
-                valid_masks = valid_mask.detach().cpu().numpy()
-            else:
-                epoch_preds = np.concatenate(
-                    (epoch_preds, output.detach().cpu().numpy()), axis=0
-                )
-                epoch_targets = np.concatenate(
-                    (epoch_targets, target.detach().cpu().numpy()), axis=0
-                )
-                valid_masks = np.concatenate(
-                    (valid_masks, valid_mask.detach().cpu().numpy()), axis=0
-                )
+            self._concat_epoch(output, target, valid_mask)
 
             # Accumulate mini-batch loss, only valid samples
             running_batch_loss += mini_batch_loss
@@ -64,10 +49,10 @@ class CalTrainer(AbstractTrainer):
 
         metric = metric_epoch(
             self.cfg.metric_fn,
-            epoch_targets,
-            epoch_preds,
+            self.epoch_targets,
+            self.epoch_preds,
             self.cfg.target_variables,
-            valid_masks,
+            self.epoch_valid_masks,
         )
 
         return epoch_loss, metric

@@ -64,7 +64,12 @@ class MetricCollection(Metric):
         ret = {}
         for metric in self.metrics:
             ret[metric.__class__.__name__] = metric(y_true, y_pred, target_names)
-        return ret
+
+        ret2 = {}
+        for km in ret:
+            for kt in ret[km]:
+                ret2[kt] = km
+        return ret2
 
 class MSEMetric(Metric):
     """

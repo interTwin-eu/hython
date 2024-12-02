@@ -24,10 +24,31 @@ class BaseTrainParams:
 
 class AbstractTrainer(ABC):
     def __init__(self):
-        pass
+        self.epoch_preds = None 
+        self.epoch_targets = None 
+        self.epoch_valid_masks = None 
+
     def temporal_index(self, args):
         pass
 
+
+    def _concat_epoch(self, pred, target, mask = None):
+        if self.epoch_preds is None:
+            self.epoch_preds = pred.detach().cpu().numpy()
+            self.epoch_targets = target.detach().cpu().numpy()
+            if mask is not None:
+                self.epoch_valid_masks = mask.detach().cpu().numpy()
+        else:
+            self.epoch_preds = np.concatenate(
+                (self.epoch_preds, pred.detach().cpu().numpy()), axis=0
+            )
+            self.epoch_targets = np.concatenate(
+                (self.epoch_targets, target.detach().cpu().numpy()), axis=0
+            )
+            if mask is not None:
+                self.epoch_valid_masks = np.concatenate(
+                    (self.epoch_valid_masks, mask.detach().cpu().numpy()), axis=0
+                )
 
     def train_epoch(self):
         pass 
