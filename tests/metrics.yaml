@@ -1,0 +1,7 @@
+metric_fn:
+  _target_: hython.metrics.MetricCollection
+  metrics:
+    - _target_: hython.metrics.MSEMetric
+    - _target_: hython.metrics.NSEMetric
+    - _target_: hython.metrics.PearsonMetric
+    - _target_: hython.metrics.KGEMetric

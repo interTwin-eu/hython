@@ -1,7 +1,7 @@
 import numpy as np
 import xarray as xr
 from hython.utils import keep_valid
-
+from typing import Dict, List
 
 def metric_decorator(y_true, y_pred, target_names, valid_mask=None, sample_weight=None):
     def target(wrapped):
@@ -15,7 +15,7 @@ def metric_decorator(y_true, y_pred, target_names, valid_mask=None, sample_weigh
                     iypred = iypred[imask]
                     iytrue = iytrue[imask]
                 metrics[target] = wrapped(
-                    iytrue, iypred, valid_mask=valid_mask, sample_weight=sample_weight
+                    iytrue, iypred, sample_weight=sample_weight
                 )
             return metrics
 
@@ -23,6 +23,9 @@ def metric_decorator(y_true, y_pred, target_names, valid_mask=None, sample_weigh
 
     return target
 
+
+def get_metrics():
+    return 
 
 class Metric:
     """
@@ -38,6 +41,30 @@ class Metric:
     def __init__(self):
         pass
 
+    def __call__(self) -> Dict:
+        pass 
+
+
+class MetricCollection(Metric):
+    """Compute a collection of metrics 
+    
+    Parameters
+    ----------
+    metrics: list of instantiated metrics. ex: metrics=[MSEMetric(), KGEMetric()]
+
+    Returns
+    -------
+    Nested dictionary containing metrics and target variables, ex: {"MSEMetric": {"target_variable_1": value, "target_variable_2": value, ...}, "KGEMetric": { ... }, ...}
+    
+    """
+    def __init__(self, metrics:List[Metric] = []):
+        self.metrics = metrics
+
+    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
+        ret = {}
+        for metric in self.metrics:
+            ret[metric.__class__.__name__] = metric(y_true, y_pred, target_names)
+        return ret
 
 class MSEMetric(Metric):
     """
@@ -45,9 +72,10 @@ class MSEMetric(Metric):
 
     Parameters
     ----------
-    y_pred (numpy.array): The true values.
-    y_true (numpy.array): The predicted values.
+    y_pred (numpy.array): The true values. [sample, feature]
+    y_true (numpy.array): The predicted values. [sample, feature]
     target_names: List of targets that contribute in the loss computation.
+    valid_mask: 
 
     Returns
     -------
@@ -62,23 +90,27 @@ class MSEMetric(Metric):
 
 
 class RMSEMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str]):
-        return metric_decorator(y_true, y_pred, target_names)(compute_rmse)()
+    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(compute_rmse)()
 
 
 class KGEMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str]):
-        return metric_decorator(y_true, y_pred, target_names)(compute_kge)()
+    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(compute_kge)()
 
 
 class PearsonMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str]):
-        return metric_decorator(y_true, y_pred, target_names)(compute_pearson)()
+    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(compute_pearson)()
 
 
 class PBIASMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str]):
-        return metric_decorator(y_true, y_pred, target_names)(compute_pbias)()
+    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(compute_pbias)()
+
+class NSEMetric(Metric):    
+    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(compute_nse)()
 
 
 # == METRICS
@@ -128,6 +160,15 @@ def compute_csi():
 # GENERAL
 
 
+def compute_nse(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False, sample_weight=None, valid_mask=None):
+
+    den = ((y_true - y_pred.mean())**2).sum()
+    num = ((y_pred - y_true)**2).sum()
+
+    value = 1 - num / den
+
+    return value
+
 def compute_variance(ds, dim="time", axis=0, std=False):
     if isinstance(ds, xr.DataArray):
         return ds.std(dim=dim) if std else ds.var(dim=dim)
@@ -136,7 +177,7 @@ def compute_variance(ds, dim="time", axis=0, std=False):
 
 
 def compute_gamma(y_true: xr.DataArray, y_pred, axis=0):
-    if isinstance(ds, xr.DataArray):
+    if isinstance(y_true, xr.DataArray):
         pass
     else:
         y_true, y_pred = keep_valid(y_true, y_pred)
@@ -144,13 +185,15 @@ def compute_gamma(y_true: xr.DataArray, y_pred, axis=0):
     return (np.nanstd(y_pred, axis=axis) / m2) / (np.nanstd(y_true, axis=axis) / m1)
 
 
-def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False):
+def compute_pbias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False, sample_weight=None, valid_mask=None):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return 100 * (
             (y_pred - y_true).mean(dim=dim, skipna=skipna)
             / np.abs(y_true).mean(dim=dim, skipna=skipna)
         )
     else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
+
         return 100 * (
             np.mean(y_pred - y_true, axis=axis) / np.mean(np.abs(y_true), axis=axis)
         )
@@ -160,10 +203,12 @@ def compute_bias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False)
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return (y_pred - y_true).mean(dim=dim, skipna=skipna)
     else:
+        y_true, y_pred = keep_valid(y_true, y_pred)
         return np.mean(y_pred - y_true, axis=axis)
 
 
 def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False):
+    
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna))
     else:
@@ -177,7 +222,6 @@ def compute_mse(
     axis=0,
     dim="time",
     sample_weight=None,
-    valid_mask=None,
     skipna=False,
 ):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
@@ -192,10 +236,14 @@ def compute_pearson(y_true, y_pred, axis=0, dim="time", sample_weight=None):
         return xr.corr(y_true, y_pred, dim=dim, weights=sample_weight)
     else:
         y_true, y_pred = keep_valid(y_true, y_pred)
-        raise NotImplementedError
+        y_true_m = y_true.mean(axis=axis)
+        y_pred_m = y_pred.mean(axis=axis)
+        num = np.sum((y_true - y_true_m)*(y_pred - y_pred_m), axis=axis)
+        den = np.sqrt(np.sum( (y_true - y_true_m)**2 , axis=0) *  np.sum( (y_pred - y_pred_m)**2, axis=0 ) )
+        return num/den
 
 
-def compute_kge(y_true, y_pred):
+def compute_kge(y_true, y_pred, sample_weight=None):
     if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)):
         return np.array([np.nan, np.nan, np.nan, np.nan])
 

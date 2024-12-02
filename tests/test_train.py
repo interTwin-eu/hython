@@ -79,3 +79,66 @@ def test_train():
         model_out_path,
         device,
     )
+
+
+
+
+def test_train_metrics():
+    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/lstm_training_metrics.yaml"))
+
+    set_seed(cfg.seed)
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    model_out_path = f"{cfg.run_dir}/{cfg.experiment_name}_{cfg.experiment_run}.pt"
+
+    scaler = Scaler(cfg)
+
+    train_dataset = get_dataset(cfg.dataset)(cfg, scaler, True, "train")
+
+    val_dataset = get_dataset(cfg.dataset)(cfg, scaler, False, "valid")
+
+    train_sampler_builder = SamplerBuilder(
+        train_dataset, sampling="random", processing="single-gpu"
+    )
+
+    val_sampler_builder = SamplerBuilder(
+        val_dataset, sampling="sequential", processing="single-gpu"
+    )
+
+    train_sampler = train_sampler_builder.get_sampler()
+    val_sampler = val_sampler_builder.get_sampler()
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=cfg.batch, sampler=train_sampler
+    )
+    val_loader = DataLoader(val_dataset, batch_size=cfg.batch, sampler=val_sampler)
+
+    model = CuDNNLSTM(
+        hidden_size=cfg.hidden_size,
+        dynamic_input_size=len(cfg.dynamic_inputs),
+        static_input_size=len(cfg.static_inputs),
+        output_size=len(cfg.target_variables),
+        dropout=cfg.dropout,
+    )
+
+    model.to(device)
+
+    opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
+    lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
+
+    trainer = RNNTrainer(
+        cfg
+    )
+
+    model, loss_history, metric_history = train_val(
+        trainer,
+        model,
+        train_loader,
+        val_loader,
+        cfg.epochs,
+        opt,
+        lr_scheduler,
+        model_out_path,
+        device,
+    )

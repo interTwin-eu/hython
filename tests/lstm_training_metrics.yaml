@@ -1,0 +1,93 @@
+# === Experiment === 
+experiment_name: "test"
+experiment_run: "01"
+
+run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+
+train_temporal_range: ["2016-01-01", "2018-12-31"]
+valid_temporal_range: ["2019-01-01", "2020-12-31"]
+test_temporal_range: ["2019-01-01", "2020-12-31"]
+
+seed: 10 
+
+device: "cuda:0"
+
+# === Model ===
+
+model: cudalstm
+
+hidden_size: 128
+
+dropout: 0.4
+
+# === Training ===
+
+loss_fn:
+  _target_: hython.losses.RMSELoss
+    
+metric_fn:
+  _target_: hython.metrics.MetricCollection
+  metrics:
+    - _target_: hython.metrics.MSEMetric
+    - _target_: hython.metrics.NSEMetric
+    - _target_: hython.metrics.PearsonMetric
+    - _target_: hython.metrics.KGEMetric
+
+optimizer: adam
+
+seq_length: 120
+
+learning_rate: 0.001
+
+batch: 20
+
+epochs: 2
+
+gradient_clip: null
+
+# > Donwsampling < 
+
+# spatial downsampling
+train_downsampler: #None
+  _target_: hython.sampler.downsampler.RegularIntervalDownsampler
+  intervals: [5,5]
+  origin: [0,0]
+
+valid_downsampler: #None
+  _target_: hython.sampler.downsampler.RegularIntervalDownsampler
+  intervals: [5,5]
+  origin: [3,3]
+
+# temporal downsampling
+temporal_downsampling: True
+temporal_subset: [200, 150]
+
+
+# === Data ===
+
+dataset: Wflow1d
+
+data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
+
+data_file: adg1km_eobs_preprocessed.zarr
+
+scaling_variant: minmax
+
+static_inputs:
+  - thetaS
+  - thetaR
+  - KsatVer
+  - c
+  - RootingDepth
+
+dynamic_inputs:
+  - precip
+  - pet
+  - temp
+  
+target_variables:
+  - vwc
+
+mask_variables:
+  - mask_missing
+  - mask_lake
