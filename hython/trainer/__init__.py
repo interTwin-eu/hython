@@ -21,38 +21,18 @@ class BaseTrainParams:
     pass
 
 
-# TODO: consider dataclass
-class RNNTrainParams(BaseTrainParams):
-    def __init__(
-        self,
-        loss_func: _Loss,
-        metric_func: Metric,
-        target_names: list,
-        loss_physics_collection: PhysicsLossCollection = PhysicsLossCollection(),
-        experiment: str = None,
-        temporal_subsampling: bool = None,
-        temporal_subset: list = None,
-        seq_length: int = None,
-        gradient_clip: dict = None,
-        device: str = "cpu",
-    ):
-        self.loss_func = loss_func
-        self.metric_func = metric_func
-        self.loss_physics_collection = loss_physics_collection
-        self.experiment = experiment
-        self.temporal_subsampling = temporal_subsampling
-        self.temporal_subset = temporal_subset
-        self.seq_length = seq_length
-        self.target_names = target_names
-        self.gradient_clip = gradient_clip
-        self.device = device
-        self.target_weight = {t: 1 / len(target_names) for t in target_names}
-
 
 class AbstractTrainer(ABC):
     def __init__(self):
         pass
     def temporal_index(self, args):
+        pass
+
+
+    def train_epoch(self):
+        pass 
+
+    def valid_epoch(self):
         pass
 
     def epoch_step(self):

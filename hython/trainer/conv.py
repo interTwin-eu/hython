@@ -2,7 +2,7 @@ from . import *
 
 
 class ConvTrainer(AbstractTrainer):
-    def __init__(self, params: RNNTrainParams):
+    def __init__(self, params):
         self.P = params  # RNNTrainParams(**params)
         super(ConvTrainer, self).__init__(self.P.experiment)
 
