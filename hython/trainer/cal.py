@@ -18,8 +18,8 @@ class CalTrainer(AbstractTrainer):
 
             pred = model(predictor_b, forcing_b)
 
-            output = self.predict_step(pred["y_hat"])
-            target = self.predict_step(target_b)
+            output = self.predict_step(pred["y_hat"], steps=-1)
+            target = self.predict_step(target_b, steps=-1)
 
             valid_mask = ~target.isnan()  # non null values
 
@@ -56,8 +56,3 @@ class CalTrainer(AbstractTrainer):
         )
 
         return epoch_loss, metric
-
-    def predict_step(self, arr):
-        """Return the n steps that should be predicted"""
-
-        return arr[:, -1]  # N Ch H W

@@ -6,10 +6,10 @@ import torch.nn.functional as F
 from omegaconf import DictConfig, OmegaConf
 
 
-# class BaseLoss(_Loss):
+class BaseLoss(torch.nn.Module):
 
-#     def __init__(self, cfg = {},):
-#         self.cfg = OmegaConf.create(cfg) if isinstance(cfg, dict) else OmegaConf.load(cfg)
+    def __init__(self, cfg = {},):
+        self.cfg = OmegaConf.create(cfg) if isinstance(cfg, dict) else OmegaConf.load(cfg)
 
 
 class RMSELoss(_Loss):

@@ -2,7 +2,8 @@ from . import *
 
 
 class Wflow1d(Dataset):
-    def __init__(self, cfg, scaler, is_train=True, period="train"):
+    def __init__(self, cfg, scaler, is_train=True, period="train", scale_ontraining=False):
+        self.scale_ontraining = scale_ontraining
         self.scaler = scaler
         self.cfg = cfg
 
@@ -17,9 +18,11 @@ class Wflow1d(Dataset):
             .sel(time=self.period)
             .xd.sel(feat=cfg.dynamic_inputs)
         )
+
         self.xs = read_from_zarr(
             url=file_path, group="xs", multi_index="gridcell"
         ).xs.sel(feat=cfg.static_inputs)
+
         self.y = (
             read_from_zarr(url=file_path, group="y", multi_index="gridcell")
             .sel(time=self.period)
@@ -29,9 +32,6 @@ class Wflow1d(Dataset):
         self.shape = self.xd.attrs["shape"]
 
         # compute indexes
-
-        ishape = self.shape[0]  # rows (y, lat)
-        jshape = self.shape[1]  # columns (x, lon)
 
         self.grid_idx_2d = compute_grid_indices(shape=self.shape)
         self.grid_idx_1d = self.grid_idx_2d.flatten()
@@ -67,17 +67,19 @@ class Wflow1d(Dataset):
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("gridcell", "time")
         )
-        self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
-
+        
         self.scaler.load_or_compute(
             self.xs, "static_inputs", is_train, axes=("gridcell")
         )
-        self.xs = self.scaler.transform(self.xs, "static_inputs")
-
+        
         self.scaler.load_or_compute(
             self.y, "target_variables", is_train, axes=("gridcell", "time")
         )
-        self.y = self.scaler.transform(self.y, "target_variables")
+        
+        if not self.scale_ontraining:
+            self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
+            self.xs = self.scaler.transform(self.xs, "static_inputs")
+            self.y = self.scaler.transform(self.y, "target_variables")
 
         if is_train:
             self.scaler.write("dynamic_inputs")
@@ -90,9 +92,14 @@ class Wflow1d(Dataset):
     def __getitem__(self, index):
         item_index = self.grid_idx_1d_valid[index]
 
-        xd = torch.tensor(self.xd[item_index].values).float()
-        xs = torch.tensor(self.xs[item_index].values).float()
-        y = torch.tensor(self.y[item_index].values).float()
+        if self.scale_ontraining:
+            xd = torch.tensor(self.scaler.transform(self.xd[item_index], "dynamic_inputs").values).float()
+            xs = torch.tensor(self.scaler.transform(self.xs[item_index], "static_inputs").values).float()
+            y = torch.tensor(self.scaler.transform(self.y[item_index], "target_variables").values).float()
+        else:
+            xd = torch.tensor(self.xd[item_index].values).float()
+            xs = torch.tensor(self.xs[item_index].values).float()
+            y = torch.tensor(self.y[item_index].values).float()
 
         return {"xd": xd, "xs": xs, "y": y}
 
