@@ -11,7 +11,7 @@ class RNNTrainer(AbstractTrainer):
     """
     def __init__(self, cfg):
         super(RNNTrainer, self).__init__()
-        self.cfg = cfg  # RNNTrainParams(**params)
+        self.cfg = cfg 
         self.cfg["target_weight"] = {t: 1 / len(self.cfg.target_variables) for t in self.cfg.target_variables}
         
     def epoch_step(self, model, dataloader, device, opt=None):
@@ -38,18 +38,13 @@ class RNNTrainer(AbstractTrainer):
 
                 pred = model(x_concat)
 
-                # physics based loss
-                # add_losses = self.P.loss_physics_collection["PrecipSoilMoisture"](
-                #     targets_bt[..., [0]], lstm_output[..., [0]]
-                # )
-
                 output = self.predict_step(pred["y_hat"], steps=-1)
                 target = self.predict_step(targets_bt, steps=-1)
 
                 self._concatenate_result(output, target)
 
-                batch_sequence_loss = self._compute_loss(
-                    output= output,
+                batch_sequence_loss = self._compute_batch_loss(
+                    prediction= output,
                     target=target,
                     valid_mask=None,
                     target_weight=self.cfg.target_weight,

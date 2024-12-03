@@ -55,6 +55,7 @@ epochs: 2
 
 gradient_clip: null
 
+
 # > Donwsampling < 
 
 # spatial downsampling
@@ -68,6 +69,7 @@ valid_downsampler: #None
   frac: 0.01
   how: time
 
+temporal_downsampling:
 
 # === Data ===
 

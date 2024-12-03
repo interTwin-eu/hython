@@ -8,9 +8,6 @@ import importlib.util
 from abc import ABC
 import copy
 
-from hython.metrics import Metric
-from hython.losses import PhysicsLossCollection
-
 tqdm_support = True if importlib.util.find_spec("tqdm") is not None else False
 
 if tqdm_support:
@@ -64,20 +61,48 @@ class AbstractTrainer(ABC):
 
             self.time_index = np.arange(0, time_range)
 
-    def _compute_loss(self, output, target, valid_mask, target_weight,  scaling_factor =None, add_losses={}):
+    def _set_regularization(self):
         
-        loss = self.cfg.loss_fn(
-            target,
-            output,
-            valid_mask=valid_mask,
-            scaling_factor=scaling_factor,
-            target_weight=target_weight,
-        )
+        self.add_regularization = {}
 
+        # return a dictionary of { reg_func1: weight1, reg_func2: weight2, ...   }
+
+        # actually regularization should access any data in the trainig loop not only pred, target
+
+
+    def _compute_batch_loss(self, prediction, target, valid_mask, target_weight, add_losses={}):
+        
+        # Compute targets weighted loss. In case only one target, weight is 1 
+        loss = 0
+        for i, target_name  in enumerate(target_weight):
+            iypred = prediction[:, i]
+            iytrue = target[:, i]
+            if valid_mask is not None:
+                imask = valid_mask[:, i]
+                iypred = iypred[imask]
+                iytrue = iytrue[imask]
+
+            w = target_weight[target_name]
+
+            loss +=  w * self.cfg.loss_fn(iytrue, iypred)
+
+        # in case there are missing observations in the batch
+        # the loss should be weighted to reduce the importance 
+        # of the loss on the update of the NN weights
+        if valid_mask is not None:
+            
+            scaling_factor = sum(valid_mask) / len(
+                target
+            )  # scale by number of valid samples in a mini-batch
+
+            loss = loss*scaling_factor
+
+        self._set_regularization()
+        
         # compound more losses, in case dict is not empty
-        # TODO: add user-defined weights
-        for k in add_losses:
-            loss += add_losses[k]
+        for i, (reg_func, reg_weight) in enumerate(self.add_regularization):
+            loss += reg_func(prediction, target) * reg_weight
+
 
         return loss
 

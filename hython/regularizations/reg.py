@@ -1,14 +1,13 @@
 from typing import Optional, List
-
 import torch
 from torch import nn
 from torch.nn.modules.loss import _Loss
 import torch.nn.functional as F
 
 
-class PhysicsLossCollection:
-    def __init__(self, loss: List[_Loss] = None):
-        super(PhysicsLossCollection, self).__init__()
+class RegCollection(nn.Module):
+    def __init__(self, loss: List[nn.Module] = None):
+        super(RegCollection, self).__init__()
 
         if not isinstance(loss, list) and loss is not None:
             loss = [loss]
@@ -29,11 +28,11 @@ def return_dict(*args):
     return {}
 
 
-class PrecipSoilMoistureLoss(_Loss):
+class Reg1(nn.Module):
     __name__ = "PrecipSoilMoisture"
 
     def __init__(self):
-        super(PrecipSoilMoistureLoss, self).__init__()
+        super(Reg1, self).__init__()
 
     def forward(self, x, y):
         N, T, C = x.shape
@@ -49,11 +48,11 @@ class PrecipSoilMoistureLoss(_Loss):
         return {self.__name__: loss}
 
 
-class ThetaLoss(_Loss):
+class ThetaReg(nn.Module):
     __name__ = "Theta"
 
     def __init__(self, min_storage=0):
-        super(ThetaLoss, self).__init__()
+        super(ThetaReg, self).__init__()
         self.min_storage = min_storage
 
     def forward(self, thetaS, thetaR):
