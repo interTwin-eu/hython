@@ -30,11 +30,68 @@ class AbstractTrainer(ABC):
         self.model = None
         self.device = None
 
-    def temporal_index(self, args):
-        pass
+    def _set_dynamic_temporal_downsampling(self, data_loaders=None, opt=None):
+        """Return the temporal indices of the timeseries, it may be a subset"""
 
+        if self.cfg.temporal_downsampling:
+            if len(self.cfg.temporal_subset) > 1:
+                # use different time indices for training and validation
 
-    def _concat_epoch(self, pred, target, mask = None):
+                if opt is None:
+                    # validation
+                    time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
+                    temporal_subset = self.cfg.temporal_subset[-1]
+                else:
+                    time_range = next(iter(data_loaders[0]))["xd"].shape[1]
+                    temporal_subset = self.cfg.temporal_subset[0]
+
+                self.time_index = np.random.randint(
+                    0, time_range - self.cfg.seq_length, temporal_subset
+                )
+            else:
+                # use same time indices for training and validation, time indices are from train_loader
+                time_range = next(iter(data_loaders[0]))["xd"].shape[1]
+                self.time_index = np.random.randint(
+                    0, time_range - self.cfg.seq_length, self.cfg.temporal_subset[-1]
+                )
+
+        else:
+            if opt is None:
+                # validation
+                time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
+            else:
+                time_range = next(iter(data_loaders[0]))["xd"].shape[1]
+
+            self.time_index = np.arange(0, time_range)
+
+    def _compute_loss(self, output, target, valid_mask, target_weight,  scaling_factor =None, add_losses={}):
+        
+        loss = self.cfg.loss_fn(
+            target,
+            output,
+            valid_mask=valid_mask,
+            scaling_factor=scaling_factor,
+            target_weight=target_weight,
+        )
+
+        # compound more losses, in case dict is not empty
+        # TODO: add user-defined weights
+        for k in add_losses:
+            loss += add_losses[k]
+
+        return loss
+
+    def _backprop_loss(self, loss, opt):
+        if opt is not None:
+            opt.zero_grad()
+            loss.backward()
+
+            if self.cfg.gradient_clip is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), **self.cfg.gradient_clip)
+
+            opt.step() 
+
+    def _concatenate_result(self, pred, target, mask = None):
         if self.epoch_preds is None:
             self.epoch_preds = pred.detach().cpu().numpy()
             self.epoch_targets = target.detach().cpu().numpy()
@@ -52,12 +109,21 @@ class AbstractTrainer(ABC):
                     (self.epoch_valid_masks, mask.detach().cpu().numpy()), axis=0
                 )
 
+    def _compute_metric(self):
+        metric = self.cfg.metric_fn(
+            self.epoch_targets,
+            self.epoch_preds,
+            self.cfg.target_variables,
+            self.epoch_valid_masks
+            )
+        return metric
+
     def train_valid_epoch(self, model, train_loader, val_loader, optimizer, device):
         model.train()
 
         # set time indices for training
-        # This has effect only if the trainer overload the method (i.e. for RNN)
-        self.temporal_index([train_loader, val_loader])
+        # TODO: This has effect only if the trainer overload the method (i.e. for RNN)
+        self._set_dynamic_temporal_downsampling([train_loader, val_loader])
 
         train_loss, train_metric = self.epoch_step( # change to train_valid epoch
             model, train_loader, device, opt=optimizer
@@ -67,7 +133,7 @@ class AbstractTrainer(ABC):
         with torch.no_grad():
             # set time indices for validation
             # This has effect only if the trainer overload the method (i.e. for RNN)
-            self.temporal_index([train_loader, val_loader])
+            self._set_dynamic_temporal_downsampling([train_loader, val_loader])
 
             val_loss, val_metric = self.epoch_step( # change to train_valid epoch
                 model, val_loader, device, opt=None
@@ -96,7 +162,7 @@ class AbstractTrainer(ABC):
             torch.save(model.state_dict(), fp)
 
 
-from .train import train_val, metric_epoch, loss_batch
+from .train import train_val
 from .rnn import *
 from .conv import *
 from .cal import *

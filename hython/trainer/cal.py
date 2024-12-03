@@ -2,6 +2,13 @@ from . import *
 
 
 class CalTrainer(AbstractTrainer):
+    """
+
+    Parameters
+    ----------
+    cfg:     
+
+    """
     def __init__(self, cfg):
         super(CalTrainer, self).__init__()
         self.cfg = cfg
@@ -27,32 +34,23 @@ class CalTrainer(AbstractTrainer):
                 target
             )  # scale by number of valid samples in a mini-batch
 
-            mini_batch_loss = loss_batch(
-                    loss_func=self.cfg.loss_fn,
+            self._concatenate_result(output, target, valid_mask)
+
+            mini_batch_loss = self._compute_loss(
                     output= output,
                     target=target,
-                    opt=opt,
-                    gradient_clip= self.cfg.gradient_clip,
-                    model=model,
                     valid_mask=valid_mask,
-                    #add_losses=add_losses,
                     target_weight=self.cfg.target_weight,
                     scaling_factor=scaling_factor,
             )
 
-            self._concat_epoch(output, target, valid_mask)
+            self._backprop_loss(mini_batch_loss, opt)
 
             # Accumulate mini-batch loss, only valid samples
             running_batch_loss += mini_batch_loss
 
         epoch_loss = running_batch_loss / len(dataloader)
 
-        metric = metric_epoch(
-            self.cfg.metric_fn,
-            self.epoch_targets,
-            self.epoch_preds,
-            self.cfg.target_variables,
-            self.epoch_valid_masks,
-        )
+        metric = self._compute_metric()
 
         return epoch_loss, metric
