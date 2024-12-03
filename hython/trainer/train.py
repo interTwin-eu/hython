@@ -67,25 +67,10 @@ def train_val(
     epoch_iterator = tqdm(range(epochs)) if tqdm_support else range(epochs)
 
     for epoch in epoch_iterator:
-        model.train()
 
-        # set time indices for training
-        # This has effect only if the trainer overload the method (i.e. for RNN)
-        trainer.temporal_index([train_loader, val_loader])
+        # From here ...... returns all dicts
 
-        train_loss, train_metric = trainer.epoch_step(
-            model, train_loader, device, opt=optimizer
-        )
-
-        model.eval()
-        with torch.no_grad():
-            # set time indices for validation
-            # This has effect only if the trainer overload the method (i.e. for RNN)
-            trainer.temporal_index([train_loader, val_loader])
-
-            val_loss, val_metric = trainer.epoch_step(
-                model, val_loader, device, opt=None
-            )
+        train_loss, train_metric, val_loss, val_metric = trainer.train_valid_epoch(model,  train_loader, val_loader, optimizer, device)
 
         lr_scheduler.step(val_loss)
 

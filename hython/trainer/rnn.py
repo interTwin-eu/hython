@@ -109,7 +109,3 @@ class RNNTrainer(AbstractTrainer):
         )
 
         return epoch_loss, metric
-
-    def predict_step(self, arr, steps=-1):
-        """Return the n steps that should be predicted"""
-        return arr[:, steps]
