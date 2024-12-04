@@ -52,7 +52,7 @@ class RNNTrainer(AbstractTrainer):
 
                 self._backprop_loss(batch_sequence_loss, opt)
 
-                batch_temporal_loss += batch_sequence_loss
+                batch_temporal_loss += batch_sequence_loss.detach()
 
             data_points += data["xd"].size(0)
 

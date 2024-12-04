@@ -16,7 +16,6 @@ class TransferNN(nn.Module):
         for p in self.parameters():
             if isinstance(p, nn.Linear):
                 torch.nn.init.xavier_uniform_(p)
-            # print(p)
 
     def forward(self, x):
         l1 = F.leaky_relu(self.lin(x))

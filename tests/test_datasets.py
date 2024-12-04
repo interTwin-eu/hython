@@ -4,29 +4,50 @@ import numpy as np
 import xarray as xr
 from pathlib import Path
 import os
-import random
 
-import dask
-from torch import nn
-
-from hython.datasets import LSTMDataset, get_dataset
-from hython.trainer import train_val, RNNTrainer, RNNTrainParams
-from hython.sampler import SamplerBuilder, RegularIntervalDownsampler
-from hython.metrics import MSEMetric
-from hython.losses import RMSELoss
+from hython.sampler import SamplerBuilder
+from hython.datasets import Wflow2d, Wflow2dCal
+from hython.trainer import ConvTrainer
 from hython.io import read_from_zarr
-from hython.utils import set_seed
-from hython.models.cudnnLSTM import CuDNNLSTM
+from hython.models.convLSTM import ConvLSTM
 from hython.scaler import Scaler
 
-import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader, Dataset
 import os
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
 
-# configs
-def test_train():
-    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/lstm_training.yaml"))
+
+def test_wflow2d():
+    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/convlstm_training.yaml"))
+
+    scaler = Scaler(cfg)
+
+    dataset = Wflow2d(cfg, scaler, True, "train")
+
+    train_sampler_builder = SamplerBuilder(
+        dataset, sampling="random", processing="single-gpu"
+    )
+
+    train_sampler = train_sampler_builder.get_sampler()
+
+    for i in train_sampler:
+        i
+
+def test_wflow2dcal():
+    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/convlstm_calibration.yaml"))
+
+    scaler = Scaler(cfg)
+
+    dataset = Wflow2dCal(cfg, scaler, True, "train")
+
+    train_sampler_builder = SamplerBuilder(
+        dataset, sampling="random", processing="single-gpu"
+    )
+
+    train_sampler = train_sampler_builder.get_sampler()
+
+
+    for i in train_sampler:
+        i
+    
