@@ -25,13 +25,13 @@ class BaseDataset:
     pass
 
 
-from .wflow import *
-from .conv import *
+from .wflow_sbm import *
 
 DATASETS = {
     "Wflow1d": Wflow1d,
     "Wflow1dCal": Wflow1dCal,
-    "CubeletsDataset": CubeletsDataset,
+    "wflow2d": Wflow2d,
+    "wflow2dCal": Wflow2dCal,
 }
 
 

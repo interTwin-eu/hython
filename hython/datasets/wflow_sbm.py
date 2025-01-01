@@ -1,3 +1,4 @@
+"""Wflow_sbm emulators"""
 from . import *
 
 
