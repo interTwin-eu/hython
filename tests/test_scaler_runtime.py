@@ -64,8 +64,8 @@ def test_train(scale_at_runtime):
 
     model.to(device)
 
-    opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
-    lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
+    #opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
+    #lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
 
     trainer = RNNTrainer(
         cfg
@@ -77,8 +77,8 @@ def test_train(scale_at_runtime):
         train_loader,
         val_loader,
         cfg.epochs,
-        opt,
-        lr_scheduler,
+        #opt,
+        #lr_scheduler,
         model_out_path,
         device,
     )

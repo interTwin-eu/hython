@@ -34,6 +34,11 @@ metric_fn:
 
 optimizer: adam
 
+lr_scheduler:
+  mode: min
+  factor: 0.5
+  patience: 10
+
 seq_length: 120
 
 learning_rate: 0.001
