@@ -1,63 +1,167 @@
 # General configuration
 
-experiment: "drought use case lstm"
-run_name: "alps_test"
+experiment_name: "lstm"
+experiment_run: "vwc"
 
+run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+
+train_temporal_range: ["2016-01-01", "2018-12-31"]
+valid_temporal_range: ["2019-01-01", "2020-12-31"]
+test_temporal_range: ["2019-01-01", "2020-12-31"]
+
+seed: 10 
+
+device: "cuda:0"
+
+# === Model ===
+
+model: cudalstm
+
+hidden_size: 128
+
+dropout: 0.4
+
+# === Training ===
+
+loss_fn:
+  _target_: hython.losses.RMSELoss
+    
+metric_fn:
+  _target_: hython.metrics.MSEMetric
+
+optimizer: adam
+
+lr_scheduler:
+  mode: min
+  factor: 0.5
+  patience: 10
+
+seq_length: 120
+
+learning_rate: 0.001
+
+batch: 256
+
+epochs: 30
+
+gradient_clip: null
+
+# > Donwsampling < 
+
+# spatial downsampling
+train_downsampler: #None
+  _target_: hython.sampler.downsampler.RegularIntervalDownsampler
+  intervals: [3,3]
+  origin: [0,0]
+
+valid_downsampler: #None
+  _target_: hython.sampler.downsampler.RegularIntervalDownsampler
+  intervals: [3,3]
+  origin: [1,1]
+
+# temporal downsampling
+temporal_downsampling: True
+temporal_subset: [200, 150]
+
+
+# === Data ===
+
+dataset: Wflow1d
+
+data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
+
+data_file: adg1km_eobs_preprocessed.zarr
+
+static_categorical_inputs:
+   - wflow_landuse
+   - wflow_soil
+
+static_inputs:
+  - thetaS
+  - thetaR
+  - KsatVer
+  - c
+  - RootingDepth
+
+dynamic_inputs:
+  - precip
+  - pet
+  - temp
+  
+target_variables:
+  - vwc
+
+mask_variables:
+  - mask_missing
+  - mask_lake
+
+# Scaling
+
+scaling_variant: minmax
+
+
+# Pipeline
 
 rnn_training_pipeline:
   class_path: itwinai.pipeline.Pipeline
   init_args:
     steps:
-      - class_path: data.RNNDatasetGetterAndSplitter
+      - class_path: data.RNNDatasetGetterAndPreprocessor
         init_args:
-          surrogate_input: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/adg1km_eobs_preprocessed.zarr
-          dynamic_names: ["precip", "pet", "temp"]
-          static_names: [ 'thetaS', 'thetaR', 'SoilThickness','RootingDepth', 'Swood','KsatVer', 'Sl', 'f', 'Kext']
-          target_names: ["vwc", "actevap"]
-          mask_names: ["mask_missing", "mask_lake"]
-          train_temporal_range: ["2016-01-01", "2018-12-31"] 
-          test_temporal_range: ["2019-01-01", "2020-12-31"] 
-      - class_path: data.RNNProcessor
-        init_args:
-          dataset: LSTMDataset
-      - class_path: trainer.RNNDistributedTrainer
-        init_args:
-          config:
-            experiment: ${run_name}
-            batch_size: 256
-            lr: 0.001
-            num_workers_dataloader: 1
-            temporal_subsampling: True
-            temporal_subset: [150, 150]
-            seq_length: 360
-            target_names: ["vwc", "actevap"]
-            dp_weights: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model
-            distributed: False
-            lr_reduction_factor: 0.5
-            lr_reduction_patience: 10
-          model:
-            class_path: hython.models.cudnnLSTM.CuDNNLSTM
-            init_args:
-              hidden_size: 64
-              dynamic_input_size: 3
-              static_input_size: 9
-              output_size: 2
-              num_layers: 1
-              dropout: 0.0
-          strategy: sequential
-          epochs: 20
-          random_seed: 44
-          logger:
-            class_path: itwinai.loggers.LoggersCollection
-            init_args:
-              loggers:
-                - class_path: itwinai.loggers.ConsoleLogger
-                  init_args:
-                    log_freq: 100
-                # - class_path: itwinai.loggers.MLFlowLogger
-                #   init_args:
-                #     experiment_name: ${experiment}
-                #     run_name: ${run_name}
-                #     log_freq: batch
-                #     savedir: /p/project1/intertwin/ferrario1/itwinai/use-cases/eurac/mllogs
+          surrogate_input: ${data_dir}/${data_file}
+          dynamic_inputs: ${dynamic_inputs}
+          static_inputs: ${static_inputs}
+          target_variables: ${target_variables}
+          mask_variables: ${mask_variables}
+          train_temporal_range: ${train_temporal_range}
+          valid_temporal_range: ${valid_temporal_range}
+          dataset: ${dataset}
+          scaling_variant: ${scaling_variant}
+          experiment_name: ${experiment_name}
+          experiment_run: ${experiment_run}
+          run_dir: ${run_dir}
+          data_dir: ${data_dir}
+          data_file: ${data_file}
+          train_downsampler: ${train_downsampler}
+          valid_downsampler: ${valid_downsampler}
+      # - class_path: trainer.RNNDistributedTrainer
+      #   init_args:
+      #     config:
+      #       experiment: ${run_name}
+      #       batch_size: 256
+      #       lr: 0.001
+      #       num_workers_dataloader: 1
+      #       temporal_subsampling: True
+      #       temporal_subset: [150, 150]
+      #       seq_length: 360
+      #       target_names: ["vwc", "actevap"]
+      #       dp_weights: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model
+      #       distributed: False
+      #       lr_reduction_factor: 0.5
+      #       lr_reduction_patience: 10
+      #     model:
+      #       class_path: hython.models.cudnnLSTM.CuDNNLSTM
+      #       init_args:
+      #         hidden_size: 64
+      #         dynamic_input_size: 3
+      #         static_input_size: 9
+      #         output_size: 2
+      #         num_layers: 1
+      #         dropout: 0.0
+      #     strategy: sequential
+      #     epochs: 20
+      #     random_seed: 44
+      #     logger:
+      #       class_path: itwinai.loggers.LoggersCollection
+      #       init_args:
+      #         loggers:
+      #           - class_path: itwinai.loggers.ConsoleLogger
+      #             init_args:
+      #               log_freq: 100
+      #           # - class_path: itwinai.loggers.MLFlowLogger
+      #           #   init_args:
+      #           #     experiment_name: ${experiment}
+      #           #     run_name: ${run_name}
+      #           #     log_freq: batch
+      #           #     savedir: /p/project1/intertwin/ferrario1/itwinai/use-cases/eurac/mllogs
                     
