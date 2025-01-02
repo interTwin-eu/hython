@@ -8,6 +8,8 @@ import importlib.util
 from abc import ABC
 import copy
 
+from hython.utils import get_optimizer, get_lr_scheduler
+
 tqdm_support = True if importlib.util.find_spec("tqdm") is not None else False
 
 if tqdm_support:
@@ -68,7 +70,6 @@ class AbstractTrainer(ABC):
         # return a dictionary of { reg_func1: weight1, reg_func2: weight2, ...   }
 
         # actually regularization should access any data in the trainig loop not only pred, target
-
 
     def _compute_batch_loss(self, prediction, target, valid_mask, target_weight, add_losses={}):
         
@@ -143,15 +144,27 @@ class AbstractTrainer(ABC):
             )
         return metric
 
-    def train_valid_epoch(self, model, train_loader, val_loader, optimizer, device):
+    def _get_optimizer(self):
+        return get_optimizer(self.model, self.cfg)
+
+    def _get_lr_scheduler(self, optimizer):
+        return get_lr_scheduler(optimizer, self.cfg)
+
+    def init_trainer(self, model):
+        self.model = model 
+
+        self.optimizer = self._get_optimizer()
+        self.lr_scheduler = self._get_lr_scheduler(self.optimizer)
+
+    def train_valid_epoch(self, model, train_loader, val_loader, device):
         model.train()
 
         # set time indices for training
         # TODO: This has effect only if the trainer overload the method (i.e. for RNN)
         self._set_dynamic_temporal_downsampling([train_loader, val_loader])
 
-        train_loss, train_metric = self.epoch_step( # change to train_valid epoch
-            model, train_loader, device, opt=optimizer
+        train_loss, train_metric = self.epoch_step( 
+            model, train_loader, device, opt=self.optimizer
         )
 
         model.eval()
@@ -160,7 +173,7 @@ class AbstractTrainer(ABC):
             # This has effect only if the trainer overload the method (i.e. for RNN)
             self._set_dynamic_temporal_downsampling([train_loader, val_loader])
 
-            val_loss, val_metric = self.epoch_step( # change to train_valid epoch
+            val_loss, val_metric = self.epoch_step(
                 model, val_loader, device, opt=None
             )
         
