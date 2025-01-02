@@ -7,8 +7,8 @@ def train_val(
     train_loader,
     val_loader,
     epochs,
-    optimizer,
-    lr_scheduler,
+    #optimizer,
+    #lr_scheduler,
     dp_weights,
     device,
 ):
@@ -20,11 +20,13 @@ def train_val(
 
     epoch_iterator = tqdm(range(epochs)) if tqdm_support else range(epochs)
 
+    trainer.init_trainer(model)
+    
     for epoch in epoch_iterator:
 
-        train_loss, train_metric, val_loss, val_metric = trainer.train_valid_epoch(model,  train_loader, val_loader, optimizer, device)
+        train_loss, train_metric, val_loss, val_metric = trainer.train_valid_epoch(model,  train_loader, val_loader, device)
 
-        lr_scheduler.step(val_loss)
+        trainer.lr_scheduler.step(val_loss)
 
         loss_history["train"].append(train_loss)
         loss_history["val"].append(val_loss)
