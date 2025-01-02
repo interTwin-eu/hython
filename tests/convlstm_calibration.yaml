@@ -34,6 +34,11 @@ metric_fn:
 
 optimizer: adam
 
+lr_scheduler:
+  mode: min
+  factor: 0.5
+  patience: 10
+
 seq_length: 120
 
 learning_rate: 0.001
@@ -74,7 +79,7 @@ valid_downsampler: #null
 
 # === Data ===
 
-dataset: Wflow2d
+dataset: Wflow2dCal
 
 data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
 
@@ -86,7 +91,7 @@ missing_policy: 0.05 # any, all
 
 fill_missing: 0
 
-persist: True
+persist: False
 
 lstm_1d: False
 
