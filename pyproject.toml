@@ -6,8 +6,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = 'hython'
 authors = [
-    {name = "Mohammad Alasawedah", email = "mohammadhussein.alasawedah@eurac.edu"},
     {name = "Iacopo Ferrario", email = "iacopofederico.ferrario@eurac.edu"},
+    {name = "Mohammad Alasawedah", email = "mohammadhussein.alasawedah@eurac.edu"},
 ]
 dynamic = ["version"]
 license = {file = "LICENCE"}
