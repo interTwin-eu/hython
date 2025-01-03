@@ -3,15 +3,16 @@ import xarray as xr
 import numpy as np
 
 
-def predict(dataset, model, batch_size, device):
+def predict(dataset, model, batch_size, device, target = "y_hat"):
     model = model.to(device)
 
     n, t, _ = dataset.xd.shape
 
     arr = []
     for i in range(0, n, batch_size):
-        d = torch.tensor(dataset.xd[i : (i + batch_size)]).to(device)
-        s = torch.tensor(dataset.xs[i : (i + batch_size)]).to(device)
+        
+        d = torch.from_numpy(dataset.xd[i : (i + batch_size)].values).float().to(device)
+        s = torch.from_numpy(dataset.xs[i : (i + batch_size)].values).float().to(device)
 
         static_bt = s.unsqueeze(1).repeat(1, d.size(1), 1).to(device)
 
@@ -20,7 +21,10 @@ def predict(dataset, model, batch_size, device):
             dim=-1,
         )
 
-        arr.append(model(x_concat).detach().cpu().numpy())
+        out_dict = model(x_concat)
+
+        arr.append(out_dict[target].detach().cpu().numpy())
+        
     return np.vstack(arr)
 
 
