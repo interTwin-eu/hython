@@ -6,19 +6,19 @@ class CalTrainer(AbstractTrainer):
 
     Parameters
     ----------
-    cfg:     
+    cfg:
 
     """
+
     def __init__(self, cfg):
         super(CalTrainer, self).__init__()
         self.cfg = cfg
-        self.cfg["target_weight"] = {t: 1 / len(self.cfg.target_variables) for t in self.cfg.target_variables}
-        
+        # self.cfg["target_weight"] = {t: 1 / len(self.cfg.target_variables) for t in self.cfg.target_variables}
+
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
 
         for data in dataloader:
-
             predictor_b = data["xs"].to(device)
             target_b = data["y"].to(device)
             forcing_b = data["xd"].to(device)
@@ -34,10 +34,10 @@ class CalTrainer(AbstractTrainer):
             self._concatenate_result(output, target, valid_mask)
 
             mini_batch_loss = self._compute_batch_loss(
-                    prediction= output,
-                    target=target,
-                    valid_mask=valid_mask,
-                    target_weight=self.cfg.target_weight,
+                prediction=output,
+                target=target,
+                valid_mask=valid_mask,
+                target_weight=self.target_weights,
             )
 
             self._backprop_loss(mini_batch_loss, opt)

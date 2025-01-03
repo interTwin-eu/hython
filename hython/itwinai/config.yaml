@@ -1,7 +1,7 @@
 # General configuration
 
-experiment_name: "lstm"
-experiment_run: "vwc"
+experiment_name: "itwinai"
+experiment_run: "vwc_actevap"
 
 run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
@@ -23,6 +23,8 @@ dropout: 0.4
 
 # === Training ===
 
+distributed: False
+
 loss_fn:
   _target_: hython.losses.RMSELoss
     
@@ -42,9 +44,11 @@ learning_rate: 0.001
 
 batch: 256
 
-epochs: 30
+epochs: 3
 
 gradient_clip: null
+
+target_weights: even # null, even, or dict
 
 # > Donwsampling < 
 
@@ -90,6 +94,7 @@ dynamic_inputs:
   
 target_variables:
   - vwc
+  - actevap
 
 mask_variables:
   - mask_missing
@@ -100,7 +105,7 @@ mask_variables:
 scaling_variant: minmax
 
 
-# Pipeline
+# == Pipeline == 
 
 rnn_training_pipeline:
   class_path: itwinai.pipeline.Pipeline
@@ -124,44 +129,51 @@ rnn_training_pipeline:
           data_file: ${data_file}
           train_downsampler: ${train_downsampler}
           valid_downsampler: ${valid_downsampler}
-      # - class_path: trainer.RNNDistributedTrainer
-      #   init_args:
-      #     config:
-      #       experiment: ${run_name}
-      #       batch_size: 256
-      #       lr: 0.001
-      #       num_workers_dataloader: 1
-      #       temporal_subsampling: True
-      #       temporal_subset: [150, 150]
-      #       seq_length: 360
-      #       target_names: ["vwc", "actevap"]
-      #       dp_weights: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model
-      #       distributed: False
-      #       lr_reduction_factor: 0.5
-      #       lr_reduction_patience: 10
-      #     model:
-      #       class_path: hython.models.cudnnLSTM.CuDNNLSTM
-      #       init_args:
-      #         hidden_size: 64
-      #         dynamic_input_size: 3
-      #         static_input_size: 9
-      #         output_size: 2
-      #         num_layers: 1
-      #         dropout: 0.0
-      #     strategy: sequential
-      #     epochs: 20
-      #     random_seed: 44
-      #     logger:
-      #       class_path: itwinai.loggers.LoggersCollection
-      #       init_args:
-      #         loggers:
-      #           - class_path: itwinai.loggers.ConsoleLogger
-      #             init_args:
-      #               log_freq: 100
-      #           # - class_path: itwinai.loggers.MLFlowLogger
-      #           #   init_args:
-      #           #     experiment_name: ${experiment}
-      #           #     run_name: ${run_name}
-      #           #     log_freq: batch
-      #           #     savedir: /p/project1/intertwin/ferrario1/itwinai/use-cases/eurac/mllogs
+      - class_path: trainer.RNNDistributedTrainer
+        init_args:
+          model: ${model}
+          config:
+            experiment: ${experiment_name}/${experiment_run}
+            batch_size: ${batch}
+            learning_rate: ${learning_rate}
+            num_workers_dataloader: 1
+            temporal_downsampling: ${temporal_downsampling}
+            temporal_subset: ${temporal_subset}
+            seq_length: ${seq_length}
+            target_variables: ${target_variables}
+            dp_weights: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model
+            distributed: ${distributed}
+            dynamic_inputs: ${dynamic_inputs}
+            static_inputs: ${static_inputs}
+            target_variables: ${target_variables}
+
+            optimizer: ${optimizer}
+            lr_scheduler: ${lr_scheduler}
+            target_weights: ${target_weights}
+
+            # model config
+            hidden_size: ${hidden_size}
+            dropout: ${dropout}
+
+            loss_fn: ${loss_fn}
+            metric_fn: ${metric_fn}
+
+            gradient_clip: ${gradient_clip}
+
+          strategy: sequential
+          epochs: ${epochs}
+          random_seed: ${seed}
+          logger:
+            class_path: itwinai.loggers.LoggersCollection
+            init_args:
+              loggers:
+                - class_path: itwinai.loggers.ConsoleLogger
+                  init_args:
+                    log_freq: 1
+          #       # - class_path: itwinai.loggers.MLFlowLogger
+          #       #   init_args:
+          #       #     experiment_name: ${experiment}
+          #       #     run_name: ${run_name}
+          #       #     log_freq: batch
+          #       #     savedir: /p/project1/intertwin/ferrario1/itwinai/use-cases/eurac/mllogs
                     

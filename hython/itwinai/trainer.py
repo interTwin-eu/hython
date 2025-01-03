@@ -14,7 +14,8 @@ import torch.optim as optim
 from hython.sampler import SamplerBuilder
 from hython.metrics import MSEMetric
 from hython.losses import RMSELoss
-from hython.trainer import RNNTrainer, RNNTrainParams
+from hython.trainer import train_val, RNNTrainer
+from hython.models import get_model as get_hython_model
 
 from itwinai.torch.distributed import (
     DeepSpeedStrategy,
@@ -28,6 +29,11 @@ from itwinai.torch.config import TrainingConfiguration
 from itwinai.torch.trainer import TorchTrainer
 from itwinai.torch.type import Metric
 from itwinai.torch.profiling.profiler import profile_torch_trainer
+
+from omegaconf import OmegaConf
+from hydra.utils import instantiate
+
+from copy import deepcopy
 
 
 class RNNDistributedTrainer(TorchTrainer):
@@ -62,7 +68,7 @@ class RNNDistributedTrainer(TorchTrainer):
         self,
         config: Union[Dict, TrainingConfiguration],
         epochs: int,
-        model: Optional[nn.Module] = None,
+        model: Optional[Union[str, nn.Module]] = None,
         strategy: Optional[
             Literal["ddp", "deepspeed", "horovod", "sequential"]
         ] = "ddp",
@@ -93,31 +99,41 @@ class RNNDistributedTrainer(TorchTrainer):
         )
         self.save_parameters(**self.locals2params(locals()))
 
+        self.model_class = get_hython_model(self.model)
+
     @suppress_workers_print
-    @profile_torch_trainer
+    # @profile_torch_trainer
     def execute(
         self,
         train_dataset: Dataset,
         validation_dataset: Optional[Dataset] = None,
         test_dataset: Optional[Dataset] = None,
     ) -> Tuple[Dataset, Dataset, Dataset, Any]:
+        self.init_hython_trainer()
+
         return super().execute(train_dataset, validation_dataset, test_dataset)
 
-    def create_model_loss_optimizer(self) -> None:
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.lr)
-        self.lr_scheduler = ReduceLROnPlateau(
-            self.optimizer,
-            mode="min",
-            factor=self.config.lr_reduction_factor,
-            patience=self.config.lr_reduction_patience,
+    def init_hython_trainer(self) -> None:
+        self.config.loss_fn = instantiate(
+            OmegaConf.create({"loss_fn": self.config.loss_fn})
+        )["loss_fn"]
+        self.config.metric_fn = instantiate(
+            OmegaConf.create({"metric_fn": self.config.metric_fn})
+        )["metric_fn"]
+
+        self.model = self.model_class(
+            hidden_size=self.config.hidden_size,
+            dynamic_input_size=len(self.config.dynamic_inputs),
+            static_input_size=len(self.config.static_inputs),
+            output_size=len(self.config.target_variables),
+            dropout=self.config.dropout,
         )
 
-        target_weights = {
-            t: 1 / len(self.config.target_names) for t in self.config.target_names
-        }
-        self.loss_fn = RMSELoss(target_weight=target_weights)
-        self.metric_fn = MSEMetric()
+        self.hython_trainer = RNNTrainer(self.config)
 
+        self.hython_trainer.init_trainer(self.model)
+
+    def create_model_loss_optimizer(self) -> None:
         distribute_kwargs = {}
         if isinstance(self.strategy, DeepSpeedStrategy):
             # Batch size definition is not optional for DeepSpeedStrategy!
@@ -135,8 +151,8 @@ class RNNDistributedTrainer(TorchTrainer):
 
         self.model, self.optimizer, _ = self.strategy.distributed(
             model=self.model,
-            optimizer=self.optimizer,
-            lr_scheduler=self.lr_scheduler,
+            optimizer=self.hython_trainer.optimizer,
+            lr_scheduler=self.hython_trainer.lr_scheduler,
             **distribute_kwargs,
         )
 
@@ -150,6 +166,7 @@ class RNNDistributedTrainer(TorchTrainer):
 
     def train(self):
         """Override version of hython to support distributed strategy."""
+
         # Tracking epoch times for scaling test
         if self.strategy.is_main_worker and self.strategy.is_distributed:
             num_nodes = os.environ.get("SLURM_NNODES", "unk")
@@ -159,50 +176,29 @@ class RNNDistributedTrainer(TorchTrainer):
             epoch_time_tracker = EpochTimeTracker(
                 series_name=series_name, csv_file=file_path
             )
-        trainer = RNNTrainer(
-            RNNTrainParams(
-                experiment=self.config.experiment,
-                temporal_subsampling=self.config.temporal_subsampling,
-                temporal_subset=self.config.temporal_subset,
-                seq_length=self.config.seq_length,
-                target_names=self.config.target_names,
-                metric_func=self.metric_fn,
-                loss_func=self.loss_fn,
-            )
-        )
 
         device = self.strategy.device()
         loss_history = {"train": [], "val": []}
-        metric_history = {f"train_{target}": [] for target in trainer.P.target_names}
+        metric_history = {
+            f"train_{target}": [] for target in self.config.target_variables
+        }
         metric_history.update(
-            {f"val_{target}": [] for target in trainer.P.target_names}
+            {f"val_{target}": [] for target in self.config.target_variables}
         )
 
         best_loss = float("inf")
         for epoch in tqdm(range(self.epochs)):
             epoch_start_time = timer()
             self.set_epoch(epoch)
-            self.model.train()
 
-            # set time indices for training
-            # This has effect only if the trainer overload the
-            # method (i.e. for RNN)
-            trainer.temporal_index([self.train_loader, self.val_loader])
-
-            train_loss, train_metric = trainer.epoch_step(
-                self.model, self.train_loader, device, opt=self.optimizer
+            (
+                train_loss,
+                train_metric,
+                val_loss,
+                val_metric,
+            ) = self.hython_trainer.train_valid_epoch(
+                self.model, self.train_loader, self.val_loader, device
             )
-
-            self.model.eval()
-            with torch.no_grad():
-                # set time indices for validation
-                # This has effect only if the trainer overload the method
-                # (i.e. for RNN)
-                trainer.temporal_index([self.train_loader, self.val_loader])
-
-                val_loss, val_metric = trainer.epoch_step(
-                    self.model, self.val_loader, device, opt=None
-                )
 
             # gather losses from each worker and place them on the main worker.
             worker_val_losses = self.strategy.gather(val_loss, dst_rank=0)
@@ -212,7 +208,7 @@ class RNNDistributedTrainer(TorchTrainer):
 
             # Moving them all to the cpu() before performing calculations
             avg_val_loss = torch.mean(torch.stack(worker_val_losses)).detach().cpu()
-            self.lr_scheduler.step(avg_val_loss)
+            self.hython_trainer.lr_scheduler.step(avg_val_loss)
             loss_history["train"].append(train_loss)
             loss_history["val"].append(avg_val_loss)
 
@@ -229,7 +225,7 @@ class RNNDistributedTrainer(TorchTrainer):
                 step=epoch,
             )
 
-            for target in trainer.P.target_names:
+            for target in self.config.target_variables:
                 metric_history[f"train_{target}"].append(train_metric[target])
                 metric_history[f"val_{target}"].append(val_metric[target])
 

@@ -17,9 +17,10 @@ from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
 
-
 def test_wflow2d():
-    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/convlstm_training.yaml"))
+    cfg = instantiate(
+        OmegaConf.load(f"{os.path.dirname(__file__)}/convlstm_training.yaml")
+    )
 
     scaler = Scaler(cfg)
 
@@ -34,8 +35,11 @@ def test_wflow2d():
     for i in train_sampler:
         i
 
+
 def test_wflow2dcal():
-    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/convlstm_calibration.yaml"))
+    cfg = instantiate(
+        OmegaConf.load(f"{os.path.dirname(__file__)}/convlstm_calibration.yaml")
+    )
 
     scaler = Scaler(cfg)
 
@@ -47,7 +51,5 @@ def test_wflow2dcal():
 
     train_sampler = train_sampler_builder.get_sampler()
 
-
     for i in train_sampler:
         i
-    

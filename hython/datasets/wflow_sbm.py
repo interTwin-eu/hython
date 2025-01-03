@@ -3,7 +3,9 @@ from . import *
 
 
 class Wflow1d(Dataset):
-    def __init__(self, cfg, scaler, is_train=True, period="train", scale_ontraining=False):
+    def __init__(
+        self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
+    ):
         self.scale_ontraining = scale_ontraining
         self.scaler = scaler
         self.cfg = cfg
@@ -68,15 +70,15 @@ class Wflow1d(Dataset):
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("gridcell", "time")
         )
-        
+
         self.scaler.load_or_compute(
             self.xs, "static_inputs", is_train, axes=("gridcell")
         )
-        
+
         self.scaler.load_or_compute(
             self.y, "target_variables", is_train, axes=("gridcell", "time")
         )
-        
+
         if not self.scale_ontraining:
             self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
             self.xs = self.scaler.transform(self.xs, "static_inputs")
@@ -94,9 +96,15 @@ class Wflow1d(Dataset):
         item_index = self.grid_idx_1d_valid[index]
 
         if self.scale_ontraining:
-            xd = torch.tensor(self.scaler.transform(self.xd[item_index], "dynamic_inputs").values).float()
-            xs = torch.tensor(self.scaler.transform(self.xs[item_index], "static_inputs").values).float()
-            y = torch.tensor(self.scaler.transform(self.y[item_index], "target_variables").values).float()
+            xd = torch.tensor(
+                self.scaler.transform(self.xd[item_index], "dynamic_inputs").values
+            ).float()
+            xs = torch.tensor(
+                self.scaler.transform(self.xs[item_index], "static_inputs").values
+            ).float()
+            y = torch.tensor(
+                self.scaler.transform(self.y[item_index], "target_variables").values
+            ).float()
         else:
             xd = torch.tensor(self.xd[item_index].values).float()
             xs = torch.tensor(self.xs[item_index].values).float()
@@ -239,17 +247,13 @@ class Wflow1dCal(Dataset):
         return {"xd": xd, "xs": xs, "y": yo}
 
 
-
-
-
-
-
 class Wflow2d(Dataset):
-    def __init__(self, cfg, scaler, is_train=True, period="train", scale_ontraining=False):
+    def __init__(
+        self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
+    ):
         self.scale_ontraining = scale_ontraining
         self.scaler = scaler
         self.cfg = cfg
-
 
         self.downsampler = self.cfg[f"{period}_downsampler"]
 
@@ -257,21 +261,19 @@ class Wflow2d(Dataset):
 
         file_path = f"{cfg.data_dir}/{cfg.data_file}"
 
-        self.xd = (
-            read_from_zarr(url=file_path , group="xd")
-            .sel(time=self.period)[list(self.cfg.dynamic_inputs)]
-        )
+        self.xd = read_from_zarr(url=file_path, group="xd").sel(time=self.period)[
+            list(self.cfg.dynamic_inputs)
+        ]
 
-        self.xs = read_from_zarr(url=file_path , group="xs")[list(self.cfg.static_inputs)]
+        self.xs = read_from_zarr(url=file_path, group="xs")[
+            list(self.cfg.static_inputs)
+        ]
 
-        self.y = (
-            read_from_zarr(url=file_path , group="y")
-            .sel(time=self.period)[list(self.cfg.target_variables)]
-        
-        )
-        
+        self.y = read_from_zarr(url=file_path, group="y").sel(time=self.period)[
+            list(self.cfg.target_variables)
+        ]
+
         self.shape = self.xd[self.cfg.dynamic_inputs[0]].shape
-
 
         if self.cfg.mask_variables is not None:
             self.mask = (
@@ -283,10 +285,10 @@ class Wflow2d(Dataset):
             self.mask = None
 
         (
-        self.cbs_spatial_idxs,
-        self.cbs_missing_idxs,
-        self.cbs_degenerate_idxs,
-        self.cbs_spatial_slices,
+            self.cbs_spatial_idxs,
+            self.cbs_missing_idxs,
+            self.cbs_degenerate_idxs,
+            self.cbs_spatial_slices,
         ) = compute_cubelet_spatial_idxs(
             self.shape,
             self.cfg.batch_size["xsize"],
@@ -310,7 +312,6 @@ class Wflow2d(Dataset):
             masks=self.mask,
         )
 
-
         cbs_tuple_idxs = compute_cubelet_tuple_idxs(
             self.cbs_spatial_idxs, self.cbs_time_idxs
         )
@@ -326,20 +327,20 @@ class Wflow2d(Dataset):
             # TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
             self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
 
-             # Scaling
+            # Scaling
 
         self.scaler.load_or_compute(
-            self.xd, "dynamic_inputs", is_train, axes=("time","lat","lon")
+            self.xd, "dynamic_inputs", is_train, axes=("time", "lat", "lon")
         )
-        
+
         self.scaler.load_or_compute(
             self.xs, "static_inputs", is_train, axes=("lat", "lon")
         )
-        
+
         self.scaler.load_or_compute(
-            self.y, "target_variables", is_train, axes=("time","lat","lon")
+            self.y, "target_variables", is_train, axes=("time", "lat", "lon")
         )
-        
+
         if not self.scale_ontraining:
             self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
             self.xs = self.scaler.transform(self.xs, "static_inputs")
@@ -348,8 +349,7 @@ class Wflow2d(Dataset):
         if is_train:
             self.scaler.write("dynamic_inputs")
             self.scaler.write("static_inputs")
-            self.scaler.write("target_variables")   
-
+            self.scaler.write("target_variables")
 
         xd_data_vars = list(self.xd.data_vars)
         self.xd = self.xd.to_stacked_array(
@@ -447,12 +447,14 @@ class Wflow2d(Dataset):
         else:
             return xd, torch.tensor([]), y
 
+
 class Wflow2dCal(Dataset):
-    def __init__(self, cfg, scaler, is_train=True, period="train", scale_ontraining=False):
+    def __init__(
+        self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
+    ):
         self.scale_ontraining = scale_ontraining
         self.scaler = scaler
         self.cfg = cfg
-
 
         self.downsampler = self.cfg[f"{period}_downsampler"]
 
@@ -460,27 +462,28 @@ class Wflow2dCal(Dataset):
 
         file_path = f"{cfg.data_dir}/{cfg.data_file}"
 
+        self.xd = read_from_zarr(
+            url="/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/adg1km_eobs_original.zarr",
+            group="xd",
+        ).sel(time=self.period)[list(self.cfg.dynamic_inputs)]
 
-        self.xd = (
-            read_from_zarr(url="/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/adg1km_eobs_original.zarr" , group="xd")
-            .sel(time=self.period)[list(self.cfg.dynamic_inputs)]
-        )
-
-        self.xs = read_from_zarr(url="/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_test.zarr").drop_vars("spatial_ref")[list(self.cfg.static_inputs)]
+        self.xs = read_from_zarr(
+            url="/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_test.zarr"
+        ).drop_vars("spatial_ref")[list(self.cfg.static_inputs)]
 
         self.y = xr.open_dataset(
             "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/daily/adige_2018-2021.nc",
             mask_and_scale=True,
         ).sel(time=self.period)
-        
+
         self.shape = self.xd[self.cfg.dynamic_inputs[0]].shape
 
         self.xd = self.xd.rio.set_crs(4326).rio.write_crs()
-        self.xd.rio.set_spatial_dims(x_dim="lon", y_dim= "lat", inplace=True)
+        self.xd.rio.set_spatial_dims(x_dim="lon", y_dim="lat", inplace=True)
 
         self.xd = self.xd.sel(time=self.y.time)
 
-        self.xs  = self.xs.rename({"x":"lon", "y":"lat"})
+        self.xs = self.xs.rename({"x": "lon", "y": "lat"})
 
         if self.cfg.mask_variables is not None:
             self.mask = (
@@ -492,10 +495,10 @@ class Wflow2dCal(Dataset):
             self.mask = None
 
         (
-        self.cbs_spatial_idxs,
-        self.cbs_missing_idxs,
-        self.cbs_degenerate_idxs,
-        self.cbs_spatial_slices,
+            self.cbs_spatial_idxs,
+            self.cbs_missing_idxs,
+            self.cbs_degenerate_idxs,
+            self.cbs_spatial_slices,
         ) = compute_cubelet_spatial_idxs(
             self.shape,
             self.cfg.batch_size["xsize"],
@@ -519,7 +522,6 @@ class Wflow2dCal(Dataset):
             masks=self.mask,
         )
 
-
         cbs_tuple_idxs = compute_cubelet_tuple_idxs(
             self.cbs_spatial_idxs, self.cbs_time_idxs
         )
@@ -535,20 +537,20 @@ class Wflow2dCal(Dataset):
             # TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
             self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
 
-             # Scaling
+            # Scaling
 
         self.scaler.load_or_compute(
-            self.xd, "dynamic_inputs", is_train, axes=("time","lat","lon")
+            self.xd, "dynamic_inputs", is_train, axes=("time", "lat", "lon")
         )
-        
+
         self.scaler.load_or_compute(
             self.xs, "static_inputs", is_train, axes=("lat", "lon")
         )
-        
+
         self.scaler.load_or_compute(
-            self.y, "target_variables", is_train, axes=("time","lat","lon")
+            self.y, "target_variables", is_train, axes=("time", "lat", "lon")
         )
-        
+
         if not self.scale_ontraining:
             self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
             self.xs = self.scaler.transform(self.xs, "static_inputs")
@@ -557,8 +559,7 @@ class Wflow2dCal(Dataset):
         if is_train:
             self.scaler.write("dynamic_inputs")
             self.scaler.write("static_inputs")
-            self.scaler.write("target_variables")   
-
+            self.scaler.write("target_variables")
 
         self.xd = self.xd.to_stacked_array(
             new_dim="feat", sample_dims=["time", "lat", "lon"]
@@ -589,7 +590,6 @@ class Wflow2dCal(Dataset):
         self.xs = self.xs.fillna(self.cfg.fill_missing)
 
         self.top_layer_res = -1 * self.forcing.lat.diff("lat").values[0] / 2
-
 
     def __len__(self):
         return len(self.cbs_mapping_idxs)

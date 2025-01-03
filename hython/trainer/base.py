@@ -7,12 +7,11 @@ from abc import ABC
 from hython.utils import get_optimizer, get_lr_scheduler
 
 
-
 class AbstractTrainer(ABC):
     def __init__(self):
-        self.epoch_preds = None 
-        self.epoch_targets = None 
-        self.epoch_valid_masks = None 
+        self.epoch_preds = None
+        self.epoch_targets = None
+        self.epoch_valid_masks = None
         self.model = None
         self.device = None
 
@@ -50,19 +49,27 @@ class AbstractTrainer(ABC):
 
             self.time_index = np.arange(0, time_range)
 
+    def _set_target_weights(self):
+        if self.cfg.target_weights is None or self.cfg.target_weights == "even":
+            self.target_weights = {
+                t: 1 / len(self.cfg.target_variables) for t in self.cfg.target_variables
+            }
+        else:
+            raise NotImplementedError
+
     def _set_regularization(self):
-        
         self.add_regularization = {}
 
         # return a dictionary of { reg_func1: weight1, reg_func2: weight2, ...   }
 
         # actually regularization should access any data in the trainig loop not only pred, target
 
-    def _compute_batch_loss(self, prediction, target, valid_mask, target_weight, add_losses={}):
-
-        # Compute targets weighted loss. In case only one target, weight is 1 
+    def _compute_batch_loss(
+        self, prediction, target, valid_mask, target_weight, add_losses={}
+    ):
+        # Compute targets weighted loss. In case only one target, weight is 1
         loss = 0
-        for i, target_name  in enumerate(target_weight):
+        for i, target_name in enumerate(target_weight):
             iypred = prediction[:, i]
             iytrue = target[:, i]
             if valid_mask is not None:
@@ -72,25 +79,23 @@ class AbstractTrainer(ABC):
 
             w = target_weight[target_name]
 
-            loss +=  w * self.cfg.loss_fn(iytrue, iypred)
+            loss += w * self.cfg.loss_fn(iytrue, iypred)
 
         # in case there are missing observations in the batch
-        # the loss should be weighted to reduce the importance 
+        # the loss should be weighted to reduce the importance
         # of the loss on the update of the NN weights
         if valid_mask is not None:
-            
             scaling_factor = sum(valid_mask) / len(
                 target
             )  # scale by number of valid samples in a mini-batch
 
-            loss = loss*scaling_factor
+            loss = loss * scaling_factor
 
         self._set_regularization()
-        
+
         # compound more losses, in case dict is not empty
         for i, (reg_func, reg_weight) in enumerate(self.add_regularization):
             loss += reg_func(prediction, target) * reg_weight
-
 
         return loss
 
@@ -100,11 +105,13 @@ class AbstractTrainer(ABC):
             loss.backward()
 
             if self.cfg.gradient_clip is not None:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), **self.cfg.gradient_clip)
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), **self.cfg.gradient_clip
+                )
 
-            opt.step() 
+            opt.step()
 
-    def _concatenate_result(self, pred, target, mask = None):
+    def _concatenate_result(self, pred, target, mask=None):
         if self.epoch_preds is None:
             self.epoch_preds = pred.detach().cpu().numpy()
             self.epoch_targets = target.detach().cpu().numpy()
@@ -127,8 +134,8 @@ class AbstractTrainer(ABC):
             self.epoch_targets,
             self.epoch_preds,
             self.cfg.target_variables,
-            self.epoch_valid_masks
-            )
+            self.epoch_valid_masks,
+        )
         return metric
 
     def _get_optimizer(self):
@@ -138,10 +145,12 @@ class AbstractTrainer(ABC):
         return get_lr_scheduler(optimizer, self.cfg)
 
     def init_trainer(self, model):
-        self.model = model 
+        self.model = model
 
         self.optimizer = self._get_optimizer()
         self.lr_scheduler = self._get_lr_scheduler(self.optimizer)
+
+        self._set_target_weights()
 
     def train_valid_epoch(self, model, train_loader, val_loader, device):
         model.train()
@@ -150,7 +159,7 @@ class AbstractTrainer(ABC):
         # TODO: This has effect only if the trainer overload the method (i.e. for RNN)
         self._set_dynamic_temporal_downsampling([train_loader, val_loader])
 
-        train_loss, train_metric = self.epoch_step( 
+        train_loss, train_metric = self.epoch_step(
             model, train_loader, device, opt=self.optimizer
         )
 
@@ -160,10 +169,8 @@ class AbstractTrainer(ABC):
             # This has effect only if the trainer overload the method (i.e. for RNN)
             self._set_dynamic_temporal_downsampling([train_loader, val_loader])
 
-            val_loss, val_metric = self.epoch_step(
-                model, val_loader, device, opt=None
-            )
-        
+            val_loss, val_metric = self.epoch_step(model, val_loader, device, opt=None)
+
         return train_loss, train_metric, val_loss, val_metric
 
     def train_epoch(self):

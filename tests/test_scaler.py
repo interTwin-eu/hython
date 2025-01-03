@@ -59,7 +59,6 @@ def test_load_or_compute_caching(use_cached, data_type):
 def test_transform(method, data_type):
     scaler = Scaler(f"{os.path.dirname(__file__)}/config.yaml", use_cached=False)
 
-    
     scaler.cfg.scaling_variant = method
 
     if data_type == "numpy":
@@ -149,8 +148,6 @@ def test_transform_missing(method, data_type):
     """Xarray by default skip nans"""
     scaler = Scaler(f"{os.path.dirname(__file__)}/config.yaml", use_cached=False)
 
-
-
     scaler.cfg.scaling_variant = method
 
     if data_type == "numpy":
@@ -207,20 +204,19 @@ def test_load_or_compute_caching_realdata(use_cached):
         read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
         .sel(time=slice(*cfg.train_temporal_range))
         .xd.sel(feat=cfg.dynamic_inputs)
-    ) # DataArray
+    )  # DataArray
 
     Xs = read_from_zarr(url=file_path, group="xs", multi_index="gridcell").xs.sel(
         feat=cfg.static_inputs
-    ) # DataArray
+    )  # DataArray
 
     Y = (
         read_from_zarr(url=file_path, group="y", multi_index="gridcell")
         .sel(time=slice(*cfg.train_temporal_range))
         .y.sel(feat=cfg.target_variables)
-    ) # DataArray
+    )  # DataArray
 
     scaler = Scaler(cfg, use_cached=use_cached)
-    
 
     scaler.load_or_compute(Xd, "dynamic_inputs", axes=("gridcell", "time"))
 
@@ -235,11 +231,15 @@ def test_load_or_compute_caching_realdata(use_cached):
     if use_cached:
         assert isinstance(scaler.archive.get("dynamic_inputs")["center"], xr.DataArray)
         assert isinstance(scaler.archive.get("static_inputs")["center"], xr.DataArray)
-        assert isinstance(scaler.archive.get("target_variables")["center"], xr.DataArray)
+        assert isinstance(
+            scaler.archive.get("target_variables")["center"], xr.DataArray
+        )
     else:
         scaler.write("dynamic_inputs")
         scaler.write("static_inputs")
         scaler.write("target_variables")
         assert isinstance(scaler.archive.get("dynamic_inputs")["center"], xr.DataArray)
         assert isinstance(scaler.archive.get("static_inputs")["center"], xr.DataArray)
-        assert isinstance(scaler.archive.get("target_variables")["center"], xr.DataArray)
+        assert isinstance(
+            scaler.archive.get("target_variables")["center"], xr.DataArray
+        )

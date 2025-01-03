@@ -6,14 +6,15 @@ class RNNTrainer(AbstractTrainer):
 
     Parameters
     ----------
-    cfg:     
+    cfg:
 
     """
+
     def __init__(self, cfg):
         super(RNNTrainer, self).__init__()
-        self.cfg = cfg 
-        self.cfg["target_weight"] = {t: 1 / len(self.cfg.target_variables) for t in self.cfg.target_variables}
-        
+        self.cfg = cfg
+        # self.cfg["target_weight"] = {t: 1 / len(self.cfg.target_variables) for t in self.cfg.target_variables}
+
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
         data_points = 0
@@ -44,10 +45,10 @@ class RNNTrainer(AbstractTrainer):
                 self._concatenate_result(output, target)
 
                 batch_sequence_loss = self._compute_batch_loss(
-                    prediction= output,
+                    prediction=output,
                     target=target,
                     valid_mask=None,
-                    target_weight=self.cfg.target_weight,
+                    target_weight=self.target_weights,
                 )
 
                 self._backprop_loss(batch_sequence_loss, opt)
@@ -61,5 +62,5 @@ class RNNTrainer(AbstractTrainer):
         epoch_loss = running_batch_loss / data_points
 
         metric = self._compute_metric()
-        
+
         return epoch_loss, metric
