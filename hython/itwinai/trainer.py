@@ -7,14 +7,11 @@ import copy
 from torch.utils.data import Dataset
 import torch
 import torch.nn as nn
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 import pandas as pd
-import torch.optim as optim
+
 
 from hython.sampler import SamplerBuilder
-from hython.metrics import MSEMetric
-from hython.losses import RMSELoss
-from hython.trainer import train_val, RNNTrainer
+from hython.trainer import RNNTrainer
 from hython.models import get_model as get_hython_model
 
 from itwinai.torch.distributed import (
@@ -33,7 +30,6 @@ from itwinai.torch.profiling.profiler import profile_torch_trainer
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
-from copy import deepcopy
 
 
 class RNNDistributedTrainer(TorchTrainer):
@@ -165,7 +161,7 @@ class RNNDistributedTrainer(TorchTrainer):
             self.val_loader.sampler.set_epoch(epoch)
 
     def train(self):
-        """Override version of hython to support distributed strategy."""
+        """Override train_val version of hython to support distributed strategy."""
 
         # Tracking epoch times for scaling test
         if self.strategy.is_main_worker and self.strategy.is_distributed:
@@ -191,6 +187,7 @@ class RNNDistributedTrainer(TorchTrainer):
             epoch_start_time = timer()
             self.set_epoch(epoch)
 
+            # run train_valid epoch step of hython trainer
             (
                 train_loss,
                 train_metric,

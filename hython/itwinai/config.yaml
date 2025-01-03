@@ -141,7 +141,6 @@ rnn_training_pipeline:
             temporal_subset: ${temporal_subset}
             seq_length: ${seq_length}
             target_variables: ${target_variables}
-            dp_weights: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model
             distributed: ${distributed}
             dynamic_inputs: ${dynamic_inputs}
             static_inputs: ${static_inputs}
@@ -170,10 +169,9 @@ rnn_training_pipeline:
                 - class_path: itwinai.loggers.ConsoleLogger
                   init_args:
                     log_freq: 1
-          #       # - class_path: itwinai.loggers.MLFlowLogger
-          #       #   init_args:
-          #       #     experiment_name: ${experiment}
-          #       #     run_name: ${run_name}
-          #       #     log_freq: batch
-          #       #     savedir: /p/project1/intertwin/ferrario1/itwinai/use-cases/eurac/mllogs
-                    
+                - class_path: itwinai.loggers.MLFlowLogger
+                  init_args:
+                    experiment_name: ${experiment_name}
+                    run_name: ${experiment_run}
+                    log_freq: batch
+                    savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs
