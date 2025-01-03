@@ -119,4 +119,3 @@ class Scaler:
 
         with open(path / f"{type}.yaml", "w") as file:
             yaml.dump(stats_dict, file)
-

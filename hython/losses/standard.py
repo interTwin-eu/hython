@@ -7,13 +7,13 @@ from omegaconf import DictConfig, OmegaConf
 
 
 class BaseLoss(torch.nn.Module):
-
-    def __init__(self, cfg = {}):
-        self.cfg = OmegaConf.create(cfg) if isinstance(cfg, dict) else OmegaConf.load(cfg)
+    def __init__(self, cfg={}):
+        self.cfg = (
+            OmegaConf.create(cfg) if isinstance(cfg, dict) else OmegaConf.load(cfg)
+        )
 
 
 class RMSELoss(_Loss):
-
     def __init__(self):
         """
         Root Mean Squared Error (RMSE) loss for regression task.
@@ -26,11 +26,7 @@ class RMSELoss(_Loss):
         super(RMSELoss, self).__init__()
         self.mseloss = nn.MSELoss()
 
-    def forward(
-        self,
-        y_true,
-        y_pred
-    ):
+    def forward(self, y_true, y_pred):
         """
         Calculate the Root Mean Squared Error (RMSE) between two tensors.
 
@@ -47,12 +43,11 @@ class RMSELoss(_Loss):
         Returns:
         torch.Tensor: The RMSE loss.
         """
-                                     
+
         return torch.sqrt(self.mseloss(y_true, y_pred))
 
 
 class MSELoss(_Loss):
-
     def __init__(self):
         """
         Mean Squared Error (MSE) loss for regression task.
@@ -65,10 +60,5 @@ class MSELoss(_Loss):
         super(MSELoss, self).__init__()
         self.mseloss = nn.MSELoss()
 
-    def forward(
-        self,
-        y_true,
-        y_pred
-    ):
-
+    def forward(self, y_true, y_pred):
         return self.mseloss(y_true, y_pred)

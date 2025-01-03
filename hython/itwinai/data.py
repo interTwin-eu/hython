@@ -12,12 +12,13 @@ from hydra.utils import instantiate
 
 from copy import deepcopy
 
+
 class RNNDatasetGetterAndPreprocessor(DataSplitter):
     def __init__(
         self,
         dataset: str,
         scaling_variant: str,
-        experiment_name: str, 
+        experiment_name: str,
         experiment_run: str,
         data_dir: str,
         data_file: str,
@@ -30,18 +31,16 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         train_temporal_range: list[str] = ["", ""],
         valid_temporal_range: list[str] = ["", ""],
         train_downsampler: dict = None,
-        valid_downsampler: dict = None
+        valid_downsampler: dict = None,
     ) -> None:
         self.save_parameters(**self.locals2params(locals()))
 
         self.cfg = deepcopy(self.locals2params(locals()))
 
-
         self.cfg = instantiate(OmegaConf.create(self.cfg))
 
     @monitor_exec
     def execute(self) -> Tuple[Wflow1d, Wflow1d, None]:
-
         scaler = Scaler(self.cfg)
 
         train_dataset = get_dataset(self.cfg.dataset)(self.cfg, scaler, True, "train")
@@ -49,4 +48,3 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         val_dataset = get_dataset(self.cfg.dataset)(self.cfg, scaler, False, "valid")
 
         return train_dataset, val_dataset, None
-

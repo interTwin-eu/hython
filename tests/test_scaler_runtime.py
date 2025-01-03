@@ -34,9 +34,13 @@ def test_train(scale_at_runtime):
 
     scaler = Scaler(cfg)
 
-    train_dataset = get_dataset(cfg.dataset)(cfg, scaler, True, "train", scale_at_runtime)
+    train_dataset = get_dataset(cfg.dataset)(
+        cfg, scaler, True, "train", scale_at_runtime
+    )
 
-    val_dataset = get_dataset(cfg.dataset)(cfg, scaler, False, "valid", scale_at_runtime)
+    val_dataset = get_dataset(cfg.dataset)(
+        cfg, scaler, False, "valid", scale_at_runtime
+    )
 
     train_sampler_builder = SamplerBuilder(
         train_dataset, sampling="random", processing="single-gpu"
@@ -64,12 +68,10 @@ def test_train(scale_at_runtime):
 
     model.to(device)
 
-    #opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
-    #lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
+    # opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
+    # lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
 
-    trainer = RNNTrainer(
-        cfg
-    )
+    trainer = RNNTrainer(cfg)
 
     model, loss_history, metric_history = train_val(
         trainer,
@@ -77,10 +79,8 @@ def test_train(scale_at_runtime):
         train_loader,
         val_loader,
         cfg.epochs,
-        #opt,
-        #lr_scheduler,
+        # opt,
+        # lr_scheduler,
         model_out_path,
         device,
     )
-
-

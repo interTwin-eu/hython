@@ -339,26 +339,29 @@ def downsample_spacetime(coords, frac):
     return coords[idx]
 
 
-
-
 def get_optimizer(model, cfg):
-    
     if cfg.optimizer == "adam":
-        opt = Adam(model.parameters(), lr = cfg.learning_rate)
+        opt = Adam(model.parameters(), lr=cfg.learning_rate)
     else:
         raise NotImplementedError
-    
-    return opt
-    
-def get_lr_scheduler(optimizer, cfg):
-    
-    config = cfg.get("lr_scheduler")
 
-    lr_scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5,
-                                        patience=10)
+    return opt
+
+
+def get_lr_scheduler(optimizer, cfg):
+    try:
+        config = cfg.get("lr_scheduler")
+    except:
+        config = cfg.lr_scheduler
+
+    lr_scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=10)
 
     if config is not None:
-        lr_scheduler = ReduceLROnPlateau(optimizer, mode=config["mode"], factor=config["factor"],
-                                          patience=config["patience"])
+        lr_scheduler = ReduceLROnPlateau(
+            optimizer,
+            mode=config["mode"],
+            factor=config["factor"],
+            patience=config["patience"],
+        )
 
     return lr_scheduler

@@ -64,9 +64,7 @@ def test_train():
     # opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
     # lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
 
-    trainer = RNNTrainer(
-        cfg
-    )
+    trainer = RNNTrainer(cfg)
 
     model, loss_history, metric_history = train_val(
         trainer,
@@ -74,17 +72,17 @@ def test_train():
         train_loader,
         val_loader,
         cfg.epochs,
-        #opt,
-        #lr_scheduler,
+        # opt,
+        # lr_scheduler,
         model_out_path,
         device,
     )
 
 
-
-
 def test_train_metrics():
-    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/lstm_training_metrics.yaml"))
+    cfg = instantiate(
+        OmegaConf.load(f"{os.path.dirname(__file__)}/lstm_training_metrics.yaml")
+    )
 
     set_seed(cfg.seed)
 
@@ -127,9 +125,7 @@ def test_train_metrics():
     # opt = optim.Adam(model.parameters(), lr=cfg.learning_rate)
     # lr_scheduler = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=10)
 
-    trainer = RNNTrainer(
-        cfg
-    )
+    trainer = RNNTrainer(cfg)
 
     model, loss_history, metric_history = train_val(
         trainer,
@@ -137,9 +133,8 @@ def test_train_metrics():
         train_loader,
         val_loader,
         cfg.epochs,
-        #opt,
-        #lr_scheduler,
+        # opt,
+        # lr_scheduler,
         model_out_path,
         device,
     )
-

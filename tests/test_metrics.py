@@ -1,4 +1,4 @@
-import pytest 
+import pytest
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
 import numpy as np
@@ -8,17 +8,16 @@ from hython.metrics.standard import MSEMetric, RMSEMetric, compute_mse
 
 TARGETS = ["vwc", "actevap"]
 
-y1 = np.random.randn(100,3)
-y2 = np.random.randn(100,3)
+y1 = np.random.randn(100, 3)
+y2 = np.random.randn(100, 3)
+
 
 def test_some_metrics():
     cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/metrics.yaml"))
 
-    ret = cfg.metric_fn(y1,y2, ["vwc", "act", "blu"])
+    ret = cfg.metric_fn(y1, y2, ["vwc", "act", "blu"])
 
     assert ret
-
-
 
 
 def test_1d():
