@@ -67,9 +67,12 @@ class MetricCollection(Metric):
             ret[metric.__class__.__name__] = metric(y_true, y_pred, target_names)
 
         ret2 = {}
-        for km in ret:
-            for kt in ret[km]:
-                ret2[kt] = km
+        for itarget in target_names:
+            metrics = {}
+            for imetric in ret:
+                metrics[imetric] = ret[imetric][itarget]
+            ret2[itarget] = metrics
+
         return ret2
 
 
@@ -241,7 +244,7 @@ def compute_bias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False)
         return np.mean(y_pred - y_true, axis=axis)
 
 
-def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False):
+def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False, sample_weight=None, valid_mask=None):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna))
     else:
@@ -264,7 +267,7 @@ def compute_mse(
         return np.average((y_pred - y_true) ** 2, axis=axis, weights=sample_weight)
 
 
-def compute_pearson(y_true, y_pred, axis=0, dim="time", sample_weight=None):
+def compute_pearson(y_true, y_pred, axis=0, dim="time", sample_weight=None, valid_mask=None):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return xr.corr(y_true, y_pred, dim=dim, weights=sample_weight)
     else:
@@ -279,7 +282,7 @@ def compute_pearson(y_true, y_pred, axis=0, dim="time", sample_weight=None):
         return num / den
 
 
-def compute_kge(y_true, y_pred, sample_weight=None):
+def compute_kge(y_true, y_pred, sample_weight=None, valid_mask=None, return_all=False):
     if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)):
         return np.array([np.nan, np.nan, np.nan, np.nan])
 
@@ -298,8 +301,11 @@ def compute_kge(y_true, y_pred, sample_weight=None):
     beta = m_ypred / m_ytrue
     gamma = (np.std(y_pred, axis=0) / m_ypred) / (np.std(y_true, axis=0) / m_ytrue)
     kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (beta - 1.0) ** 2 + (gamma - 1.0) ** 2)
-
-    return np.array([kge, r, gamma, beta])
+    if return_all:
+        ret = np.array([kge, r, gamma, beta])
+    else:
+        ret = kge
+    return ret
 
 
 def compute_kge_parallel(y_true, y_pred):

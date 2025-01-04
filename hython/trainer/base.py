@@ -5,7 +5,7 @@ from abc import ABC
 
 
 from hython.utils import get_optimizer, get_lr_scheduler
-
+from hython.metrics import MetricCollection
 
 class AbstractTrainer(ABC):
     def __init__(self):
@@ -130,12 +130,24 @@ class AbstractTrainer(ABC):
                 )
 
     def _compute_metric(self):
-        metric = self.cfg.metric_fn(
-            self.epoch_targets,
-            self.epoch_preds,
-            self.cfg.target_variables,
-            self.epoch_valid_masks,
-        )
+        if isinstance(self.cfg.metric_fn, MetricCollection):
+            metric = self.cfg.metric_fn(
+                self.epoch_targets,
+                self.epoch_preds,
+                self.cfg.target_variables,
+                self.epoch_valid_masks,
+            )
+        else:
+            metric_or = self.cfg.metric_fn( # {var: metric}
+                self.epoch_targets,
+                self.epoch_preds,
+                self.cfg.target_variables,
+                self.epoch_valid_masks,
+            )
+            metric = {}
+            for itarget in metric_or:
+                metric[itarget] = {self.cfg.metric_fn.__class__.__name__:metric_or[itarget]}
+
         return metric
 
     def _get_optimizer(self):
