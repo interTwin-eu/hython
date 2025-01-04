@@ -9,9 +9,6 @@ from omegaconf import DictConfig, OmegaConf
 from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 
 
-def generate_experiment_id(cfg):
-    return "_".join([cfg.experiment_name, cfg.experiment_run])
-
 
 class Scaler:
     """Class for performing scaling of input features. Currently supports minmax and standard scaling."""
@@ -31,9 +28,13 @@ class Scaler:
 
         self.is_train = is_train
         self.use_cached = use_cached
-        self.exp_id = generate_experiment_id(self.cfg)
+
+        self.run_dir = Path(".")
 
         self.archive = {}
+
+    def set_run_dir(self, run_dir):
+        self.run_dir = Path(run_dir)
 
     def load_or_compute(self, data, type="dynamic_input", is_train=True, axes=(0, 1)):
         if is_train:
@@ -80,7 +81,7 @@ class Scaler:
         self.archive.update({type: {"center": center, "scale": scale}})
 
     def load(self, type):
-        path = Path(self.cfg.run_dir) / self.exp_id / f"{type}.yaml"
+        path = self.run_dir / f"{type}.yaml" 
         if path.exists():
             with open(path, "r") as file:
                 temp = yaml.load(file, Loader=yaml.Loader)
@@ -97,16 +98,16 @@ class Scaler:
 
     def clean_cache(self, type=None):
         if type:
-            path = Path(self.cfg.run_dir) / self.exp_id / f"{type}.yaml"
+            path = self.run_dir / f"{type}.yaml"
             path.unlink()
         else:
-            path = Path(self.cfg.run_dir) / self.exp_id
+            path = self.run_dir 
             [f.unlink() for f in path.glob("*.yaml")]
 
     def write(self, type):
         stats_dict = deepcopy(self.archive.get(type))
 
-        path = Path(self.cfg.run_dir) / self.exp_id
+        path = self.run_dir 
 
         if not path.exists():
             path.mkdir()

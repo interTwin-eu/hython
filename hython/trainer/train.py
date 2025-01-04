@@ -7,7 +7,6 @@ def train_val(
     train_loader,
     val_loader,
     epochs,
-    model_output_path,
     device,
 ):
     loss_history = {"train": [], "val": []}
@@ -39,7 +38,7 @@ def train_val(
         if val_loss < best_loss:
             best_loss = val_loss
             best_model_weights = copy.deepcopy(model.state_dict())
-            trainer.save_weights(model, model_output_path)
+            trainer.save_weights(model)
             print("Copied best model weights!")
 
         if not tqdm_support:
