@@ -14,6 +14,12 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.optim import Adam
 
 
+def generate_run_folder(cfg):
+    return f"{cfg.run_dir}/{generate_experiment_id(cfg)}"
+
+def generate_experiment_id(cfg):
+    return "_".join([cfg.experiment_name, cfg.experiment_run])
+
 def generate_model_name(surr_model_prefix, experiment, target_names, hidden_size, seed):
     TARGET_INITIALS = "".join([i[0].capitalize() for i in target_names])
     return (

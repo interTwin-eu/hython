@@ -4,7 +4,7 @@ import torch
 from abc import ABC
 
 
-from hython.utils import get_optimizer, get_lr_scheduler
+from hython.utils import get_optimizer, get_lr_scheduler, generate_run_folder
 from hython.metrics import MetricCollection
 
 class AbstractTrainer(ABC):
@@ -164,6 +164,9 @@ class AbstractTrainer(ABC):
 
         self._set_target_weights()
 
+        self.run_dir = generate_run_folder(self.cfg)
+
+
     def train_valid_epoch(self, model, train_loader, val_loader, device):
         model.train()
 
@@ -198,7 +201,11 @@ class AbstractTrainer(ABC):
         """Return the n steps that should be predicted"""
         return arr[:, steps]
 
-    def save_weights(self, model, fp, onnx=False):
+    def save_weights(self, model, fp = None, onnx=False):
+
+        if fp is None:
+            fp = f"{self.run_dir}/model.pt"
+
         if onnx:
             raise NotImplementedError()
         else:

@@ -4,9 +4,12 @@ import xarray as xr
 
 from hython.scaler import Scaler
 
+import tempfile
+
+tmp_dir = tempfile.TemporaryDirectory().name
 
 def test_minmax_lstm():
-    scaler = Scaler(f"{os.path.dirname(__file__)}/config.yaml")
+    scaler = Scaler(f"{os.path.dirname(__file__)}/config/config.yaml")
 
     assert scaler.cfg.scaling_variant
 
@@ -16,7 +19,12 @@ def test_minmax_lstm():
     [(False, "xarray"), (True, "xarray"), (False, "numpy"), (True, "numpy")],
 )
 def test_load_or_compute_caching(use_cached, data_type):
-    scaler = Scaler(f"{os.path.dirname(__file__)}/config.yaml", use_cached=use_cached)
+
+    cfg = f"{os.path.dirname(__file__)}/config/config.yaml"
+
+    scaler = Scaler(cfg , use_cached=use_cached)
+
+    scaler.set_run_dir(tmp_dir)
 
     scaler.clean_cache()
 
@@ -57,7 +65,9 @@ def test_load_or_compute_caching(use_cached, data_type):
     ],
 )
 def test_transform(method, data_type):
-    scaler = Scaler(f"{os.path.dirname(__file__)}/config.yaml", use_cached=False)
+    scaler = Scaler(f"{os.path.dirname(__file__)}/config/config.yaml", use_cached=False)
+
+    scaler.set_run_dir(tmp_dir)
 
     scaler.cfg.scaling_variant = method
 
@@ -104,7 +114,9 @@ def test_transform(method, data_type):
     ],
 )
 def test_inverse_transform(method, data_type):
-    scaler = Scaler(f"{os.path.dirname(__file__)}/config.yaml", use_cached=False)
+    scaler = Scaler(f"{os.path.dirname(__file__)}/config/config.yaml", use_cached=False)
+
+    scaler.set_run_dir(tmp_dir)
 
     scaler.cfg.scaling_variant = method
 
@@ -146,7 +158,9 @@ def test_inverse_transform(method, data_type):
 )
 def test_transform_missing(method, data_type):
     """Xarray by default skip nans"""
-    scaler = Scaler(f"{os.path.dirname(__file__)}/config.yaml", use_cached=False)
+    scaler = Scaler(f"{os.path.dirname(__file__)}/config/config.yaml", use_cached=False)
+
+    scaler.set_run_dir(tmp_dir)
 
     scaler.cfg.scaling_variant = method
 
@@ -196,7 +210,7 @@ from hython.io import read_from_zarr
     [False, True],
 )
 def test_load_or_compute_caching_realdata(use_cached):
-    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/datasets.yaml"))
+    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/config/datasets.yaml"))
 
     file_path = f"{cfg.data_dir}/{cfg.data_file}"
 
@@ -217,6 +231,8 @@ def test_load_or_compute_caching_realdata(use_cached):
     )  # DataArray
 
     scaler = Scaler(cfg, use_cached=use_cached)
+
+    scaler.set_run_dir(tmp_dir)
 
     scaler.load_or_compute(Xd, "dynamic_inputs", axes=("gridcell", "time"))
 

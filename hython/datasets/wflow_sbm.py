@@ -16,6 +16,9 @@ class Wflow1d(Dataset):
 
         file_path = f"{cfg.data_dir}/{cfg.data_file}"
 
+        # generate run directory
+        run_path = generate_run_folder(cfg)
+
         self.xd = (
             read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
             .sel(time=self.period)
@@ -66,6 +69,8 @@ class Wflow1d(Dataset):
                 self.grid_idx_1d_valid = self.grid_idx_1d
 
         # Scaling
+
+        self.scaler.set_run_dir(run_path)
 
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("gridcell", "time")
@@ -126,10 +131,13 @@ class Wflow1dCal(Dataset):
 
         file_path = f"{cfg.data_dir}/{cfg.data_file}"
 
+        # generate run directory
+        run_path = generate_run_folder(cfg)
+
         # load datasets
         self.static = (
             read_from_zarr(
-                "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_lstm.zarr",
+                cfg.data_static_inputs,
                 group="attr",
                 multi_index="gridcell",
             )
@@ -139,7 +147,7 @@ class Wflow1dCal(Dataset):
 
         self.dynamic = (
             read_from_zarr(
-                "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/adg1km_eobs_preprocessed.zarr",
+                cfg.data_dynamic_inputs,
                 group="xd",
                 multi_index="gridcell",
             )
@@ -148,7 +156,7 @@ class Wflow1dCal(Dataset):
         )
 
         self.obs = xr.open_dataset(
-            "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/daily/adige_2018-2021.nc",
+            cfg.data_target_variables,
             mask_and_scale=True,
         ).sel(time=self.period)
 
@@ -161,7 +169,7 @@ class Wflow1dCal(Dataset):
 
         # mask observation
         obs_mask = xr.open_dataset(
-            "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/adige_mask_2017_2022.nc"
+            cfg.data_target_mask
         )
         obs_mask = obs_mask.resample({"time": "1D"}).max()
         obs_mask = obs_mask.astype(bool)
@@ -198,6 +206,8 @@ class Wflow1dCal(Dataset):
         time_idx = np.unique(self.coords[:, 1])
 
         # (6) Normalize
+
+        self.scaler.set_run_dir(run_path)
 
         self.scaler.load_or_compute(
             self.dynamic.isel(gridcell=gridcell_idx, time=time_idx),
