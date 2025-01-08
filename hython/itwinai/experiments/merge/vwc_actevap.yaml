@@ -1,0 +1,7 @@
+defaults:
+  - base.yaml
+
+target_variables:
+  - vwc
+  - actevap
+

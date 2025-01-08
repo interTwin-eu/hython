@@ -7,7 +7,7 @@ from copy import deepcopy
 from typing import Union, Dict
 from omegaconf import DictConfig, OmegaConf
 from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
-
+from hython.utils import generate_run_folder
 
 
 class Scaler:
@@ -29,7 +29,10 @@ class Scaler:
         self.is_train = is_train
         self.use_cached = use_cached
 
-        self.run_dir = Path(".")
+        try:
+            self.run_dir = Path(generate_run_folder(cfg))
+        except:
+            self.run_dir = Path(".")
 
         self.archive = {}
 
@@ -58,7 +61,13 @@ class Scaler:
         stats_dist = self.archive.get(type)
 
         if stats_dist is not None:
-            return (data * stats_dist["scale"]) + stats_dist["center"]
+            if not isinstance(data, xr.DataArray) or not isinstance(data, xr.Dataset):
+                stats_dist_arr = {}
+                stats_dist_arr["center"] = stats_dist["center"].values
+                stats_dist_arr["scale"] = stats_dist["scale"].values
+                return (data * stats_dist_arr["scale"]) + stats_dist_arr["center"]
+            else:
+                return (data * stats_dist["scale"]) + stats_dist["center"]
 
     def compute(self, data, type, axes=(0, 1)):
         "Compute assumes the features are the last dimension of the array."

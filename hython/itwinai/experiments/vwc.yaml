@@ -1,7 +1,7 @@
 # General configuration
 
-experiment_name: "itwinai"
-experiment_run: "vwc_actevap"
+experiment_name: "test_multi_output"
+experiment_run: "vwc_h256"
 
 run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
@@ -17,7 +17,7 @@ device: "cuda:0"
 
 model: cudalstm
 
-hidden_size: 136
+hidden_size: 256
 
 dropout: 0.4
 
@@ -94,7 +94,6 @@ dynamic_inputs:
   
 target_variables:
   - vwc
-  - actevap
 
 mask_variables:
   - mask_missing
@@ -133,7 +132,9 @@ rnn_training_pipeline:
         init_args:
           model: ${model}
           config:
-            experiment: ${experiment_name}/${experiment_run}
+            run_dir: ${run_dir}
+            experiment_name: ${experiment_name}
+            experiment_run: ${experiment_run}
             batch_size: ${batch}
             learning_rate: ${learning_rate}
             num_workers_dataloader: 1
@@ -144,7 +145,6 @@ rnn_training_pipeline:
             distributed: ${distributed}
             dynamic_inputs: ${dynamic_inputs}
             static_inputs: ${static_inputs}
-            target_variables: ${target_variables}
 
             optimizer: ${optimizer}
             lr_scheduler: ${lr_scheduler}

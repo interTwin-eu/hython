@@ -18,4 +18,4 @@ from .base import *
 from .train import train_val
 from .rnn import *
 from .conv import *
-from .cal import *
+from .cal import CalTrainer

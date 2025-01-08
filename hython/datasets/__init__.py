@@ -31,8 +31,8 @@ from .wflow_sbm import *
 DATASETS = {
     "Wflow1d": Wflow1d,
     "Wflow1dCal": Wflow1dCal,
-    "wflow2d": Wflow2d,
-    "wflow2dCal": Wflow2dCal,
+    "Wflow2d": Wflow2d,
+    "Wflow2dCal": Wflow2dCal,
 }
 
 

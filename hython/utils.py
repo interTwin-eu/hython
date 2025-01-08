@@ -131,10 +131,31 @@ def reconstruct_from_missing(
     return a_new
 
 
+def reshape_to_2Dspatial2(a, lat_size, lon_size, feat_size, coords=None):
+    tmp = a.reshape(lat_size, lon_size, feat_size)
+    return tmp
+
 def reshape_to_2Dspatial(a, lat_size, lon_size, time_size, feat_size, coords=None):
     tmp = a.reshape(lat_size, lon_size, time_size, feat_size)
     return tmp
 
+
+def prepare_for_plotting2d(
+    y_target,
+    shape,
+    coords,
+):
+
+    def to_xr(arr, coords, dims=["lat", "lon", "time"]):
+        return xr.DataArray(arr, dims=dims, coords=coords)
+    lat, lon = shape
+    n_feat = y_target.shape[-1]
+
+    y = reshape_to_2Dspatial2(y_target, lat, lon, n_feat)
+
+    y = to_xr(y, coords=coords, dims=["lat","lon", "variable"])
+
+    return y
 
 def prepare_for_plotting(
     y_target: NDArray,
