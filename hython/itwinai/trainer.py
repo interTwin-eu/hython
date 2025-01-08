@@ -11,7 +11,7 @@ import pandas as pd
 
 
 from hython.sampler import SamplerBuilder
-from hython.trainer import RNNTrainer
+from hython.trainer import RNNTrainer, CalTrainer
 from hython.models import get_model as get_hython_model
 
 from itwinai.torch.distributed import (
@@ -105,6 +105,7 @@ class RNNDistributedTrainer(TorchTrainer):
         validation_dataset: Optional[Dataset] = None,
         test_dataset: Optional[Dataset] = None,
     ) -> Tuple[Dataset, Dataset, Dataset, Any]:
+        
         self.init_hython_trainer()
 
         return super().execute(train_dataset, validation_dataset, test_dataset)
@@ -117,15 +118,38 @@ class RNNDistributedTrainer(TorchTrainer):
             OmegaConf.create({"metric_fn": self.config.metric_fn})
         )["metric_fn"]
 
-        self.model = self.model_class(
-            hidden_size=self.config.hidden_size,
-            dynamic_input_size=len(self.config.dynamic_inputs),
-            static_input_size=len(self.config.static_inputs),
-            output_size=len(self.config.target_variables),
-            dropout=self.config.dropout,
-        )
+        if self.config.hython_trainer == "rnntrainer":
+            self.model = self.model_class(
+                hidden_size=self.config.hidden_size,
+                dynamic_input_size=len(self.config.dynamic_inputs),
+                static_input_size=len(self.config.static_inputs),
+                output_size=len(self.config.target_variables),
+                dropout=self.config.dropout,
+            )
+            self.hython_trainer = RNNTrainer(self.config)
+        elif self.config.hython_trainer == "caltrainer":
 
-        self.hython_trainer = RNNTrainer(self.config)
+            surrogate = get_hython_model(self.config.model_head)(
+                            hidden_size=self.config.model_head_hidden_size, 
+                            dynamic_input_size=len(self.config.dynamic_inputs),
+                            static_input_size=len(self.config.head_model_inputs), 
+                            output_size=len(self.config.target_variables),
+                            dropout=self.config.model_head_dropout
+            )
+
+            surrogate.load_state_dict(torch.load(f"{self.config.model_head_dir}/{self.config.model_head_file}"))
+
+            transfer_nn = get_hython_model(self.config.model_transfer)( len(self.config.static_inputs), len(self.config.head_model_inputs) )
+
+
+            self.model = self.model_class(
+                            transfernn=transfer_nn,
+                            head_layer=surrogate,
+                            freeze_head=self.config.freeze_head,
+                            scale_head_input_parameter=self.config.scale_head_input_parameter
+            )
+            
+            self.hython_trainer = CalTrainer(self.config)
 
         self.hython_trainer.init_trainer(self.model)
 
@@ -227,7 +251,17 @@ class RNNDistributedTrainer(TorchTrainer):
                 metric_history[f"val_{target}"].append(val_metric[target])
 
             # Aggregate and log metrics
-            avg_metrics = pd.DataFrame(metric_history).mean().to_dict()
+            metric_history_ = {}
+            for period in metric_history:
+                for target in metric_history[period]:
+                    for key, value in target.items():
+                        l = []
+                        k = key.lower().split("metric")[0]
+                        n = period + "_" + k 
+                        l.append(value)
+                        metric_history_[n] = l
+                        
+            avg_metrics = pd.DataFrame(metric_history_).mean().to_dict()
             for m_name, m_val in avg_metrics.items():
                 self.log(
                     item=m_val,

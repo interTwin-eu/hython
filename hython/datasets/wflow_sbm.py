@@ -119,6 +119,8 @@ class Wflow1d(Dataset):
 
 
 class Wflow1dCal(Dataset):
+    """
+    """
     def __init__(self, cfg, scaler, is_train=True, period="train"):
         super().__init__()
 
@@ -127,7 +129,8 @@ class Wflow1dCal(Dataset):
 
         self.downsampler = self.cfg[f"{period}_downsampler"]
 
-        self.period = slice(*cfg[f"{period}_temporal_range"])
+        self.period = period
+        self.period_range = slice(*cfg[f"{period}_temporal_range"])
 
         file_path = f"{cfg.data_dir}/{cfg.data_file}"
 
@@ -151,17 +154,18 @@ class Wflow1dCal(Dataset):
                 group="xd",
                 multi_index="gridcell",
             )
-            .xd.sel(time=self.period)
+            .xd.sel(time=self.period_range)
             .sel(feat=self.cfg.dynamic_inputs)
         )
+        
 
         self.obs = xr.open_dataset(
             cfg.data_target_variables,
             mask_and_scale=True,
-        ).sel(time=self.period)
+        ).sel(time=self.period_range)
 
         # mask wflow
-        wflow_mask = (
+        self.wflow_mask = (
             read_from_zarr(url=file_path, group="mask")
             .mask.sel(mask_layer=self.cfg.mask_variables)
             .any(dim="mask_layer")
@@ -176,14 +180,14 @@ class Wflow1dCal(Dataset):
 
         self.obs = self.obs.where(obs_mask)
 
-        obs_mask = (~self.obs.isnull()).sum("time").ssm > self.cfg.min_sample_target
+        self.obs_mask = (~self.obs.isnull()).sum("time").ssm > self.cfg.min_sample_target
 
         # mask predictors
-        predictor_mask = (
+        self.predictor_mask = (
             ~self.static.unstack().sortby(["lat", "lon"]).isnull().any("feat")
         )
         # combine masks
-        self.mask = obs_mask & (~wflow_mask) & predictor_mask
+        self.mask = self.obs_mask & (~self.wflow_mask) & self.predictor_mask
 
         # (1) apply 2d mask
         obs_masked = self.obs.where(self.mask)
@@ -193,10 +197,21 @@ class Wflow1dCal(Dataset):
         obs_masked = reshape(obs_masked)
 
         # (3) find indices of valid
-        valid_coords = np.argwhere(~(obs_masked.isnull()).values.squeeze(-1))
+        if self.period != "test":
+            valid_coords = np.argwhere(~(obs_masked.isnull()).values.squeeze(-1))
 
-        # (4) avoid hitting bounds
-        self.coords = valid_coords[valid_coords[:, 1] > self.cfg.seq_length]
+            # (4) avoid hitting bounds
+            self.coords = valid_coords[valid_coords[:, 1] > self.cfg.seq_length]
+        else:
+            self.temp = np.ones(obs_masked.shape).astype(bool)
+            valid_coords = np.argwhere(self.temp.squeeze(-1))
+           
+            # keep only 
+            _, index = np.unique(valid_coords[:, 0], return_index=True)
+
+            self.coords = valid_coords[index]
+
+
 
         # (5) reduce dataset size
         if self.downsampler is not None:
@@ -247,12 +262,17 @@ class Wflow1dCal(Dataset):
 
     def __getitem__(self, i):
         gridcell, time = self.coords[i]
+        
+        if self.period != "test":
+            time_delta = slice(time - self.cfg.seq_length + 1, time + 1)
 
-        time_delta = slice(time - self.cfg.seq_length + 1, time + 1)
-
-        xs = self.static.isel(gridcell=gridcell).values
-        xd = self.dynamic.isel(gridcell=gridcell, time=time_delta).values
-        yo = self.obs.isel(gridcell=gridcell, time=time_delta).values
+            xs = self.static.isel(gridcell=gridcell).values
+            xd = self.dynamic.isel(gridcell=gridcell, time=time_delta).values
+            yo = self.obs.isel(gridcell=gridcell, time=time_delta).values
+        else:
+            xs = self.static.isel(gridcell=gridcell).values
+            xd = self.dynamic.isel(gridcell=gridcell).values
+            yo = self.obs.isel(gridcell=gridcell).values
 
         return {"xd": xd, "xs": xs, "y": yo}
 

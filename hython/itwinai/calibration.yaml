@@ -1,0 +1,243 @@
+# === Experiment === 
+experiment_name: "cal"
+experiment_run: "01"
+
+run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+
+train_temporal_range: ["2017-01-01", "2018-12-31"]
+valid_temporal_range: ["2019-01-01", "2020-12-31"]
+test_temporal_range: ["2019-01-01", "2020-12-31"]
+
+seed: 10 
+
+device: "cuda:0"
+
+# === Model ===
+
+# > hybrid < 
+model: hybrid
+
+freeze_head: True
+
+scale_head_input_parameter: True 
+
+# > transfernn < 
+model_transfer_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model/
+
+model_transfer: transfernn
+
+# > head model < 
+
+model_head: cudalstm
+
+model_head_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc
+
+model_head_file: model.pt
+
+model_head_hidden_size: 36
+
+model_head_dropout: 0.4
+
+# === Training ===
+
+hython_trainer: caltrainer
+
+distributed: False
+
+loss_fn:
+  _target_: hython.losses.RMSELoss
+    
+metric_fn:
+  _target_: hython.metrics.MSEMetric
+
+optimizer: adam
+
+lr_scheduler:
+  mode: min
+  factor: 0.5
+  patience: 10
+
+seq_length: 180
+
+learning_rate: 0.001
+
+batch: 256
+
+epochs: 30
+
+gradient_clip: null
+
+target_weights: even # null, even, or dict
+
+# > Donwsampling < 
+
+# spatial downsampling
+train_downsampler: 
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac: 0.01
+  how: time
+
+valid_downsampler: #None
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac: 0.01
+  how: time
+
+test_downsampler: null
+
+temporal_downsampling: null
+
+# === Data ===
+
+dataset: Wflow1dCal
+
+data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
+
+data_file: adg1km_eobs_preprocessed.zarr
+
+data_static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_lstm.zarr
+
+data_dynamic_inputs: ${data_dir}/${data_file}
+
+data_target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/daily/adige_2018-2021.nc
+
+data_target_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/adige_mask_2017_2022.nc
+
+scaling_variant: minmax
+
+head_model_inputs:
+  - thetaS
+  - KsatVer
+  - c
+  - f
+
+static_inputs:
+  - ch
+  - oc_sl1
+  - sndppt_sl1
+  - bd_sl1
+  - clyppt_sl1
+  - sltppt_sl1
+  - elev
+  - slope
+  - aspect
+
+dynamic_inputs:
+  - precip
+  - pet
+  - temp
+  
+target_variables:
+  - ssm
+
+mask_variables:
+  - mask_missing
+  - mask_lake
+
+min_sample_target: 10
+
+
+
+
+calibration_pipeline:
+  class_path: itwinai.pipeline.Pipeline
+  init_args:
+    steps:
+      - class_path: data.RNNDatasetGetterAndPreprocessor
+        init_args:
+          surrogate_input: ${data_dir}/${data_file}
+          dynamic_inputs: ${dynamic_inputs}
+          static_inputs: ${static_inputs}
+          target_variables: ${target_variables}
+          mask_variables: ${mask_variables}
+          train_temporal_range: ${train_temporal_range}
+          valid_temporal_range: ${valid_temporal_range}
+          dataset: ${dataset}
+          scaling_variant: ${scaling_variant}
+          experiment_name: ${experiment_name}
+          experiment_run: ${experiment_run}
+          run_dir: ${run_dir}
+          data_dir: ${data_dir}
+          data_file: ${data_file}
+          data_dynamic_inputs: ${data_dynamic_inputs}
+          data_static_inputs: ${data_static_inputs}
+          data_target_variables: ${data_target_variables}
+          data_target_mask: ${data_target_mask}
+          train_downsampler: ${train_downsampler}
+          valid_downsampler: ${valid_downsampler}
+          min_sample_target: ${min_sample_target}
+          seq_length: ${seq_length}
+      - class_path: trainer.RNNDistributedTrainer
+        init_args:
+          model: ${model}
+          config:
+            experiment: ${experiment_name}/${experiment_run}
+            experiment_name: ${experiment_name}
+            experiment_run: ${experiment_run}
+            run_dir: ${run_dir}
+            batch_size: ${batch}
+            learning_rate: ${learning_rate}
+            num_workers_dataloader: 1
+            hython_trainer: ${hython_trainer}
+            temporal_downsampling: ${temporal_downsampling}
+            #temporal_subset: ${temporal_subset}
+            seq_length: ${seq_length}
+            target_variables: ${target_variables}
+            distributed: ${distributed}
+            dynamic_inputs: ${dynamic_inputs}
+            static_inputs: ${static_inputs}
+
+            optimizer: ${optimizer}
+            lr_scheduler: ${lr_scheduler}
+            target_weights: ${target_weights}
+
+            # model config
+
+            model: ${model}
+            
+            model_head: ${model_head}
+
+            head_model_inputs: ${head_model_inputs}
+
+            
+
+            freeze_head: ${freeze_head}
+
+            scale_head_input_parameter: ${scale_head_input_parameter} 
+
+            # > transfernn < 
+            model_transfer_dir: ${model_transfer_dir}
+
+            model_transfer: ${model_transfer}
+
+            # > head model < 
+            model_head_dir: ${model_head_dir}
+
+            model_head_file: ${model_head_file}
+
+            model_head_hidden_size: ${model_head_hidden_size}
+
+            model_head_dropout: ${model_head_dropout}
+
+            loss_fn: ${loss_fn}
+            metric_fn: ${metric_fn}
+
+            gradient_clip: ${gradient_clip}
+
+            
+
+          strategy: sequential
+          epochs: ${epochs}
+          random_seed: ${seed}
+          logger:
+            class_path: itwinai.loggers.LoggersCollection
+            init_args:
+              loggers:
+                - class_path: itwinai.loggers.ConsoleLogger
+                  init_args:
+                    log_freq: 1
+                - class_path: itwinai.loggers.MLFlowLogger
+                  init_args:
+                    experiment_name: ${experiment_name}
+                    run_name: ${experiment_run}
+                    log_freq: batch
+                    savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs

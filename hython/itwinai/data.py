@@ -16,6 +16,8 @@ from copy import deepcopy
 class RNNDatasetGetterAndPreprocessor(DataSplitter):
     def __init__(
         self,
+
+        # == common ==
         dataset: str,
         scaling_variant: str,
         experiment_name: str,
@@ -23,15 +25,32 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         data_dir: str,
         data_file: str,
         run_dir: str,
-        surrogate_input: str,
-        dynamic_inputs: list[str],
-        static_inputs: list[str],
-        target_variables: list[str],
-        mask_variables: list[str],
+        surrogate_input: str = None,
+
+        dynamic_inputs: list[str] = None,
+        static_inputs: list[str] = None,
+        target_variables: list[str] = None,
+        
+
+        
+        mask_variables: list[str] = None,
         train_temporal_range: list[str] = ["", ""],
         valid_temporal_range: list[str] = ["", ""],
         train_downsampler: dict = None,
         valid_downsampler: dict = None,
+        
+        # == calibration == 
+        
+        data_dynamic_inputs: str = None,
+        data_static_inputs: str = None,
+        data_target_variables: str = None,
+        data_target_mask: str = None,
+        min_sample_target: int = None,
+        seq_length: int = None,
+
+        # == training == 
+
+
     ) -> None:
         self.save_parameters(**self.locals2params(locals()))
 

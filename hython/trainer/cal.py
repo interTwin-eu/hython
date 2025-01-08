@@ -40,6 +40,8 @@ class CalTrainer(AbstractTrainer):
                 target_weight=self.target_weights,
             )
 
+            #import pdb;pdb.set_trace()
+            #mini_batch_loss = mini_batch_loss.mean()
             self._backprop_loss(mini_batch_loss, opt)
 
             # Accumulate mini-batch loss, only valid samples
