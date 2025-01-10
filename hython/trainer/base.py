@@ -199,7 +199,12 @@ class AbstractTrainer(ABC):
 
     def predict_step(self, arr, steps=-1):
         """Return the n steps that should be predicted"""
-        return arr[:, steps]
+        if steps == "all":
+            return arr
+        elif steps == 0:
+            return arr[:, -1]
+        else:
+            return arr[:, steps]
 
     def save_weights(self, model, fp = None, onnx=False):
 

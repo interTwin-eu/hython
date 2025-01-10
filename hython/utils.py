@@ -157,6 +157,25 @@ def prepare_for_plotting2d(
 
     return y
 
+
+def prepare_for_plotting1d(
+    y_target,
+    shape,
+    coords,
+):
+    lat, lon,time = shape
+    n_feat = y_target.shape[-1]
+
+    y = reshape_to_2Dspatial2(y_target, lat, lon, time, n_feat)
+
+    print(y.shape)
+    def to_xr(arr, coords, dims=["lat", "lon", "time"]):
+        return xr.DataArray(arr, dims=dims, coords=coords)
+    
+    y = to_xr(y, coords=coords, dims=["lat","lon", "time"])
+
+    return y
+
 def prepare_for_plotting(
     y_target: NDArray,
     y_pred: NDArray,
@@ -392,3 +411,6 @@ def get_lr_scheduler(optimizer, cfg):
         )
 
     return lr_scheduler
+
+
+

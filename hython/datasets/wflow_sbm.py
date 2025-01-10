@@ -17,7 +17,7 @@ class Wflow1d(Dataset):
         file_path = f"{cfg.data_dir}/{cfg.data_file}"
 
         # generate run directory
-        run_path = generate_run_folder(cfg)
+        self.run_dir = generate_run_folder(cfg)
 
         self.xd = (
             read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
@@ -70,7 +70,7 @@ class Wflow1d(Dataset):
 
         # Scaling
 
-        self.scaler.set_run_dir(run_path)
+        self.scaler.set_run_dir(self.run_dir)
 
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("gridcell", "time")
@@ -135,7 +135,7 @@ class Wflow1dCal(Dataset):
         file_path = f"{cfg.data_dir}/{cfg.data_file}"
 
         # generate run directory
-        run_path = generate_run_folder(cfg)
+        self.run_dir = generate_run_folder(cfg)
 
         # load datasets
         self.static = (
@@ -203,6 +203,7 @@ class Wflow1dCal(Dataset):
             # (4) avoid hitting bounds
             self.coords = valid_coords[valid_coords[:, 1] > self.cfg.seq_length]
         else:
+            # in test, no need to split in sequences 
             self.temp = np.ones(obs_masked.shape).astype(bool)
             valid_coords = np.argwhere(self.temp.squeeze(-1))
            
@@ -210,8 +211,6 @@ class Wflow1dCal(Dataset):
             _, index = np.unique(valid_coords[:, 0], return_index=True)
 
             self.coords = valid_coords[index]
-
-
 
         # (5) reduce dataset size
         if self.downsampler is not None:
@@ -222,7 +221,7 @@ class Wflow1dCal(Dataset):
 
         # (6) Normalize
 
-        self.scaler.set_run_dir(run_path)
+        self.scaler.set_run_dir(self.run_dir)
 
         self.scaler.load_or_compute(
             self.dynamic.isel(gridcell=gridcell_idx, time=time_idx),
@@ -239,7 +238,7 @@ class Wflow1dCal(Dataset):
             axes=("gridcell"),
         )
         self.static = self.scaler.transform(self.static, "static_inputs")
-
+        
         self.scaler.load_or_compute(
             self.obs.isel(gridcell=gridcell_idx, time=time_idx),
             "target_variables",

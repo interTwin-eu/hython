@@ -25,8 +25,8 @@ class CalTrainer(AbstractTrainer):
 
             pred = model(predictor_b, forcing_b)
 
-            output = self.predict_step(pred["y_hat"], steps=-1)
-            target = self.predict_step(target_b, steps=-1)
+            output = self.predict_step(pred["y_hat"], steps= self.cfg.predict_steps)
+            target = self.predict_step(target_b, steps= self.cfg.predict_steps)
 
             # TODO: consider moving missing values loss handling in the compute loss method
             valid_mask = ~target.isnan()  # non null values
@@ -40,9 +40,11 @@ class CalTrainer(AbstractTrainer):
                 target_weight=self.target_weights,
             )
 
-            #import pdb;pdb.set_trace()
-            #mini_batch_loss = mini_batch_loss.mean()
-            self._backprop_loss(mini_batch_loss, opt)
+            if self.cfg.predict_steps != 0:
+                mini_batch_loss = mini_batch_loss.mean()
+                self._backprop_loss(mini_batch_loss, opt)
+            else:
+                self._backprop_loss(mini_batch_loss, opt)
 
             # Accumulate mini-batch loss, only valid samples
             running_batch_loss += mini_batch_loss
