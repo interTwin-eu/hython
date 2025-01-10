@@ -137,7 +137,7 @@ class RNNDistributedTrainer(TorchTrainer):
                             dropout=self.config.model_head_dropout
             )
 
-            surrogate.load_state_dict(torch.load(f"{self.config.model_head_dir}/{self.config.model_head_file}"))
+            surrogate.load_state_dict(torch.load(f"{self.config.work_dir}/{self.config.model_head_dir}/{self.config.model_head_file}"))
 
             transfer_nn = get_hython_model(self.config.model_transfer)( len(self.config.static_inputs), len(self.config.head_model_inputs) )
 

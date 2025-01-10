@@ -15,7 +15,7 @@ from torch.optim import Adam
 
 
 def generate_run_folder(cfg):
-    return f"{cfg.run_dir}/{generate_experiment_id(cfg)}"
+    return f"{cfg.work_dir}/{generate_experiment_id(cfg)}"
 
 def generate_experiment_id(cfg):
     return "_".join([cfg.experiment_name, cfg.experiment_run])
