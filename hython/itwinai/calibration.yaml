@@ -243,9 +243,9 @@ calibration_pipeline:
                 - class_path: itwinai.loggers.ConsoleLogger
                   init_args:
                     log_freq: 1
-                - class_path: itwinai.loggers.MLFlowLogger
-                  init_args:
-                    experiment_name: ${experiment_name}
-                    run_name: ${experiment_run}
-                    log_freq: batch
-                    savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs
+                # - class_path: itwinai.loggers.MLFlowLogger
+                #   init_args:
+                #     experiment_name: ${experiment_name}
+                #     run_name: ${experiment_run}
+                #     log_freq: batch
+                #     savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs
