@@ -1,10 +1,13 @@
 # === Experiment === 
 experiment_name: "cal"
-experiment_run: "01"
+experiment_run: "lstm"
 
-run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+# the base directory with all the runs
+# here a new directory <experiment_name>_<experiment_run> is created
+work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run 
 
 train_temporal_range: ["2017-01-01", "2018-12-31"]
+cal_temporal_range: ["2018-01-01", "2021-12-31"]  # calibration
 valid_temporal_range: ["2019-01-01", "2020-12-31"]
 test_temporal_range: ["2019-01-01", "2020-12-31"]
 
@@ -15,32 +18,34 @@ device: "cuda:0"
 # === Model ===
 
 # > hybrid < 
-model: hybrid
+
+model: hybrid # model class
 
 freeze_head: True
 
 scale_head_input_parameter: True 
 
-# > transfernn < 
-model_transfer_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_model/
+scale_head_output: False
 
-model_transfer: transfernn
+# > transfernn < 
+
+model_transfer: transfernn # model class
 
 # > head model < 
 
-model_head: cudalstm
+model_head: cudalstm # model class
 
-model_head_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc
+model_head_dir: lstm_vwc2 # directory to load the surrogate model, relative to work_dir.
 
 model_head_file: model.pt
 
-model_head_hidden_size: 36
+model_head_hidden_size: 68
 
 model_head_dropout: 0.4
 
 # === Training ===
 
-hython_trainer: caltrainer
+hython_trainer: caltrainer # trainer class
 
 distributed: False
 
@@ -69,6 +74,8 @@ gradient_clip: null
 
 target_weights: even # null, even, or dict
 
+predict_steps: all # all # (prediction: 0 = t ), ( forecasts: 1 = t+1, 2 = t + 2)
+
 # > Donwsampling < 
 
 # spatial downsampling
@@ -82,13 +89,18 @@ valid_downsampler: #None
   frac: 0.01
   how: time
 
+cal_downsampler: #None
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac: 0.01
+  how: time
+
 test_downsampler: null
 
 temporal_downsampling: null
 
 # === Data ===
 
-dataset: Wflow1dCal
+dataset: Wflow1dCal # dataset class
 
 data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
 
@@ -108,7 +120,7 @@ head_model_inputs:
   - thetaS
   - KsatVer
   - c
-  - f
+  - thetaR
 
 static_inputs:
   - ch
@@ -135,8 +147,7 @@ mask_variables:
 
 min_sample_target: 10
 
-
-
+# == Pipeline == 
 
 calibration_pipeline:
   class_path: itwinai.pipeline.Pipeline
@@ -155,7 +166,7 @@ calibration_pipeline:
           scaling_variant: ${scaling_variant}
           experiment_name: ${experiment_name}
           experiment_run: ${experiment_run}
-          run_dir: ${run_dir}
+          work_dir: ${work_dir}
           data_dir: ${data_dir}
           data_file: ${data_file}
           data_dynamic_inputs: ${data_dynamic_inputs}
@@ -173,13 +184,12 @@ calibration_pipeline:
             experiment: ${experiment_name}/${experiment_run}
             experiment_name: ${experiment_name}
             experiment_run: ${experiment_run}
-            run_dir: ${run_dir}
+            work_dir: ${work_dir}
             batch_size: ${batch}
             learning_rate: ${learning_rate}
             num_workers_dataloader: 1
             hython_trainer: ${hython_trainer}
             temporal_downsampling: ${temporal_downsampling}
-            #temporal_subset: ${temporal_subset}
             seq_length: ${seq_length}
             target_variables: ${target_variables}
             distributed: ${distributed}
@@ -198,14 +208,11 @@ calibration_pipeline:
 
             head_model_inputs: ${head_model_inputs}
 
-            
-
             freeze_head: ${freeze_head}
 
             scale_head_input_parameter: ${scale_head_input_parameter} 
 
             # > transfernn < 
-            model_transfer_dir: ${model_transfer_dir}
 
             model_transfer: ${model_transfer}
 
@@ -223,8 +230,9 @@ calibration_pipeline:
 
             gradient_clip: ${gradient_clip}
 
-            
+            predict_steps: ${predict_steps}
 
+          
           strategy: sequential
           epochs: ${epochs}
           random_seed: ${seed}

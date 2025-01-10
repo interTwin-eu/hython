@@ -1,9 +1,8 @@
 # General configuration
-
 experiment_name: "itwinai"
 experiment_run: "vwc_actevap"
 
-run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
 train_temporal_range: ["2016-01-01", "2018-12-31"]
 valid_temporal_range: ["2019-01-01", "2020-12-31"]
@@ -125,7 +124,7 @@ rnn_training_pipeline:
           scaling_variant: ${scaling_variant}
           experiment_name: ${experiment_name}
           experiment_run: ${experiment_run}
-          run_dir: ${run_dir}
+          work_dir: ${work_dir}
           data_dir: ${data_dir}
           data_file: ${data_file}
           train_downsampler: ${train_downsampler}
@@ -137,7 +136,7 @@ rnn_training_pipeline:
             experiment: ${experiment_name}/${experiment_run}
             experiment_name: ${experiment_name}
             experiment_run: ${experiment_run}
-            run_dir: ${run_dir}
+            work_dir: ${work_dir}
             batch_size: ${batch}
             learning_rate: ${learning_rate}
             num_workers_dataloader: 1

@@ -24,7 +24,7 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         experiment_run: str,
         data_dir: str,
         data_file: str,
-        run_dir: str,
+        work_dir: str,
         surrogate_input: str = None,
 
         dynamic_inputs: list[str] = None,
