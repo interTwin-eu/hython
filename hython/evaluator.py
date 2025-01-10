@@ -4,6 +4,9 @@ import numpy as np
 
 
 def predict(dataset, model, batch_size, device, target="y_hat"):
+
+    model.eval()
+    
     model = model.to(device)
 
     n, t, _ = dataset.xd.shape
