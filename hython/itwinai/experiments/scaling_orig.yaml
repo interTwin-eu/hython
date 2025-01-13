@@ -1,9 +1,9 @@
 # General configuration
 
-experiment_name: "test_multi_output"
-experiment_run: "vwc_h256"
+experiment_name: "test_scaling"
+experiment_run: "data_range"
 
-run_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
 train_temporal_range: ["2016-01-01", "2018-12-31"]
 valid_temporal_range: ["2019-01-01", "2020-12-31"]
@@ -17,11 +17,13 @@ device: "cuda:0"
 
 model: cudalstm
 
-hidden_size: 256
+hidden_size: 64
 
 dropout: 0.4
 
 # === Training ===
+
+hython_trainer: rnntrainer
 
 distributed: False
 
@@ -31,6 +33,12 @@ loss_fn:
 metric_fn:
   _target_: hython.metrics.MSEMetric
 
+# metric_fn:
+#   _target_: hython.metrics.MetricCollection
+#   metrics:
+#     - _target_: hython.metrics.MSEMetric
+#     - _target_: hython.metrics.KGEMetric
+    
 optimizer: adam
 
 lr_scheduler:
@@ -85,7 +93,6 @@ static_inputs:
   - thetaR
   - KsatVer
   - c
-  - RootingDepth
 
 dynamic_inputs:
   - precip
@@ -103,7 +110,8 @@ mask_variables:
 
 scaling_variant: minmax
 
-
+scaling_static_range: null
+    
 # == Pipeline == 
 
 rnn_training_pipeline:
@@ -121,9 +129,10 @@ rnn_training_pipeline:
           valid_temporal_range: ${valid_temporal_range}
           dataset: ${dataset}
           scaling_variant: ${scaling_variant}
+          scaling_static_range: ${scaling_static_range}
           experiment_name: ${experiment_name}
           experiment_run: ${experiment_run}
-          run_dir: ${run_dir}
+          work_dir: ${work_dir}
           data_dir: ${data_dir}
           data_file: ${data_file}
           train_downsampler: ${train_downsampler}
@@ -132,7 +141,7 @@ rnn_training_pipeline:
         init_args:
           model: ${model}
           config:
-            run_dir: ${run_dir}
+            work_dir: ${work_dir}
             experiment_name: ${experiment_name}
             experiment_run: ${experiment_run}
             batch_size: ${batch}
@@ -149,6 +158,8 @@ rnn_training_pipeline:
             optimizer: ${optimizer}
             lr_scheduler: ${lr_scheduler}
             target_weights: ${target_weights}
+
+            hython_trainer: ${hython_trainer}
 
             # model config
             hidden_size: ${hidden_size}
@@ -175,3 +186,7 @@ rnn_training_pipeline:
                     run_name: ${experiment_run}
                     log_freq: batch
                     savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs
+
+
+
+

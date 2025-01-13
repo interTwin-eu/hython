@@ -31,7 +31,7 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         static_inputs: list[str] = None,
         target_variables: list[str] = None,
         
-
+        scaling_static_range: dict = None,
         
         mask_variables: list[str] = None,
         train_temporal_range: list[str] = ["", ""],
@@ -57,6 +57,7 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         self.cfg = deepcopy(self.locals2params(locals()))
 
         self.cfg = instantiate(OmegaConf.create(self.cfg))
+
 
     @monitor_exec
     def execute(self) -> Tuple[Wflow1d, Wflow1d, None]:

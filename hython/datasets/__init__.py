@@ -22,8 +22,26 @@ except:
     pass
 
 
-class BaseDataset:
-    pass
+class BaseDataset(Dataset):
+    
+    def get_scaling_parameter(self, var_toscale, var_all):
+        """Project inputs to custom range. Inputs are expected to be normalized, either 
+            by minmax or standard scaling"""
+        
+        #var_noscale = np.setdiff1d(var_all, list( var_toscale.keys()) )
+        
+        center = []
+        scale = []
+        
+        for var in var_all:
+            if var in var_toscale.keys():
+                scale.append( var_toscale[var][1] - var_toscale[var][0])
+                center.append( var_toscale[var][0] )
+            else:
+                scale.append(1)
+                center.append(0)
+                
+        return np.array(scale), np.array(center)
 
 
 from .wflow_sbm import *

@@ -2,7 +2,7 @@
 from . import *
 
 
-class Wflow1d(Dataset):
+class Wflow1d(BaseDataset):
     def __init__(
         self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
     ):
@@ -15,6 +15,8 @@ class Wflow1d(Dataset):
         self.period = slice(*cfg[f"{period}_temporal_range"])
 
         file_path = f"{cfg.data_dir}/{cfg.data_file}"
+
+        self.scaling_static_range = self.cfg.get("scaling_static_range")
 
         # generate run directory
         self.run_dir = generate_run_folder(cfg)
@@ -84,15 +86,34 @@ class Wflow1d(Dataset):
             self.y, "target_variables", is_train, axes=("gridcell", "time")
         )
 
+
         if not self.scale_ontraining:
             self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
-            self.xs = self.scaler.transform(self.xs, "static_inputs")
+            
             self.y = self.scaler.transform(self.y, "target_variables")
+
+            if self.scaling_static_range is not None:
+                scaling_static_reordered = {k:self.cfg.scaling_static_range[k] for k in self.cfg.static_inputs
+                                    if k in self.cfg.scaling_static_range}
+                
+                self.static_scale, self.static_center = self.get_scaling_parameter(scaling_static_reordered, self.cfg.static_inputs)
+
+                self.xs = self.scaler.transform_custom_range(self.xs, "static_inputs", self.static_scale, self.static_center)
+            else:
+                self.xs = self.scaler.transform(self.xs, "static_inputs")
+        else:
+            # these will be used in the getitem by the scaler.transform_custom_range
+            scaling_static_reordered = {k:self.cfg.scaling_static_range[k] for k in self.cfg.static_inputs
+                                if k in self.cfg.scaling_static_range}
+            
+            self.static_scale, self.static_center = self.get_scaling_parameter(scaling_static_reordered, self.cfg.static_inputs)
 
         if is_train:
             self.scaler.write("dynamic_inputs")
             self.scaler.write("static_inputs")
             self.scaler.write("target_variables")
+
+
 
     def __len__(self):
         return len(self.grid_idx_1d_valid)
@@ -104,12 +125,18 @@ class Wflow1d(Dataset):
             xd = torch.tensor(
                 self.scaler.transform(self.xd[item_index], "dynamic_inputs").values
             ).float()
-            xs = torch.tensor(
-                self.scaler.transform(self.xs[item_index], "static_inputs").values
-            ).float()
+
             y = torch.tensor(
                 self.scaler.transform(self.y[item_index], "target_variables").values
             ).float()
+
+            if self.scaling_static_range is not None:
+                xs = torch.tensor(self.scaler.transform_custom_range(self.xs[item_index], "static_inputs", self.static_scale, self.static_center).values).float()
+            else:
+                xs = torch.tensor(
+                    self.scaler.transform(self.xs[item_index], "static_inputs").values
+                ).float()
+
         else:
             xd = torch.tensor(self.xd[item_index].values).float()
             xs = torch.tensor(self.xs[item_index].values).float()
@@ -118,7 +145,7 @@ class Wflow1d(Dataset):
         return {"xd": xd, "xs": xs, "y": y}
 
 
-class Wflow1dCal(Dataset):
+class Wflow1dCal(BaseDataset):
     """
     """
     def __init__(self, cfg, scaler, is_train=True, period="train"):
@@ -229,7 +256,7 @@ class Wflow1dCal(Dataset):
             is_train,
             axes=("gridcell", "time"),
         )
-        self.dynamic = self.scaler.transform(self.dynamic, "dynamic_inputs")
+        
 
         self.scaler.load_or_compute(
             self.static.isel(gridcell=gridcell_idx),
@@ -237,7 +264,7 @@ class Wflow1dCal(Dataset):
             is_train,
             axes=("gridcell"),
         )
-        self.static = self.scaler.transform(self.static, "static_inputs")
+        
         
         self.scaler.load_or_compute(
             self.obs.isel(gridcell=gridcell_idx, time=time_idx),
@@ -245,6 +272,9 @@ class Wflow1dCal(Dataset):
             is_train,
             axes=("gridcell", "time"),
         )
+
+        self.dynamic = self.scaler.transform(self.dynamic, "dynamic_inputs")
+        self.static = self.scaler.transform(self.static, "static_inputs")
         self.obs = self.scaler.transform(self.obs, "target_variables")
 
         self.obs = self.obs.astype(np.float32)
@@ -276,7 +306,7 @@ class Wflow1dCal(Dataset):
         return {"xd": xd, "xs": xs, "y": yo}
 
 
-class Wflow2d(Dataset):
+class Wflow2d(BaseDataset):
     def __init__(
         self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
     ):
@@ -477,7 +507,7 @@ class Wflow2d(Dataset):
             return xd, torch.tensor([]), y
 
 
-class Wflow2dCal(Dataset):
+class Wflow2dCal(BaseDataset):
     def __init__(
         self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
     ):
