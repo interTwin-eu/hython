@@ -244,7 +244,15 @@ def compute_bias(y_true: xr.DataArray, y_pred, dim="time", axis=0, skipna=False)
         return np.mean(y_pred - y_true, axis=axis)
 
 
-def compute_rmse(y_true, y_pred, dim="time", axis=0, skipna=False, sample_weight=None, valid_mask=None):
+def compute_rmse(
+    y_true,
+    y_pred,
+    dim="time",
+    axis=0,
+    skipna=False,
+    sample_weight=None,
+    valid_mask=None,
+):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return np.sqrt(((y_pred - y_true) ** 2).mean(dim=dim, skipna=skipna))
     else:
@@ -267,7 +275,9 @@ def compute_mse(
         return np.average((y_pred - y_true) ** 2, axis=axis, weights=sample_weight)
 
 
-def compute_pearson(y_true, y_pred, axis=0, dim="time", sample_weight=None, valid_mask=None):
+def compute_pearson(
+    y_true, y_pred, axis=0, dim="time", sample_weight=None, valid_mask=None
+):
     if isinstance(y_true, xr.DataArray) or isinstance(y_pred, xr.DataArray):
         return xr.corr(y_true, y_pred, dim=dim, weights=sample_weight)
     else:

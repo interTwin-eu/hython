@@ -8,6 +8,7 @@ import tempfile
 
 tmp_dir = tempfile.TemporaryDirectory().name
 
+
 def test_minmax_lstm():
     scaler = Scaler(f"{os.path.dirname(__file__)}/config/config.yaml")
 
@@ -19,10 +20,9 @@ def test_minmax_lstm():
     [(False, "xarray"), (True, "xarray"), (False, "numpy"), (True, "numpy")],
 )
 def test_load_or_compute_caching(use_cached, data_type):
-
     cfg = f"{os.path.dirname(__file__)}/config/config.yaml"
 
-    scaler = Scaler(cfg , use_cached=use_cached)
+    scaler = Scaler(cfg, use_cached=use_cached)
 
     scaler.set_run_dir(tmp_dir)
 
@@ -210,7 +210,9 @@ from hython.io import read_from_zarr
     [False, True],
 )
 def test_load_or_compute_caching_realdata(use_cached):
-    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/config/datasets.yaml"))
+    cfg = instantiate(
+        OmegaConf.load(f"{os.path.dirname(__file__)}/config/datasets.yaml")
+    )
 
     file_path = f"{cfg.data_dir}/{cfg.data_file}"
 

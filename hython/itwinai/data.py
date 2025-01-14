@@ -16,7 +16,6 @@ from copy import deepcopy
 class RNNDatasetGetterAndPreprocessor(DataSplitter):
     def __init__(
         self,
-
         # == common ==
         dataset: str,
         scaling_variant: str,
@@ -26,38 +25,29 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         data_file: str,
         work_dir: str,
         surrogate_input: str = None,
-
         dynamic_inputs: list[str] = None,
         static_inputs: list[str] = None,
         target_variables: list[str] = None,
-        
         scaling_static_range: dict = None,
-        
         mask_variables: list[str] = None,
         train_temporal_range: list[str] = ["", ""],
         valid_temporal_range: list[str] = ["", ""],
         train_downsampler: dict = None,
         valid_downsampler: dict = None,
-        
-        # == calibration == 
-        
+        # == calibration ==
         data_dynamic_inputs: str = None,
         data_static_inputs: str = None,
         data_target_variables: str = None,
         data_target_mask: str = None,
         min_sample_target: int = None,
         seq_length: int = None,
-
-        # == training == 
-
-
+        # == training ==
     ) -> None:
         self.save_parameters(**self.locals2params(locals()))
 
         self.cfg = deepcopy(self.locals2params(locals()))
 
         self.cfg = instantiate(OmegaConf.create(self.cfg))
-
 
     @monitor_exec
     def execute(self) -> Tuple[Wflow1d, Wflow1d, None]:

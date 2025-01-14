@@ -5,35 +5,56 @@ import xarray as xr
 from matplotlib.colors import BoundaryNorm, ListedColormap
 
 
-
-def show_train_val_curve(epochs, target_variables, loss_label, loss_history, metric_history):
+def show_train_val_curve(
+    epochs, target_variables, loss_label, loss_history, metric_history
+):
     lepochs = list(range(1, epochs + 1))
 
-    rows = len(target_variables) + len(metric_history[f"train_{target_variables[0]}"][0])
-    figsize = (12, rows*3)
+    rows = len(target_variables) + len(
+        metric_history[f"train_{target_variables[0]}"][0]
+    )
+    figsize = (12, rows * 3)
 
-    fig, axs = plt.subplots( rows, 1, figsize= figsize, sharex=True)
+    fig, axs = plt.subplots(rows, 1, figsize=figsize, sharex=True)
 
-    axs[0].plot(lepochs, [i.detach().cpu().numpy() for i in loss_history['train']], marker='.', linestyle='-', color='b', label='Training')
-    axs[0].plot(lepochs, [i.detach().cpu().numpy() for i in loss_history['val']], marker='.', linestyle='-', color='r', label='Validation')
-    axs[0].set_title('Loss')
+    axs[0].plot(
+        lepochs,
+        [i.detach().cpu().numpy() for i in loss_history["train"]],
+        marker=".",
+        linestyle="-",
+        color="b",
+        label="Training",
+    )
+    axs[0].plot(
+        lepochs,
+        [i.detach().cpu().numpy() for i in loss_history["val"]],
+        marker=".",
+        linestyle="-",
+        color="r",
+        label="Validation",
+    )
+    axs[0].set_title("Loss")
     axs[0].set_ylabel(loss_label)
     axs[0].grid(True)
-    axs[0].legend(bbox_to_anchor=(1,1))
+    axs[0].legend(bbox_to_anchor=(1, 1))
 
     # metrics
     for variable in target_variables:
-        metrics = metric_history[f'train_{variable}'][0].keys()
+        metrics = metric_history[f"train_{variable}"][0].keys()
         for i, m in enumerate(metrics):
-            m_train = [im[m] for im in metric_history[f'train_{variable}']] 
-            m_val = [im[m] for im in metric_history[f'val_{variable}']] 
-            
-            axs[i+1].plot(lepochs, m_train , marker='.', linestyle='-', color='b', label='Training')
-            axs[i+1].plot(lepochs,m_val, marker='.', linestyle='-', color='r', label='Validation')
-            axs[i+1].set_title(variable)
-            axs[i+1].set_ylabel(m)
-            axs[i+1].grid(True)
-            axs[i+1].legend(bbox_to_anchor=(1,1))
+            m_train = [im[m] for im in metric_history[f"train_{variable}"]]
+            m_val = [im[m] for im in metric_history[f"val_{variable}"]]
+
+            axs[i + 1].plot(
+                lepochs, m_train, marker=".", linestyle="-", color="b", label="Training"
+            )
+            axs[i + 1].plot(
+                lepochs, m_val, marker=".", linestyle="-", color="r", label="Validation"
+            )
+            axs[i + 1].set_title(variable)
+            axs[i + 1].set_ylabel(m)
+            axs[i + 1].grid(True)
+            axs[i + 1].legend(bbox_to_anchor=(1, 1))
 
     return fig, axs
 
