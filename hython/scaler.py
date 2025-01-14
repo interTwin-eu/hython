@@ -56,6 +56,9 @@ class Scaler:
 
         if stats_dist is not None:
             return (data - stats_dist["center"]) / stats_dist["scale"]
+        
+    def transform_custom_range(self, data, type, scale, center):
+        return (data  - center) / scale
 
     def transform_inverse(self, data, type):
         stats_dist = self.archive.get(type)
@@ -69,8 +72,7 @@ class Scaler:
             else:
                 return (data * stats_dist["scale"]) + stats_dist["center"]
             
-    def transform_custom_range(self, data, type, scale, center):
-        return (data  - center) / scale
+
 
     def compute(self, data, type, axes=(0, 1)):
         "Compute assumes the features are the last dimension of the array."
