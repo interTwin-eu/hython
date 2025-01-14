@@ -1,29 +1,76 @@
+from torch.nn import Linear, Sequential, ModuleDict
 import torch
+import torch.nn.functional as F
 from torch import nn
 
-import torch.nn.functional as F
+def make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias=False):
+    layers = []
+    if n_layers == 1:
+        layers.append(
+            Linear(input_dim, output_dim, bias=bias)
+        )
+    else:
+        layers.append(Linear(input_dim, hidden_dim, bias=bias))
+        
+        layers = layers + [nn.LeakyReLU()]
+
+        for i in range(n_layers-2):
+            layers.append(Linear(hidden_dim, hidden_dim, bias=bias))
+            layers = layers + [nn.LeakyReLU()]
+        
+        layers.append(Linear(hidden_dim, output_dim, bias=bias))
+
+    layers = layers + [nn.LeakyReLU()]
+            
+    mlp = Sequential(*layers)
+    return mlp
+
+def stack_mlps(params, input_dim, output_dim, hidden_dim, n_layers, bias=False):
+    dct = {}
+    for param in params:
+        dct[param] = make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias=False)
+    module_dict = ModuleDict(dct)
+    return module_dict
 
 
 class TransferNN(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, params, input_dim, output_dim, hidden_dim, n_layers, bias=False):
         super(TransferNN, self).__init__()
 
-        self.lin = nn.Linear(input_dim, output_dim)
-        self.lin2 = nn.Linear(output_dim, 3)
-        self.lin3 = nn.Linear(3, 3)
-        self.lin4 = nn.Linear(3, output_dim)
-
-        for p in self.parameters():
-            if isinstance(p, nn.Linear):
-                torch.nn.init.xavier_uniform_(p)
+        self.params = params
+        # make mlp layers
+        self.mlp_dict = stack_mlps(params, input_dim, output_dim, hidden_dim, n_layers, bias=False)
 
     def forward(self, x):
-        l1 = F.leaky_relu(self.lin(x))
-        l2 = F.leaky_relu(self.lin2(l1))
-        l3 = F.leaky_relu(self.lin3(l2))
-        l4 = self.lin4(l3)
 
-        return l4
+        out = []
+        for param in self.params:
+
+            out.append(self.mlp_dict[param](x))
+        
+        return torch.cat(out,-1).float()
+        
+
+# class TransferNN(nn.Module):
+#     def __init__(self, input_dim, output_dim, hidden_dim):
+#         super(TransferNN, self).__init__()
+
+#         self.lin = nn.Linear(input_dim, output_dim)
+#         self.lin2 = nn.Linear(output_dim, hidden_dim)
+#         self.lin3 = nn.Linear(hidden_dim, hidden_dim)
+#         self.lin4 = nn.Linear(hidden_dim, output_dim)
+
+#         for p in self.parameters():
+#             if isinstance(p, nn.Linear):
+#                 torch.nn.init.xavier_uniform_(p)
+
+#     def forward(self, x):
+#         l1 = F.leaky_relu(self.lin(x))
+#         l2 = F.leaky_relu(self.lin2(l1))
+#         l3 = F.leaky_relu(self.lin3(l2))
+#         l4 = self.lin4(l3)
+
+#         return l4
 
 
 # class TransferNN(nn.Module):

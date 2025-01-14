@@ -111,9 +111,11 @@ class RNNDistributedTrainer(TorchTrainer):
         return super().execute(train_dataset, validation_dataset, test_dataset)
 
     def init_hython_trainer(self) -> None:
+        
         self.config.loss_fn = instantiate(
             OmegaConf.create({"loss_fn": self.config.loss_fn})
         )["loss_fn"]
+        
         self.config.metric_fn = instantiate(
             OmegaConf.create({"metric_fn": self.config.metric_fn})
         )["metric_fn"]
@@ -127,6 +129,7 @@ class RNNDistributedTrainer(TorchTrainer):
                 dropout=self.config.dropout,
             )
             self.hython_trainer = RNNTrainer(self.config)
+            
         elif self.config.hython_trainer == "caltrainer":
 
             surrogate = get_hython_model(self.config.model_head)(
@@ -139,7 +142,13 @@ class RNNDistributedTrainer(TorchTrainer):
 
             surrogate.load_state_dict(torch.load(f"{self.config.work_dir}/{self.config.model_head_dir}/{self.config.model_head_file}"))
 
-            transfer_nn = get_hython_model(self.config.model_transfer)( len(self.config.static_inputs), len(self.config.head_model_inputs) )
+            transfer_nn = get_hython_model(self.config.model_transfer)(
+                         self.config.head_model_inputs,
+                         len(self.config.static_inputs), 
+                         self.config.mt_output_dim, 
+                         self.config.mt_hidden_dim,
+                         self.config.mt_n_layers 
+            )
 
 
             self.model = self.model_class(
