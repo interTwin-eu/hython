@@ -56,13 +56,13 @@ class Scaler:
 
         if stats_dist is not None:
             return (data - stats_dist["center"]) / stats_dist["scale"]
-        
+
     def transform_custom_range(self, data, type, scale, center):
-        return (data  - center) / scale
+        return (data - center) / scale
 
     def transform_inverse(self, data, type):
         stats_dist = self.archive.get(type)
-        
+
         if stats_dist is not None:
             if isinstance(data, xr.DataArray) or not isinstance(data, xr.Dataset):
                 stats_dist_arr = {}
@@ -71,8 +71,6 @@ class Scaler:
                 return (data * stats_dist_arr["scale"]) + stats_dist_arr["center"]
             else:
                 return (data * stats_dist["scale"]) + stats_dist["center"]
-            
-
 
     def compute(self, data, type, axes=(0, 1)):
         "Compute assumes the features are the last dimension of the array."
@@ -95,7 +93,7 @@ class Scaler:
         self.archive.update({type: {"center": center, "scale": scale}})
 
     def load(self, type):
-        path = self.run_dir / f"{type}.yaml" 
+        path = self.run_dir / f"{type}.yaml"
         if path.exists():
             with open(path, "r") as file:
                 temp = yaml.load(file, Loader=yaml.Loader)
@@ -115,13 +113,13 @@ class Scaler:
             path = self.run_dir / f"{type}.yaml"
             path.unlink()
         else:
-            path = self.run_dir 
+            path = self.run_dir
             [f.unlink() for f in path.glob("*.yaml")]
 
     def write(self, type):
         stats_dict = deepcopy(self.archive.get(type))
 
-        path = self.run_dir 
+        path = self.run_dir
 
         if not path.exists():
             path.mkdir()

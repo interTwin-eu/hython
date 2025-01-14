@@ -17,8 +17,10 @@ from torch.optim import Adam
 def generate_run_folder(cfg):
     return f"{cfg.work_dir}/{generate_experiment_id(cfg)}"
 
+
 def generate_experiment_id(cfg):
     return "_".join([cfg.experiment_name, cfg.experiment_run])
+
 
 def generate_model_name(surr_model_prefix, experiment, target_names, hidden_size, seed):
     TARGET_INITIALS = "".join([i[0].capitalize() for i in target_names])
@@ -135,6 +137,7 @@ def reshape_to_2Dspatial2(a, lat_size, lon_size, feat_size, coords=None):
     tmp = a.reshape(lat_size, lon_size, feat_size)
     return tmp
 
+
 def reshape_to_2Dspatial(a, lat_size, lon_size, time_size, feat_size, coords=None):
     tmp = a.reshape(lat_size, lon_size, time_size, feat_size)
     return tmp
@@ -145,15 +148,15 @@ def prepare_for_plotting2d(
     shape,
     coords,
 ):
-
     def to_xr(arr, coords, dims=["lat", "lon", "time"]):
         return xr.DataArray(arr, dims=dims, coords=coords)
+
     lat, lon = shape
     n_feat = y_target.shape[-1]
 
     y = reshape_to_2Dspatial2(y_target, lat, lon, n_feat)
 
-    y = to_xr(y, coords=coords, dims=["lat","lon", "variable"])
+    y = to_xr(y, coords=coords, dims=["lat", "lon", "variable"])
 
     return y
 
@@ -163,18 +166,20 @@ def prepare_for_plotting1d(
     shape,
     coords,
 ):
-    lat, lon,time = shape
+    lat, lon, time = shape
     n_feat = y_target.shape[-1]
 
     y = reshape_to_2Dspatial2(y_target, lat, lon, time, n_feat)
 
     print(y.shape)
+
     def to_xr(arr, coords, dims=["lat", "lon", "time"]):
         return xr.DataArray(arr, dims=dims, coords=coords)
-    
-    y = to_xr(y, coords=coords, dims=["lat","lon", "time"])
+
+    y = to_xr(y, coords=coords, dims=["lat", "lon", "time"])
 
     return y
+
 
 def prepare_for_plotting(
     y_target: NDArray,
@@ -411,6 +416,3 @@ def get_lr_scheduler(optimizer, cfg):
         )
 
     return lr_scheduler
-
-
-

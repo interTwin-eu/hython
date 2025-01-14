@@ -3,27 +3,27 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+
 def make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias=False):
     layers = []
     if n_layers == 1:
-        layers.append(
-            Linear(input_dim, output_dim, bias=bias)
-        )
+        layers.append(Linear(input_dim, output_dim, bias=bias))
     else:
         layers.append(Linear(input_dim, hidden_dim, bias=bias))
-        
+
         layers = layers + [nn.LeakyReLU()]
 
-        for i in range(n_layers-2):
+        for i in range(n_layers - 2):
             layers.append(Linear(hidden_dim, hidden_dim, bias=bias))
             layers = layers + [nn.LeakyReLU()]
-        
+
         layers.append(Linear(hidden_dim, output_dim, bias=bias))
 
     layers = layers + [nn.LeakyReLU()]
-            
+
     mlp = Sequential(*layers)
     return mlp
+
 
 def stack_mlps(params, input_dim, output_dim, hidden_dim, n_layers, bias=False):
     dct = {}
@@ -39,17 +39,17 @@ class TransferNN(nn.Module):
 
         self.params = params
         # make mlp layers
-        self.mlp_dict = stack_mlps(params, input_dim, output_dim, hidden_dim, n_layers, bias=False)
+        self.mlp_dict = stack_mlps(
+            params, input_dim, output_dim, hidden_dim, n_layers, bias=False
+        )
 
     def forward(self, x):
-
         out = []
         for param in self.params:
-
             out.append(self.mlp_dict[param](x))
-        
-        return torch.cat(out,-1).float()
-        
+
+        return torch.cat(out, -1).float()
+
 
 # class TransferNN(nn.Module):
 #     def __init__(self, input_dim, output_dim, hidden_dim):

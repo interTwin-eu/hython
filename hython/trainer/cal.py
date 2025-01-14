@@ -25,8 +25,8 @@ class CalTrainer(AbstractTrainer):
 
             pred = model(predictor_b, forcing_b)
 
-            output = self.predict_step(pred["y_hat"], steps= self.cfg.predict_steps)
-            target = self.predict_step(target_b, steps= self.cfg.predict_steps)
+            output = self.predict_step(pred["y_hat"], steps=self.cfg.predict_steps)
+            target = self.predict_step(target_b, steps=self.cfg.predict_steps)
 
             # TODO: consider moving missing values loss handling in the compute loss method
             valid_mask = ~target.isnan()  # non null values

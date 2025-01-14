@@ -7,6 +7,7 @@ from abc import ABC
 from hython.utils import get_optimizer, get_lr_scheduler, generate_run_folder
 from hython.metrics import MetricCollection
 
+
 class AbstractTrainer(ABC):
     def __init__(self):
         self.epoch_preds = None
@@ -138,7 +139,7 @@ class AbstractTrainer(ABC):
                 self.epoch_valid_masks,
             )
         else:
-            metric_or = self.cfg.metric_fn( # {var: metric}
+            metric_or = self.cfg.metric_fn(  # {var: metric}
                 self.epoch_targets,
                 self.epoch_preds,
                 self.cfg.target_variables,
@@ -146,7 +147,9 @@ class AbstractTrainer(ABC):
             )
             metric = {}
             for itarget in metric_or:
-                metric[itarget] = {self.cfg.metric_fn.__class__.__name__:metric_or[itarget]}
+                metric[itarget] = {
+                    self.cfg.metric_fn.__class__.__name__: metric_or[itarget]
+                }
 
         return metric
 
@@ -165,7 +168,6 @@ class AbstractTrainer(ABC):
         self._set_target_weights()
 
         self.run_dir = generate_run_folder(self.cfg)
-
 
     def train_valid_epoch(self, model, train_loader, val_loader, device):
         model.train()
@@ -206,8 +208,7 @@ class AbstractTrainer(ABC):
         else:
             return arr[:, steps]
 
-    def save_weights(self, model, fp = None, onnx=False):
-
+    def save_weights(self, model, fp=None, onnx=False):
         if fp is None:
             fp = f"{self.run_dir}/model.pt"
 

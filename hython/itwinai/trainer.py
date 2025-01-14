@@ -31,7 +31,6 @@ from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
 
-
 class RNNDistributedTrainer(TorchTrainer):
     """Trainer class for RNN model using pytorch.
 
@@ -105,17 +104,15 @@ class RNNDistributedTrainer(TorchTrainer):
         validation_dataset: Optional[Dataset] = None,
         test_dataset: Optional[Dataset] = None,
     ) -> Tuple[Dataset, Dataset, Dataset, Any]:
-        
         self.init_hython_trainer()
 
         return super().execute(train_dataset, validation_dataset, test_dataset)
 
     def init_hython_trainer(self) -> None:
-        
         self.config.loss_fn = instantiate(
             OmegaConf.create({"loss_fn": self.config.loss_fn})
         )["loss_fn"]
-        
+
         self.config.metric_fn = instantiate(
             OmegaConf.create({"metric_fn": self.config.metric_fn})
         )["metric_fn"]
@@ -129,35 +126,37 @@ class RNNDistributedTrainer(TorchTrainer):
                 dropout=self.config.dropout,
             )
             self.hython_trainer = RNNTrainer(self.config)
-            
-        elif self.config.hython_trainer == "caltrainer":
 
+        elif self.config.hython_trainer == "caltrainer":
             surrogate = get_hython_model(self.config.model_head)(
-                            hidden_size=self.config.model_head_hidden_size, 
-                            dynamic_input_size=len(self.config.dynamic_inputs),
-                            static_input_size=len(self.config.head_model_inputs), 
-                            output_size=len(self.config.target_variables),
-                            dropout=self.config.model_head_dropout
+                hidden_size=self.config.model_head_hidden_size,
+                dynamic_input_size=len(self.config.dynamic_inputs),
+                static_input_size=len(self.config.head_model_inputs),
+                output_size=len(self.config.target_variables),
+                dropout=self.config.model_head_dropout,
             )
 
-            surrogate.load_state_dict(torch.load(f"{self.config.work_dir}/{self.config.model_head_dir}/{self.config.model_head_file}"))
+            surrogate.load_state_dict(
+                torch.load(
+                    f"{self.config.work_dir}/{self.config.model_head_dir}/{self.config.model_head_file}"
+                )
+            )
 
             transfer_nn = get_hython_model(self.config.model_transfer)(
-                         self.config.head_model_inputs,
-                         len(self.config.static_inputs), 
-                         self.config.mt_output_dim, 
-                         self.config.mt_hidden_dim,
-                         self.config.mt_n_layers 
+                self.config.head_model_inputs,
+                len(self.config.static_inputs),
+                self.config.mt_output_dim,
+                self.config.mt_hidden_dim,
+                self.config.mt_n_layers,
             )
-
 
             self.model = self.model_class(
-                            transfernn=transfer_nn,
-                            head_layer=surrogate,
-                            freeze_head=self.config.freeze_head,
-                            scale_head_input_parameter=self.config.scale_head_input_parameter
+                transfernn=transfer_nn,
+                head_layer=surrogate,
+                freeze_head=self.config.freeze_head,
+                scale_head_input_parameter=self.config.scale_head_input_parameter,
             )
-            
+
             self.hython_trainer = CalTrainer(self.config)
 
         self.hython_trainer.init_trainer(self.model)
@@ -266,10 +265,10 @@ class RNNDistributedTrainer(TorchTrainer):
                     for key, value in target.items():
                         l = []
                         k = key.lower().split("metric")[0]
-                        n = period + "_" + k 
+                        n = period + "_" + k
                         l.append(value)
                         metric_history_[n] = l
-                        
+
             avg_metrics = pd.DataFrame(metric_history_).mean().to_dict()
             for m_name, m_val in avg_metrics.items():
                 self.log(

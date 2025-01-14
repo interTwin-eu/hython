@@ -4,9 +4,8 @@ import numpy as np
 
 
 def predict(dataset, model, batch_size, device, target="y_hat"):
-
     model.eval()
-    
+
     model = model.to(device)
 
     n, t, _ = dataset.xd.shape
@@ -73,5 +72,3 @@ def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=Fal
     if coords is not None:
         arr = xr.DataArray(arr, coords=coords)
     return arr
-
-

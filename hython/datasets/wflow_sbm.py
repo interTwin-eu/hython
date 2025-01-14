@@ -86,34 +86,43 @@ class Wflow1d(BaseDataset):
             self.y, "target_variables", is_train, axes=("gridcell", "time")
         )
 
-
         if not self.scale_ontraining:
             self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
-            
+
             self.y = self.scaler.transform(self.y, "target_variables")
 
             if self.scaling_static_range is not None:
-                scaling_static_reordered = {k:self.cfg.scaling_static_range[k] for k in self.cfg.static_inputs
-                                    if k in self.cfg.scaling_static_range}
-                
-                self.static_scale, self.static_center = self.get_scaling_parameter(scaling_static_reordered, self.cfg.static_inputs)
+                scaling_static_reordered = {
+                    k: self.cfg.scaling_static_range[k]
+                    for k in self.cfg.static_inputs
+                    if k in self.cfg.scaling_static_range
+                }
 
-                self.xs = self.scaler.transform_custom_range(self.xs, "static_inputs", self.static_scale, self.static_center)
+                self.static_scale, self.static_center = self.get_scaling_parameter(
+                    scaling_static_reordered, self.cfg.static_inputs
+                )
+
+                self.xs = self.scaler.transform_custom_range(
+                    self.xs, "static_inputs", self.static_scale, self.static_center
+                )
             else:
                 self.xs = self.scaler.transform(self.xs, "static_inputs")
         else:
             # these will be used in the getitem by the scaler.transform_custom_range
-            scaling_static_reordered = {k:self.cfg.scaling_static_range[k] for k in self.cfg.static_inputs
-                                if k in self.cfg.scaling_static_range}
-            
-            self.static_scale, self.static_center = self.get_scaling_parameter(scaling_static_reordered, self.cfg.static_inputs)
+            scaling_static_reordered = {
+                k: self.cfg.scaling_static_range[k]
+                for k in self.cfg.static_inputs
+                if k in self.cfg.scaling_static_range
+            }
+
+            self.static_scale, self.static_center = self.get_scaling_parameter(
+                scaling_static_reordered, self.cfg.static_inputs
+            )
 
         if is_train:
             self.scaler.write("dynamic_inputs")
             self.scaler.write("static_inputs")
             self.scaler.write("target_variables")
-
-
 
     def __len__(self):
         return len(self.grid_idx_1d_valid)
@@ -131,7 +140,14 @@ class Wflow1d(BaseDataset):
             ).float()
 
             if self.scaling_static_range is not None:
-                xs = torch.tensor(self.scaler.transform_custom_range(self.xs[item_index], "static_inputs", self.static_scale, self.static_center).values).float()
+                xs = torch.tensor(
+                    self.scaler.transform_custom_range(
+                        self.xs[item_index],
+                        "static_inputs",
+                        self.static_scale,
+                        self.static_center,
+                    ).values
+                ).float()
             else:
                 xs = torch.tensor(
                     self.scaler.transform(self.xs[item_index], "static_inputs").values
@@ -146,8 +162,8 @@ class Wflow1d(BaseDataset):
 
 
 class Wflow1dCal(BaseDataset):
-    """
-    """
+    """ """
+
     def __init__(self, cfg, scaler, is_train=True, period="train"):
         super().__init__()
 
@@ -184,7 +200,6 @@ class Wflow1dCal(BaseDataset):
             .xd.sel(time=self.period_range)
             .sel(feat=self.cfg.dynamic_inputs)
         )
-        
 
         self.obs = xr.open_dataset(
             cfg.data_target_variables,
@@ -199,15 +214,15 @@ class Wflow1dCal(BaseDataset):
         )
 
         # mask observation
-        obs_mask = xr.open_dataset(
-            cfg.data_target_mask
-        )
+        obs_mask = xr.open_dataset(cfg.data_target_mask)
         obs_mask = obs_mask.resample({"time": "1D"}).max()
         obs_mask = obs_mask.astype(bool)
 
         self.obs = self.obs.where(obs_mask)
 
-        self.obs_mask = (~self.obs.isnull()).sum("time").ssm > self.cfg.min_sample_target
+        self.obs_mask = (~self.obs.isnull()).sum(
+            "time"
+        ).ssm > self.cfg.min_sample_target
 
         # mask predictors
         self.predictor_mask = (
@@ -230,11 +245,11 @@ class Wflow1dCal(BaseDataset):
             # (4) avoid hitting bounds
             self.coords = valid_coords[valid_coords[:, 1] > self.cfg.seq_length]
         else:
-            # in test, no need to split in sequences 
+            # in test, no need to split in sequences
             self.temp = np.ones(obs_masked.shape).astype(bool)
             valid_coords = np.argwhere(self.temp.squeeze(-1))
-           
-            # keep only 
+
+            # keep only
             _, index = np.unique(valid_coords[:, 0], return_index=True)
 
             self.coords = valid_coords[index]
@@ -256,7 +271,6 @@ class Wflow1dCal(BaseDataset):
             is_train,
             axes=("gridcell", "time"),
         )
-        
 
         self.scaler.load_or_compute(
             self.static.isel(gridcell=gridcell_idx),
@@ -264,8 +278,7 @@ class Wflow1dCal(BaseDataset):
             is_train,
             axes=("gridcell"),
         )
-        
-        
+
         self.scaler.load_or_compute(
             self.obs.isel(gridcell=gridcell_idx, time=time_idx),
             "target_variables",
@@ -291,7 +304,7 @@ class Wflow1dCal(BaseDataset):
 
     def __getitem__(self, i):
         gridcell, time = self.coords[i]
-        
+
         if self.period != "test":
             time_delta = slice(time - self.cfg.seq_length + 1, time + 1)
 

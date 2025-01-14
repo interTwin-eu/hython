@@ -11,11 +11,7 @@ from .cudnnLSTM import CuDNNLSTM
 from .hybrid import Hybrid
 from .transferNN import TransferNN
 
-MODELS = {
-    "cudalstm": CuDNNLSTM,
-    "hybrid":Hybrid,
-    "transfernn":TransferNN
-          }
+MODELS = {"cudalstm": CuDNNLSTM, "hybrid": Hybrid, "transfernn": TransferNN}
 
 
 def get_model(model):
