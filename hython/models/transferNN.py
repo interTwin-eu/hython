@@ -4,7 +4,14 @@ import torch.nn.functional as F
 from torch import nn
 
 
-def make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias=False):
+def get_activation_layer(name):
+    if name == "sigmoid":
+        return nn.Sigmoid()
+    elif name == "leaky_relu":
+        return nn.LeakyReLU()
+
+
+def make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias=False, output_activation_layer = "sigmoid"):
     layers = []
     if n_layers == 1:
         layers.append(Linear(input_dim, output_dim, bias=bias))
@@ -19,7 +26,9 @@ def make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias=False):
 
         layers.append(Linear(hidden_dim, output_dim, bias=bias))
 
-    #layers = layers + [nn.LeakyReLU()]
+    # output activation
+    if output_activation_layer is not None:
+        layers = layers + [get_activation_layer(output_activation_layer)]
 
     mlp = Sequential(*layers)
     return mlp
@@ -46,7 +55,7 @@ class TransferNN(nn.Module):
     def forward(self, x):
         out = []
         for param in self.params:
-            out.append(F.sigmoid(self.mlp_dict[param](x)))
+            out.append(self.mlp_dict[param](x))
 
         return torch.cat(out, -1).float()
 

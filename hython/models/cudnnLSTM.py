@@ -16,11 +16,13 @@ class CuDNNLSTM(BaseModel):
         dropout: float = 0.0,
         batch_norm: bool = False,
         output_activation: str = "linear",
+        cfg = None,
     ):
-        super(CuDNNLSTM, self).__init__()
+        super(CuDNNLSTM, self).__init__(cfg=cfg)
 
         self.static_to_dynamic = static_to_dynamic
         self.output_activation = output_activation
+        self.output_size = output_size
 
         self.bn_flag = batch_norm
         if batch_norm:
@@ -41,6 +43,8 @@ class CuDNNLSTM(BaseModel):
 
         self.fc1 = nn.Linear(hidden_size, output_size)
 
+
+
     def forward(self, x):
         if self.bn_flag:
             x = self.bn_layer(x.permute(0, 2, 1)).permute(0, 2, 1)
@@ -59,6 +63,7 @@ class CuDNNLSTM(BaseModel):
         pred = {"y_hat": out, "h_n": h_n, "c_n": c_n}
 
         return pred
+
 
 
 class LSTMModule(nn.Module):
