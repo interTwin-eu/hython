@@ -43,7 +43,6 @@ class RMSELoss(_Loss):
         Returns:
         torch.Tensor: The RMSE loss.
         """
-
         return torch.sqrt(self.mseloss(y_true, y_pred))
 
 
