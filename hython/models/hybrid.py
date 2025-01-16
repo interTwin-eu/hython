@@ -1,8 +1,9 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
+from . import BaseModel
 
-
-class Hybrid(nn.Module):
+class Hybrid(BaseModel):
     def __init__(
         self,
         transfernn,
@@ -23,6 +24,11 @@ class Hybrid(nn.Module):
             for weight in self.head_layer.parameters():
                 weight.requires_grad = False
 
+        if self.scale_head_output:        
+            # initialize parameters for scaling output, TODO: move it into BaseModel
+            self.scale = nn.Parameter( torch.ones(self.head_layer.output_size).float() , requires_grad=True)
+            self.center = nn.Parameter( torch.zeros(self.head_layer.output_size).float() ,requires_grad=True)
+
     def forward(self, x_transf, x_head):
         """
         Parameters
@@ -41,7 +47,7 @@ class Hybrid(nn.Module):
             # the head layer (surrogate) expects ep in the 0-1 range, therefore the
             # rescale_input method applies a sigmoid function to the output of the
             # transfernn
-            param = self.head_layer.rescale_input(param)  # output: N T C or N C
+            param = self.rescale_input(param)  # output: N T C or N C
 
         # concat to x_head, as of now add time dimension ot static params
         x_head_concat = torch.concat(
@@ -56,6 +62,12 @@ class Hybrid(nn.Module):
         output = self.head_layer(x_head_concat)["y_hat"]
 
         if self.scale_head_output:
-            output = output
+            output = self.rescale_output(output)
 
         return {"y_hat": output, "param": param}
+
+    def rescale_output(self, data):
+        return data*self.scale + self.center 
+    
+    def rescale_input(self, param):
+        return F.sigmoid(param)    
