@@ -19,7 +19,7 @@ def make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias=False):
 
         layers.append(Linear(hidden_dim, output_dim, bias=bias))
 
-    layers = layers + [nn.LeakyReLU()]
+    #layers = layers + [nn.LeakyReLU()]
 
     mlp = Sequential(*layers)
     return mlp
@@ -46,7 +46,7 @@ class TransferNN(nn.Module):
     def forward(self, x):
         out = []
         for param in self.params:
-            out.append(self.mlp_dict[param](x))
+            out.append(F.sigmoid(self.mlp_dict[param](x)))
 
         return torch.cat(out, -1).float()
 

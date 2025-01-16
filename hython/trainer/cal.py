@@ -13,7 +13,6 @@ class CalTrainer(AbstractTrainer):
     def __init__(self, cfg):
         super(CalTrainer, self).__init__()
         self.cfg = cfg
-        # self.cfg["target_weight"] = {t: 1 / len(self.cfg.target_variables) for t in self.cfg.target_variables}
 
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
@@ -27,7 +26,7 @@ class CalTrainer(AbstractTrainer):
 
             output = self.predict_step(pred["y_hat"], steps=self.cfg.predict_steps)
             target = self.predict_step(target_b, steps=self.cfg.predict_steps)
-
+            
             # TODO: consider moving missing values loss handling in the compute loss method
             valid_mask = ~target.isnan()  # non null values
 
@@ -39,7 +38,7 @@ class CalTrainer(AbstractTrainer):
                 valid_mask=valid_mask,
                 target_weight=self.target_weights,
             )
-
+            #import pdb;pdb.set_trace()
             if self.cfg.predict_steps != 0:
                 mini_batch_loss = mini_batch_loss.mean()
                 self._backprop_loss(mini_batch_loss, opt)

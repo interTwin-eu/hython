@@ -69,34 +69,76 @@ class AbstractTrainer(ABC):
         self, prediction, target, valid_mask, target_weight, add_losses={}
     ):
         # Compute targets weighted loss. In case only one target, weight is 1
+        # pred and target can be (N, C) or (N, T, C) depending on how the model is trained. 
         loss = 0
         for i, target_name in enumerate(target_weight):
-            iypred = prediction[:, i]
-            iytrue = target[:, i]
+            iypred = prediction[..., i]
+            iytrue = target[..., i]
             if valid_mask is not None:
-                imask = valid_mask[:, i]
+                n = torch.ones_like(iypred)
+                imask = valid_mask[..., i]
                 iypred = iypred[imask]
                 iytrue = iytrue[imask]
 
             w = target_weight[target_name]
 
-            loss += w * self.cfg.loss_fn(iytrue, iypred)
+            loss_tmp = self.cfg.loss_fn(iytrue, iypred)
 
-        # in case there are missing observations in the batch
-        # the loss should be weighted to reduce the importance
-        # of the loss on the update of the NN weights
-        if valid_mask is not None:
-            scaling_factor = sum(valid_mask) / len(
-                target
-            )  # scale by number of valid samples in a mini-batch
+            # in case there are missing observations in the batch
+            # the loss should be weighted to reduce the importance
+            # of the loss on the update of the NN weights
+            if valid_mask is not None:
+                scaling_factor = torch.sum(imask) / torch.sum(n) # fraction valid samples per batch
+                # scale by number of valid samples in a mini-batch
+                loss_tmp =  loss_tmp * scaling_factor
+            
+            loss =+ loss_tmp * w
 
-            loss = loss * scaling_factor
+        # TODO: this is another version that should be tested! 
+        # for i, target_name in enumerate(target_weight):
+        #     iypred = prediction[..., i]
+        #     iytrue = target[..., i]
+        #     if valid_mask is not None:
+        #         # here from (N, T, C) or (N, C) -> (N)
+        #         imask = valid_mask[..., i]
+                
+        #         #iypred = iypred[imask]
+        #         #iytrue = iytrue[imask]
+        #         #import pdb;pdb.set_trace()
+                
+        #         weighting_factor = torch.sum(imask, -1) #/ n_samples # (N)
+        #         iypred = torch.where(iypred.isnan(), 0, iypred) # substitute 0 where nans  
+        #         iytrue = torch.where(iytrue.isnan(), 0, iytrue)
+
+        #     # w = target_weight[target_name]
+
+        #     # loss += w * self.cfg.loss_fn(iytrue, iypred) # (N, T)
+
+        #     loss_tmp = self.cfg.loss_fn(iytrue, iypred) # (N, T)
+
+        #     # mask nan 
+        #     #loss_tmp[~imask] = torch.tensor([0]).float().requires_grad_()
+        #     loss_tmp = loss_tmp* imask # imask, 0 non valid, 1 valid. set to zero the loss corresponsing to non valid data 
+
+        #     # sum sequence loss 
+        #     loss_sum =  torch.sum(loss_tmp, -1) # (N)
+
+        #     if valid_mask is not None:
+        #         # weighted by N.v valid samples
+        #         loss_avg = (loss_sum * weighting_factor).sum() / weighting_factor.sum() # Scalar
+
+        #         loss_avg = loss_avg / n_samples
+        #     # loss to scalar and multi-variate weighting
+        #     w = target_weight[target_name]
+        #     #loss += w * loss_sum.mean()
+        #     loss += w * loss_avg
+
 
         self._set_regularization()
 
         # compound more losses, in case dict is not empty
-        for i, (reg_func, reg_weight) in enumerate(self.add_regularization):
-            loss += reg_func(prediction, target) * reg_weight
+        #for i, (reg_func, reg_weight) in enumerate(self.add_regularization):
+        #    loss += reg_func(prediction, target) * reg_weight
 
         return loss
 
@@ -113,6 +155,7 @@ class AbstractTrainer(ABC):
             opt.step()
 
     def _concatenate_result(self, pred, target, mask=None):
+        """Concatenate results for reporting"""
         if self.epoch_preds is None:
             self.epoch_preds = pred.detach().cpu().numpy()
             self.epoch_targets = target.detach().cpu().numpy()
