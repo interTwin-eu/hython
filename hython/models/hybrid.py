@@ -1,7 +1,9 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+from .head import RegressionHead, NormalDistrHead
 from . import BaseModel
+
 
 class Hybrid(BaseModel):
     def __init__(
@@ -59,14 +61,25 @@ class Hybrid(BaseModel):
         )
 
         # run head layer
-        output = self.head_layer(x_head_concat)["y_hat"]
+        head_output = self.head_layer(x_head_concat)
+        
+        output = {}
+        if isinstance(self.head_layer.head, RegressionHead):
+            output["y_hat"] = head_output["y_hat"]
+            if self.scale_head_output:
+                output["y_hat"] = self.rescale_output(output["y_hat"])
 
-        if self.scale_head_output:
-            output = self.rescale_output(output)
-
-        return {"y_hat": output, "param": param}
+        elif isinstance(self.head_layer.head, NormalDistrHead):
+            output["mu"] = head_output["mu"]
+            output["sigma"] = head_output["sigma"]
+            if self.scale_head_output:
+                output["mu"] = self.rescale_output(output["mu"])
+                output["sigma"] = self.rescale_output(output["sigma"])
+            
+        return {"param": param} | output
 
     def rescale_output(self, data):
+
         return data*self.scale + self.center 
     
     def rescale_input(self, param):

@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from . import BaseModel
+from .head import get_head_layer
 
 
 class CuDNNLSTM(BaseModel):
@@ -11,17 +12,17 @@ class CuDNNLSTM(BaseModel):
         dynamic_input_size: int = 3,
         static_input_size: int = 5,
         output_size: int = 2,
-        static_to_dynamic: bool = True,
-        num_layers: int = 1,
+        lstm_layers: int = 1,
         dropout: float = 0.0,
         batch_norm: bool = False,
-        output_activation: str = "linear",
+    
+        head_layer: str = "regression",
+        head_activation: str = "linear",
+        head_kwargs: dict = {},
         cfg = None,
     ):
         super(CuDNNLSTM, self).__init__(cfg=cfg)
 
-        self.static_to_dynamic = static_to_dynamic
-        self.output_activation = output_activation
         self.output_size = output_size
 
         self.bn_flag = batch_norm
@@ -37,12 +38,15 @@ class CuDNNLSTM(BaseModel):
         self.lstm = nn.LSTM(
             hidden_size,
             hidden_size,
-            num_layers=num_layers,
+            num_layers=lstm_layers,
             batch_first=True,
         )
 
-        self.fc1 = nn.Linear(hidden_size, output_size)
-
+        self.head = get_head_layer(head_layer, 
+                                   input_dim= hidden_size, 
+                                   output_dim= output_size, 
+                                   head_activation= head_activation,
+                                       **head_kwargs)
 
 
     def forward(self, x):
@@ -55,12 +59,9 @@ class CuDNNLSTM(BaseModel):
 
         lstm_output = self.dropout(lstm_output)
 
-        if self.output_activation == "linear":
-            out = self.fc1(lstm_output)
-        else:
-            out = getattr(F, self.output_activation)(self.fc1(lstm_output))
-
-        pred = {"y_hat": out, "h_n": h_n, "c_n": c_n}
+        head_out = self.head(lstm_output) # regression -> y_hat, normal --> mu, sigma
+        
+        pred = {"h_n": h_n, "c_n": c_n} | head_out 
 
         return pred
 

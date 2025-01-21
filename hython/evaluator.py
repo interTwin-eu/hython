@@ -72,3 +72,11 @@ def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=Fal
     if coords is not None:
         arr = xr.DataArray(arr, coords=coords)
     return arr
+
+
+def conformal_quantile_regression():
+    pass 
+
+
+def monte_carlo_dropout():
+    pass

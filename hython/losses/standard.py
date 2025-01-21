@@ -76,7 +76,7 @@ class NegLLLoss(_Loss):
 
         super(NegLLLoss, self).__init__()
 
-    def forward(self, y_true, distr_mean, distr_std):
+    def forward(self, y_true, mu, sigma):
         """
         Calculate the negative log-likelihood of the underlying normal distribution.
         Parameters:
@@ -91,7 +91,7 @@ class NegLLLoss(_Loss):
         Returns:
         torch.Tensor: The NLL loss.
         """
-        dist = Normal(distr_mean, distr_std)
+        dist = Normal(mu, sigma)
         total_nll_loss = -dist.log_prob(y_true).mean()
         return total_nll_loss
     
