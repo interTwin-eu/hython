@@ -2,11 +2,11 @@ import numpy as np
 import torch
 
 from abc import ABC
-
+from typing import Dict, Iterable, List
 
 from hython.utils import get_optimizer, get_lr_scheduler, generate_run_folder
 from hython.metrics import MetricCollection
-
+from hython.models.head import *
 
 class AbstractTrainer(ABC):
     def __init__(self):
@@ -67,22 +67,45 @@ class AbstractTrainer(ABC):
 
     def _compute_batch_loss(
         self, prediction, target, valid_mask, target_weight, add_losses={}
-    ):
+    ) -> torch.Tensor:
+
+        
         # Compute targets weighted loss. In case only one target, weight is 1
         # pred and target can be (N, C) or (N, T, C) depending on how the model is trained. 
         loss = 0
         for i, target_name in enumerate(target_weight):
-            iypred = prediction[..., i]
-            iytrue = target[..., i]
+            
+            iypred = {}
+
             if valid_mask is not None:
-                n = torch.ones_like(iypred)
                 imask = valid_mask[..., i]
-                iypred = iypred[imask]
-                iytrue = iytrue[imask]
+            else:
+                imask = Ellipsis
+            
+            # target
+            iytrue = target[..., i][imask] 
+
+            if self.cfg.model_head_layer == "regression":
+                iypred["y_pred"] = prediction["y_hat"][..., i][imask]
+                n = torch.ones_like(iypred["y_pred"])
+            elif self.cfg.model_head_layer == "distr_normal":
+                iypred["mu"] = prediction["mu"][..., i][imask]
+                iypred["sigma"] = prediction["sigma"][..., i][imask]
+                n = torch.ones_like(iypred["mu"])
+
+            #iypred = pred[..., i]
+            #iytrue = target[..., i]
+            # if valid_mask is not None:
+            #     n = torch.ones_like(iypred)
+            #     imask = valid_mask[..., i]
+            #     iypred = iypred[imask]
+            #     iytrue = iytrue[imask]
 
             w = target_weight[target_name]
-
-            loss_tmp = self.cfg.loss_fn(iytrue, iypred)
+            # if isinstance(self.model.head, RegressionHead):
+            #     loss_tmp = self.cfg.loss_fn(iytrue, iypred)
+            # else:
+            loss_tmp = self.cfg.loss_fn(iytrue, **iypred)
 
             # in case there are missing observations in the batch
             # the loss should be weighted to reduce the importance
@@ -154,23 +177,35 @@ class AbstractTrainer(ABC):
 
             opt.step()
 
-    def _concatenate_result(self, pred, target, mask=None):
-        """Concatenate results for reporting"""
+    def _concatenate_result(self, pred, target, mask=None) -> None:
+        """Concatenate results for reporting and computing the metrics"""
+
+        # prediction can be probabilistic
+        if self.cfg.model_head_layer == "regression":
+            pred_cpu = pred["y_hat"].detach().cpu().numpy()
+        elif self.cfg.model_head_layer == "distr_normal":
+            pred_cpu = pred["mu"].detach().cpu().numpy()
+
+        target_cpu = target.detach().cpu().numpy()
+        if mask is not None:
+            mask_cpu = mask.detach().cpu().numpy()
+        else:
+            mask_cpu = mask
+
         if self.epoch_preds is None:
-            self.epoch_preds = pred.detach().cpu().numpy()
-            self.epoch_targets = target.detach().cpu().numpy()
-            if mask is not None:
-                self.epoch_valid_masks = mask.detach().cpu().numpy()
+            self.epoch_preds = pred_cpu
+            self.epoch_targets = target_cpu
+            self.epoch_valid_masks = mask_cpu
         else:
             self.epoch_preds = np.concatenate(
-                (self.epoch_preds, pred.detach().cpu().numpy()), axis=0
+                (self.epoch_preds, pred_cpu), axis=0
             )
             self.epoch_targets = np.concatenate(
-                (self.epoch_targets, target.detach().cpu().numpy()), axis=0
+                (self.epoch_targets, target_cpu), axis=0
             )
             if mask is not None:
                 self.epoch_valid_masks = np.concatenate(
-                    (self.epoch_valid_masks, mask.detach().cpu().numpy()), axis=0
+                    (self.epoch_valid_masks, mask_cpu), axis=0
                 )
 
     def _compute_metric(self):
@@ -242,14 +277,33 @@ class AbstractTrainer(ABC):
     def epoch_step(self):
         pass
 
-    def predict_step(self, arr, steps=-1):
-        """Return the n steps that should be predicted"""
+    def target_step(self, target, steps=1) -> torch.Tensor:
         if steps == "all":
-            return arr
+            selection = Ellipsis
         elif steps == 0:
-            return arr[:, -1]
+            selection = -1
         else:
-            return arr[:, steps]
+            selection = steps
+
+        return target[:, selection]
+
+    def predict_step(self, prediction, steps=-1) -> Dict[str, torch.Tensor]:
+        """Return the n steps that should be predicted"""
+
+        if steps == "all":
+            selection = Ellipsis
+        elif steps == 0:
+            selection = -1
+        else:
+            selection = steps
+
+        output = {}
+        if self.cfg.model_head_layer == "regression":
+            output["y_hat"] = prediction["y_hat"][:, selection]
+        elif self.cfg.model_head_layer == "distr_normal":
+            for k in prediction:
+                output[k] = prediction[k][:, selection]
+        return output
 
     def save_weights(self, model, fp=None, onnx=False):
         if fp is None:

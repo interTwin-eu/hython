@@ -38,11 +38,11 @@ class RNNTrainer(AbstractTrainer):
 
                 pred = model(x_concat)
 
-                output = self.predict_step(pred["y_hat"], steps=-1)
-                target = self.predict_step(targets_bt, steps=-1)
-
-                self._concatenate_result(output, target)
-
+                output = self.predict_step(pred, steps=self.cfg.predict_steps)
+                target = self.target_step(targets_bt, steps=self.cfg.predict_steps)
+                
+                self._concatenate_result(output, target) 
+                
                 batch_sequence_loss = self._compute_batch_loss(
                     prediction=output,
                     target=target,
