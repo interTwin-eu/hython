@@ -4,7 +4,7 @@ import torch
 from abc import ABC
 from typing import Dict, Iterable, List
 
-from hython.utils import get_optimizer, get_lr_scheduler, generate_run_folder
+from hython.utils import get_optimizer, get_lr_scheduler, get_temporal_steps, generate_run_folder
 from hython.metrics import MetricCollection
 from hython.models.head import *
 
@@ -278,24 +278,14 @@ class AbstractTrainer(ABC):
         pass
 
     def target_step(self, target, steps=1) -> torch.Tensor:
-        if steps == "all":
-            selection = Ellipsis
-        elif steps == 0:
-            selection = -1
-        else:
-            selection = steps
+        selection = get_temporal_steps(steps)
 
         return target[:, selection]
 
     def predict_step(self, prediction, steps=-1) -> Dict[str, torch.Tensor]:
         """Return the n steps that should be predicted"""
+        selection = get_temporal_steps(steps)
 
-        if steps == "all":
-            selection = Ellipsis
-        elif steps == 0:
-            selection = -1
-        else:
-            selection = steps
 
         output = {}
         if self.cfg.model_head_layer == "regression":
