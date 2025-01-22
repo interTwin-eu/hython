@@ -416,3 +416,13 @@ def get_lr_scheduler(optimizer, cfg):
         )
 
     return lr_scheduler
+
+
+def get_temporal_steps(steps):
+    if steps == "all":
+        selection = Ellipsis
+    elif steps == 0:
+        selection = -1
+    else:
+        selection = steps  
+    return selection

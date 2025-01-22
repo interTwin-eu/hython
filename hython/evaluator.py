@@ -2,6 +2,8 @@ import torch
 import xarray as xr
 import numpy as np
 
+from .utils import get_temporal_steps
+
 
 def predict(dataset, model, batch_size, device, target="y_hat"):
     model.eval()
@@ -74,9 +76,5 @@ def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=Fal
     return arr
 
 
-def conformal_quantile_regression():
-    pass 
-
-
-def monte_carlo_dropout():
+def sensitivity():
     pass
