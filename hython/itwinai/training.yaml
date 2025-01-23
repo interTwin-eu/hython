@@ -14,12 +14,17 @@ device: "cuda:0"
 
 # === Model ===
 
+model_file_name: model.pt
+
 model: cudalstm
 
 hidden_size: 136
-
 dropout: 0.4
 
+model_head_layer: regression # distr_normal
+model_head_activation: linear
+model_head_kwargs: null
+  
 # === Training ===
 
 hython_trainer: rnntrainer
@@ -51,6 +56,10 @@ gradient_clip: null
 
 target_weights: even # null, even, or dict
 
+# which steps are used in the computation of the loss function
+predict_steps: 0 # all # (prediction: 0 = t ), ( forecasts: 1 = t+1, 2 = t + 2)
+
+
 # > Donwsampling < 
 
 # spatial downsampling
@@ -64,6 +73,12 @@ valid_downsampler: #None
   intervals: [3,3]
   origin: [1,1]
 
+test_downsampler: null
+  # _target_: hython.sampler.downsampler.RegularIntervalDownsampler
+  # intervals: [3,3]
+  # origin: [2,2]
+
+
 # temporal downsampling
 temporal_downsampling: True
 temporal_subset: [200, 150]
@@ -73,9 +88,12 @@ temporal_subset: [200, 150]
 
 dataset: Wflow1d
 
-data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
-
-data_file: adg1km_eobs_preprocessed.zarr
+data_source:
+  file:
+    data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input #!! change to your directory
+    data_file: adg_eobs_test_preprocessed.zarr
+  # s3:
+  #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
 
 static_categorical_inputs:
    - wflow_landuse
@@ -107,13 +125,12 @@ scaling_variant: minmax
 
 # == Pipeline == 
 
-rnn_training_pipeline:
+training_pipeline:
   class_path: itwinai.pipeline.Pipeline
   init_args:
     steps:
       - class_path: data.RNNDatasetGetterAndPreprocessor
         init_args:
-          surrogate_input: ${data_dir}/${data_file}
           dynamic_inputs: ${dynamic_inputs}
           static_inputs: ${static_inputs}
           target_variables: ${target_variables}
@@ -121,12 +138,11 @@ rnn_training_pipeline:
           train_temporal_range: ${train_temporal_range}
           valid_temporal_range: ${valid_temporal_range}
           dataset: ${dataset}
+          data_source: ${data_source}
           scaling_variant: ${scaling_variant}
           experiment_name: ${experiment_name}
           experiment_run: ${experiment_run}
           work_dir: ${work_dir}
-          data_dir: ${data_dir}
-          data_file: ${data_file}
           train_downsampler: ${train_downsampler}
           valid_downsampler: ${valid_downsampler}
       - class_path: trainer.RNNDistributedTrainer
@@ -154,13 +170,20 @@ rnn_training_pipeline:
             target_weights: ${target_weights}
 
             # model config
+            model_file_name: ${model_file_name}
             hidden_size: ${hidden_size}
             dropout: ${dropout}
+
+            model_head_layer: ${model_head_layer}
+            model_head_activation: ${model_head_activation}
+            model_head_kwargs: ${model_head_kwargs}
 
             loss_fn: ${loss_fn}
             metric_fn: ${metric_fn}
 
             gradient_clip: ${gradient_clip}
+
+            predict_steps: ${predict_steps}
 
           strategy: sequential
           epochs: ${epochs}
