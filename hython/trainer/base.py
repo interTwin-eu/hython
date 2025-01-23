@@ -9,12 +9,27 @@ from hython.metrics import MetricCollection
 from hython.models.head import *
 
 class AbstractTrainer(ABC):
-    def __init__(self):
+    def __init__(self, cfg):
         self.epoch_preds = None
         self.epoch_targets = None
         self.epoch_valid_masks = None
         self.model = None
         self.device = None
+
+        self.cfg = cfg
+
+        self.run_dir = generate_run_folder(self.cfg)
+
+        # model file
+
+        if self.cfg.model_file_name is not None:
+            self.model_path = f"{self.run_dir}/{self.cfg.model_file_name}"
+        else:
+            self.model_path = f"{self.run_dir}/model.pt"
+
+        print(f"Run directory: {self.run_dir}") 
+        print(f"Model path: {self.model_path}") 
+        
 
     def _set_dynamic_temporal_downsampling(self, data_loaders=None, opt=None):
         """Return the temporal indices of the timeseries, it may be a subset"""
@@ -241,13 +256,16 @@ class AbstractTrainer(ABC):
         self.model = model
 
         self.optimizer = self._get_optimizer()
+
         self.lr_scheduler = self._get_lr_scheduler(self.optimizer)
 
         self._set_target_weights()
 
-        self.run_dir = generate_run_folder(self.cfg)
+
 
     def train_valid_epoch(self, model, train_loader, val_loader, device):
+        
+        
         model.train()
 
         # set time indices for training
@@ -297,8 +315,7 @@ class AbstractTrainer(ABC):
 
     def save_weights(self, model, fp=None, onnx=False):
         if fp is None:
-            fp = f"{self.run_dir}/model.pt"
-
+            fp = self.model_path
         if onnx:
             raise NotImplementedError()
         else:

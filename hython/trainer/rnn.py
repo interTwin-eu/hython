@@ -11,8 +11,7 @@ class RNNTrainer(AbstractTrainer):
     """
 
     def __init__(self, cfg):
-        super(RNNTrainer, self).__init__()
-        self.cfg = cfg
+        super(RNNTrainer, self).__init__(cfg=cfg)
 
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
