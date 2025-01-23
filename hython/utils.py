@@ -439,7 +439,7 @@ def get_source_url(cfg):
         if cfg.data_source.get(k, None) is not None:
             source = k
     if source == "file":
-        url = f"{cfg.data_source['file']['data_dir']}/{cfg.data_source['file']['data_dir']}"
+        url = f"{cfg.data_source['file']['data_dir']}/{cfg.data_source['file']['data_file']}"
     elif source == "s3":
         url = cfg.data_source['s3']['url']
     else:
