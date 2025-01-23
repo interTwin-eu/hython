@@ -34,6 +34,8 @@ class Scaler:
         except:
             self.run_dir = Path(".")
 
+        print(f"Data statistics saved to: {str(self.run_dir)}") 
+
         self.archive = {}
 
     def set_run_dir(self, run_dir):

@@ -14,12 +14,12 @@ class Wflow1d(BaseDataset):
 
         self.period = slice(*cfg[f"{period}_temporal_range"])
 
-        file_path = f"{cfg.data_dir}/{cfg.data_file}"
+        file_path = get_source_url(cfg)
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
 
         # generate run directory
-        self.run_dir = generate_run_folder(cfg)
+        #self.run_dir = generate_run_folder(cfg)
 
         self.xd = (
             read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
@@ -72,7 +72,7 @@ class Wflow1d(BaseDataset):
 
         # Scaling
 
-        self.scaler.set_run_dir(self.run_dir)
+        #self.scaler.set_run_dir(self.run_dir)
 
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("gridcell", "time")
@@ -175,10 +175,10 @@ class Wflow1dCal(BaseDataset):
         self.period = period
         self.period_range = slice(*cfg[f"{period}_temporal_range"])
 
-        file_path = f"{cfg.data_dir}/{cfg.data_file}"
+        file_path = get_source_url(cfg)
 
         # generate run directory
-        self.run_dir = generate_run_folder(cfg)
+        #self.run_dir = generate_run_folder(cfg)
 
         # load datasets
         self.static = (
@@ -263,7 +263,7 @@ class Wflow1dCal(BaseDataset):
 
         # (6) Normalize
 
-        self.scaler.set_run_dir(self.run_dir)
+        #self.scaler.set_run_dir(self.run_dir)
 
         self.scaler.load_or_compute(
             self.dynamic.isel(gridcell=gridcell_idx, time=time_idx),

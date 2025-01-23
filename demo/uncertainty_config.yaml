@@ -1,0 +1,138 @@
+# === Experiment === 
+experiment_name: "lstm"
+experiment_run: "uncertainty"
+
+work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run  #!! change to your directory
+
+train_temporal_range: ["2015-01-01", "2018-12-31"]
+valid_temporal_range: ["2019-01-01", "2020-12-31"]
+test_temporal_range: ["2019-01-01", "2020-12-31"]
+
+seed: 10 
+
+device: "cuda:0"
+
+# === Model ===
+
+model_file_name: model.pt #default is model.pt
+
+model: cudalstm
+
+hidden_size: 64
+dropout: 0.1
+
+model_head_layer: distr_normal
+model_head_activation: linear
+model_head_kwargs:
+  hidden_dim:  32
+  n_layers: 2
+
+# === Training ===
+
+loss_fn:
+  _target_: hython.losses.NegLLLoss
+  
+# metric_fn:
+#   _target_: hython.metrics.MSEMetric
+
+metric_fn:
+  _target_: hython.metrics.MetricCollection
+  metrics:
+    - _target_: hython.metrics.MSEMetric
+    - _target_: hython.metrics.RMSEMetric
+    - _target_: hython.metrics.KGEMetric
+    - _target_: hython.metrics.NSEMetric
+
+
+optimizer: adam
+
+lr_scheduler:
+  mode: min
+  factor: 0.5
+  patience: 10
+
+seq_length: 180
+
+learning_rate: 0.001
+
+batch: 256
+
+epochs: 3
+
+gradient_clip: null
+
+target_weights: even # null, even, or dict
+
+# which steps are used in the computation of the loss function
+predict_steps: 0 # all # (prediction: 0 = t ), ( forecasts: 1 = t+1, 2 = t + 2)
+
+# > Donwsampling < 
+
+# spatial downsampling
+train_downsampler: #None
+  _target_: hython.sampler.downsampler.RegularIntervalDownsampler
+  intervals: [3,3]
+  origin: [0,0]
+
+valid_downsampler: #None
+  _target_: hython.sampler.downsampler.RegularIntervalDownsampler
+  intervals: [3,3]
+  origin: [1,1]
+
+test_downsampler: null
+
+
+# temporal downsampling
+temporal_downsampling: True
+temporal_subset: [200, 150]
+
+
+# === Data ===
+
+dataset: Wflow1d
+
+data_source:
+  # file:
+  #   data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input #!! change to your directory
+  #   data_file: adg_eobs_test_preprocessed.zarr
+  s3:
+    url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
+
+static_categorical_inputs:
+   - wflow_landuse
+   - wflow_soil
+
+static_inputs:
+  - thetaS
+  - KsatVer
+  - c
+
+dynamic_inputs:
+  - precip
+  - pet
+  - temp
+  
+target_variables:
+  - vwc
+
+mask_variables:
+  - mask_missing
+  - mask_lake
+
+
+scaling_variant: minmax
+
+scaling_variant_detailed:
+    thetaS: minmax
+    thetaR: minmax
+    wflow_landuse: null
+    KsatVer: minmax
+    c: minmax 
+    RootingDepth: minmax
+    vwc: minmax
+
+    precip: minmax
+    pet: minmax
+    temp: minmax
+
+

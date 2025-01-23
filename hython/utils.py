@@ -165,6 +165,7 @@ def prepare_for_plotting1d(
     y_target,
     shape,
     coords,
+    reverse_lat = False
 ):
     lat, lon, time = shape
     n_feat = y_target.shape[-1]
@@ -172,6 +173,8 @@ def prepare_for_plotting1d(
     y = reshape_to_2Dspatial2(y_target, lat, lon, time, n_feat)
 
     print(y.shape)
+    if reverse_lat:
+        y = y[::-1]
 
     def to_xr(arr, coords, dims=["lat", "lon", "time"]):
         return xr.DataArray(arr, dims=dims, coords=coords)
@@ -186,6 +189,7 @@ def prepare_for_plotting(
     y_pred: NDArray,
     shape: tuple[int],
     coords: DataArrayCoordinates | DatasetCoordinates,
+    reverse_lat: bool = False
 ):
     lat, lon, time = shape
     n_feat = y_target.shape[-1]
@@ -426,3 +430,18 @@ def get_temporal_steps(steps):
     else:
         selection = steps  
     return selection
+
+
+
+def get_source_url(cfg):
+    
+    for k in cfg.data_source:
+        if cfg.data_source.get(k, None) is not None:
+            source = k
+    if source == "file":
+        url = f"{cfg.data_source['file']['data_dir']}/{cfg.data_source['file']['data_dir']}"
+    elif source == "s3":
+        url = cfg.data_source['s3']['url']
+    else:
+        raise AttributeError
+    return url
