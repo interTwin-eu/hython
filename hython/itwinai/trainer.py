@@ -124,6 +124,9 @@ class RNNDistributedTrainer(TorchTrainer):
                 static_input_size=len(self.config.static_inputs),
                 output_size=len(self.config.target_variables),
                 dropout=self.config.dropout,
+                head_layer=self.config.model_head_layer,
+                head_activation=self.config.model_head_activation,
+                head_kwargs= self.config.model_head_kwargs if self.config.model_head_kwargs is not None else {}   
             )
             self.hython_trainer = RNNTrainer(self.config)
 
@@ -134,6 +137,9 @@ class RNNDistributedTrainer(TorchTrainer):
                 static_input_size=len(self.config.head_model_inputs),
                 output_size=len(self.config.target_variables),
                 dropout=self.config.model_head_dropout,
+                head_layer=self.config.model_head_layer,
+                head_activation=self.config.model_head_activation,
+                head_kwargs= self.config.model_head_kwargs if self.config.model_head_kwargs is not None else {}
             )
 
             surrogate.load_state_dict(
@@ -281,6 +287,7 @@ class RNNDistributedTrainer(TorchTrainer):
             if avg_val_loss < best_loss:
                 best_loss = avg_val_loss
                 best_model = self.model.state_dict()
+                self.hython_trainer.save_weights(self.model)
 
             epoch_end_time = timer()
             if self.strategy.is_distributed:
@@ -291,6 +298,8 @@ class RNNDistributedTrainer(TorchTrainer):
         if self.strategy.is_main_worker:
             self.model.load_state_dict(best_model)
             self.log(item=self.model, identifier="LSTM", kind="model")
+
+            
 
             # Report training metrics of last epoch to Ray
             try:

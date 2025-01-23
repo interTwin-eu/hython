@@ -17,6 +17,8 @@ device: "cuda:0"
 
 # === Model ===
 
+model_file_name: model.pt # default is model.pt
+
 # > hybrid < 
 
 model: hybrid # model class
@@ -40,13 +42,19 @@ mt_n_layers: 3
 
 model_head: cudalstm # model class
 
-model_head_dir: lstm_vwc2 # directory to load the surrogate model, relative to work_dir.
+model_head_dir: itwinai_vwc_actevap # directory to load the surrogate model, relative to work_dir.
 
 model_head_file: model.pt
 
-model_head_hidden_size: 68
+model_head_hidden_size: 136
 
 model_head_dropout: 0.4
+
+model_head_layer: regression # distr_normal
+model_head_activation: linear
+model_head_kwargs: null
+  #hidden_dim:  32
+  #n_layers: 2
 
 # === Training ===
 
@@ -107,13 +115,16 @@ temporal_downsampling: null
 
 dataset: Wflow1dCal # dataset class
 
-data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input
-
-data_file: adg1km_eobs_preprocessed.zarr
-
+data_source:
+  file:
+    data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input #!! change to your directory
+    data_file: adg_eobs_test_preprocessed.zarr
+  # s3:
+  #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
+  
 data_static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_lstm.zarr
 
-data_dynamic_inputs: ${data_dir}/${data_file}
+data_dynamic_inputs: ${data_source.file.data_dir}/${data_source.file.data_file}
 
 data_target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/daily/adige_2018-2021.nc
 
@@ -123,9 +134,10 @@ scaling_variant: minmax
 
 head_model_inputs:
   - thetaS
+  - thetaR
   - KsatVer
   - c
-  - thetaR
+  - f
 
 static_inputs:
   - ch
@@ -160,7 +172,6 @@ calibration_pipeline:
     steps:
       - class_path: data.RNNDatasetGetterAndPreprocessor
         init_args:
-          surrogate_input: ${data_dir}/${data_file}
           dynamic_inputs: ${dynamic_inputs}
           static_inputs: ${static_inputs}
           target_variables: ${target_variables}
@@ -168,12 +179,11 @@ calibration_pipeline:
           train_temporal_range: ${train_temporal_range}
           valid_temporal_range: ${valid_temporal_range}
           dataset: ${dataset}
+          data_source: ${data_source}
           scaling_variant: ${scaling_variant}
           experiment_name: ${experiment_name}
           experiment_run: ${experiment_run}
           work_dir: ${work_dir}
-          data_dir: ${data_dir}
-          data_file: ${data_file}
           data_dynamic_inputs: ${data_dynamic_inputs}
           data_static_inputs: ${data_static_inputs}
           data_target_variables: ${data_target_variables}
@@ -226,6 +236,7 @@ calibration_pipeline:
             mt_n_layers: ${mt_n_layers}
 
             # > head model < 
+            model_file_name: ${model_file_name}
             model_head_dir: ${model_head_dir}
 
             model_head_file: ${model_head_file}
@@ -234,6 +245,10 @@ calibration_pipeline:
 
             model_head_dropout: ${model_head_dropout}
 
+            model_head_layer: ${model_head_layer}
+            model_head_activation: ${model_head_activation}
+            model_head_kwargs: ${model_head_kwargs}
+            
             loss_fn: ${loss_fn}
             metric_fn: ${metric_fn}
 
