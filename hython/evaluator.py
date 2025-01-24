@@ -76,5 +76,3 @@ def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=Fal
     return arr
 
 
-def sensitivity():
-    pass
