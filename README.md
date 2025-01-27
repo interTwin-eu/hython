@@ -3,18 +3,10 @@
 
 ## Description
 
-A python package aims to exploit state-of-the-art hydrological timeseries prediction and forcasting.
-
-The package should supports the **surrogate training**, **parameter learning** and **prediction** application components of the interTwin's drought forecasting use case.
-
-<p align="center">
- <a href="https://github.com/interTwin-eu/hython/"><img src="https://github.com/interTwin-eu/hython/blob/dev/data/static/overview.png" alt="layout"></a>
-</p>
+The package enables the development of deep learning based surrogates for semi-distributed and distributed hydrological models.
 
 
 ## Installation
-
-This package is currently under development.
 
 
 ```bash
@@ -70,25 +62,6 @@ Please open an issue if you have a bug, feature request or have an idea to impro
 ## Design
 
 Class diagram
-
-## Roadmap
-
-- [x] Predict vertical fluxes and storages 
-    - [x] surface soil moisture 
-    - [x] evapotranspiration 
-
-- [] Predict streamflow 
-
-- [] Parameter learning
-
-- [] Seasonal forecast
-
-- [] Evaluation 
-    - [] Hydrological metrics
-
-- [] Distributed training
-
-- [] Uncertainty & Explainable AI
 
 
 ## Contact
