@@ -9,6 +9,7 @@ def write_to_zarr(
     arr: DaskArray | xr.DataArray,
     url,
     group=None,
+    flat=True,
     storage_options={},
     overwrite="w",
     chunks="auto",
@@ -17,6 +18,7 @@ def write_to_zarr(
     time_chunk_size=200,
     multi_index=None,
     append_attrs: dict = None,
+    append_dim="feat"
 ):
     if isinstance(arr, DaskArray):
         arr = arr.rechunk(chunks=chunks)
@@ -42,8 +44,9 @@ def write_to_zarr(
             arr.attrs.update(append_attrs)
 
         if multi_index:
-            arr = arr.to_dataset(name=group)
-            arr = cfxr.encode_multi_index_as_compress(arr, multi_index)
+            arr = arr.to_dataset(dim=group) #name=group
+            # for some reasona encoding multi index reverse the lat coordinate..
+            arr = cfxr.encode_multi_index_as_compress(arr, multi_index).isel(lat=slice(None, None, -1))
 
         if append_on_time:
             fs_store = zarr.storage.FSStore(
@@ -64,9 +67,16 @@ def write_to_zarr(
                     fs_store, append_dim="time", consolidated=True, group=group
                 )
         else:
-            arr.to_zarr(
-                store=url, storage_options=storage_options, mode=overwrite, group=group
-            )
+            if flat:
+                if overwrite == "w":
+                    append_dim=None
+                arr.to_zarr(
+                    store=url, storage_options=storage_options, mode=overwrite, append_dim=append_dim
+                )
+            else:
+                arr.to_zarr(
+                    store=url, storage_options=storage_options, mode=overwrite, group=group
+                )               
 
 
 def read_from_zarr(url, group=None, multi_index=None, engine="xarray", chunks=None):
