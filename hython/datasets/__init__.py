@@ -3,6 +3,7 @@ import xarray as xr
 import numpy as np
 import numpy.typing as npt
 from torch.utils.data import Dataset
+from omegaconf import OmegaConf
 from hython.io import read_from_zarr
 from hython.preprocessor import reshape
 

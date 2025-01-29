@@ -18,29 +18,19 @@ class Wflow1d(BaseDataset):
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
 
-        # generate run directory
-        #self.run_dir = generate_run_folder(cfg)
 
-        self.xd = (
-            read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
-            .sel(time=self.period)
-            .xd.sel(feat=cfg.dynamic_inputs)
-        )
+        data = read_from_zarr(url=file_path, multi_index="gridcell").sel(time=self.period)
 
-        self.xs = read_from_zarr(
-            url=file_path, group="xs", multi_index="gridcell"
-        ).xs.sel(feat=cfg.static_inputs)
+        self.xd = data[OmegaConf.to_object(cfg.dynamic_inputs)].to_array(dim="feat").transpose("gridcell","time","feat")
 
-        self.y = (
-            read_from_zarr(url=file_path, group="y", multi_index="gridcell")
-            .sel(time=self.period)
-            .y.sel(feat=cfg.target_variables)
-        )
+        self.xs = data[OmegaConf.to_object(cfg.static_inputs)].to_array(dim="feat").transpose("gridcell","feat")
+
+        self.y = data[OmegaConf.to_object(cfg.target_variables)].to_array(dim="feat").transpose("gridcell","time","feat")
 
         self.shape = self.xd.attrs["shape"]
 
         # compute indexes
-
+        
         self.grid_idx_2d = compute_grid_indices(shape=self.shape)
         self.grid_idx_1d = self.grid_idx_2d.flatten()
 
@@ -51,11 +41,8 @@ class Wflow1d(BaseDataset):
             )
 
         if self.cfg.mask_variables is not None:
-            masks = (
-                read_from_zarr(url=file_path, group="mask")
-                .mask.sel(mask_layer=self.cfg.mask_variables)
-                .any(dim="mask_layer")
-            )
+            masks = data[OmegaConf.to_object(self.cfg.mask_variables)].to_array().any("variable").unstack()
+
             idx_nan = self.grid_idx_2d[masks]
 
             if self.downsampler is not None:
