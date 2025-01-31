@@ -28,6 +28,7 @@ class Scaler:
 
         self.is_train = is_train
         self.use_cached = use_cached
+        self.flag_stats_computed = False
 
         try:
             self.run_dir = Path(generate_run_folder(cfg))
@@ -47,9 +48,12 @@ class Scaler:
                 try:
                     self.load(type)
                 except FileNotFoundError:
+                    print(f"Statistics not found in {str(self.run_dir)} for {type}, computing statistics..")
                     self.compute(data, type, axes)
+                    self.flag_stats_computed = True
             else:
                 self.compute(data, type, axes)
+                self.flag_stats_computed = True
         else:
             self.load(type)
 
