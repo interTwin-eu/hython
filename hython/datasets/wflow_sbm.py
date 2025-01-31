@@ -119,10 +119,16 @@ class Wflow1d(BaseDataset):
                 scaling_static_reordered, self.cfg.static_inputs
             )
 
-        if is_train:
-            self.scaler.write("dynamic_inputs")
-            self.scaler.write("static_inputs")
-            self.scaler.write("target_variables")
+        if is_train: # write if train
+            if not self.scaler.use_cached: # write if not reading from cache
+                self.scaler.write("dynamic_inputs")
+                self.scaler.write("static_inputs")
+                self.scaler.write("target_variables")
+            else: # if reading from cache
+                if self.scaler.flag_stats_computed: # if stats were not found in cache
+                    self.scaler.write("dynamic_inputs")
+                    self.scaler.write("static_inputs")
+                    self.scaler.write("target_variables")
 
     def __len__(self):
         return len(self.grid_idx_1d_valid)
