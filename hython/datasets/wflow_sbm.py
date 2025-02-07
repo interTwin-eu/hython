@@ -1,6 +1,6 @@
 """Wflow_sbm emulators"""
 from . import *
-
+import itertools
 
 class Wflow1d(BaseDataset):
     def __init__(
@@ -14,23 +14,33 @@ class Wflow1d(BaseDataset):
 
         self.period = slice(*cfg[f"{period}_temporal_range"])
 
-        file_path = get_source_url(cfg)
+        file_path = get_source_url_old(cfg)
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
 
+        # generate run directory
+        #self.run_dir = generate_run_folder(cfg)
 
-        data = read_from_zarr(url=file_path, multi_index="gridcell").sel(time=self.period)
+        self.xd = (
+            read_from_zarr(url=file_path, group="xd", multi_index="gridcell")
+            .sel(time=self.period)
+            .xd.sel(feat=cfg.dynamic_inputs)
+        )
 
-        self.xd = data[OmegaConf.to_object(cfg.dynamic_inputs)].to_array(dim="feat").transpose("gridcell","time","feat")
+        self.xs = read_from_zarr(
+            url=file_path, group="xs", multi_index="gridcell"
+        ).xs.sel(feat=cfg.static_inputs)
 
-        self.xs = data[OmegaConf.to_object(cfg.static_inputs)].to_array(dim="feat").transpose("gridcell","feat")
-
-        self.y = data[OmegaConf.to_object(cfg.target_variables)].to_array(dim="feat").transpose("gridcell","time","feat")
+        self.y = (
+            read_from_zarr(url=file_path, group="y", multi_index="gridcell")
+            .sel(time=self.period)
+            .y.sel(feat=cfg.target_variables)
+        )
 
         self.shape = self.xd.attrs["shape"]
 
         # compute indexes
-        
+
         self.grid_idx_2d = compute_grid_indices(shape=self.shape)
         self.grid_idx_1d = self.grid_idx_2d.flatten()
 
@@ -41,8 +51,11 @@ class Wflow1d(BaseDataset):
             )
 
         if self.cfg.mask_variables is not None:
-            masks = data[OmegaConf.to_object(self.cfg.mask_variables)].to_array().any("variable").unstack()
-
+            masks = (
+                read_from_zarr(url=file_path, group="mask")
+                .mask.sel(mask_layer=self.cfg.mask_variables)
+                .any(dim="mask_layer")
+            )
             idx_nan = self.grid_idx_2d[masks]
 
             if self.downsampler is not None:
@@ -152,7 +165,362 @@ class Wflow1d(BaseDataset):
             y = torch.tensor(self.y[item_index].values).float()
 
         return {"xd": xd, "xs": xs, "y": y}
+    
+class WflowSBM(BaseDataset):
+    def __init__(
+        self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
+    ):
+        self.scale_ontraining = scale_ontraining
+        self.scaler = scaler
+        self.cfg = cfg
 
+        self.downsampler = self.cfg[f"{period}_downsampler"]
+
+        self.period = period
+        self.period_range = slice(*cfg[f"{period}_temporal_range"])
+
+        urls = get_source_url(cfg)
+
+        self.scaling_static_range = self.cfg.get("scaling_static_range")
+
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range).isel(lat=slice(None, None, -1))
+        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
+
+        self.xd = data_dynamic[OmegaConf.to_object(cfg.dynamic_inputs)]
+        self.xs = data_static[OmegaConf.to_object(cfg.static_inputs)]
+        self.y = data_dynamic[OmegaConf.to_object(cfg.target_variables)]
+
+        if not self.cfg.data_lazy_load: # loading in memory
+            self.xd = self.xd.load()
+            self.xs = self.xs.load()
+            self.y = self.y.load()
+
+        if self.cfg.mask_variables is not None and self.period != "test":
+            # apply mask 
+            mask = data_static[OmegaConf.to_object(self.cfg.mask_variables)].to_array().any("variable")
+            self.mask = mask
+            self.coords = np.argwhere(~mask.values)
+        elif self.period == "test": # no masking when period is test 
+            shape = list(self.xs.dims.values())
+            self.coords =  np.argwhere(np.ones(shape).astype(bool))
+
+        # compute cell index 
+        self.cell_index = np.arange(0, len(self.coords), 1)
+        # compute time index
+        if self.cfg.downsampling_temporal_dynamic or self.period == "test":
+            self.time_index = np.arange(0, len(self.xd.time.values), 1)
+        else:
+            self.time_index = np.arange(self.seq_len, len(self.xd.time.values), 1)
+        
+        # downsample indices based on rule
+        if self.downsampler is not None:
+            self.cell_index, self.time_index = self.downsampler.sampling_idx([self.cell_index, self.time_index])
+
+        # generate dataset indices 
+        if self.cfg.downsampling_temporal_dynamic:
+            # This assumes that the time index for sampling the sequences are generated at runtime.
+            # In this way it is possible to generate new random time indices every epoch to dynamically subsample the time domain. 
+            self.coord_samples = self.coords[self.cell_index]
+        else:
+            # Combined cell and time indices
+            self.coord_samples = list(itertools.product(*(self.coords[self.cell_index].tolist(), self.time_index.tolist() )))  
+
+        self.scaler.load_or_compute(
+            self.xd, "dynamic_inputs", is_train, axes=("lat","lon", "time")
+        )
+
+        self.scaler.load_or_compute(
+            self.xs, "static_inputs", is_train, axes=("lat","lon")
+        )
+
+        self.scaler.load_or_compute(
+            self.y, "target_variables", is_train, axes=("lat", "lon", "time")
+        )
+
+        if not self.scale_ontraining:
+            self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
+
+            self.y = self.scaler.transform(self.y, "target_variables")
+
+            if self.scaling_static_range is not None:
+                scaling_static_reordered = {
+                    k: self.cfg.scaling_static_range[k]
+                    for k in self.cfg.static_inputs
+                    if k in self.cfg.scaling_static_range
+                }
+
+                self.static_scale, self.static_center = self.get_scaling_parameter(
+                    scaling_static_reordered, self.cfg.static_inputs
+                )
+
+                self.xs = self.scaler.transform_custom_range(
+                    self.xs, "static_inputs", self.static_scale, self.static_center
+                )
+            else:
+                self.xs = self.scaler.transform(self.xs, "static_inputs")
+        else:
+            # these will be used in the getitem by the scaler.transform_custom_range
+            scaling_static_reordered = {
+                k: self.cfg.scaling_static_range[k]
+                for k in self.cfg.static_inputs
+                if k in self.cfg.scaling_static_range
+            }
+
+            self.static_scale, self.static_center = self.get_scaling_parameter(
+                scaling_static_reordered, self.cfg.static_inputs
+            )
+
+        if is_train: # write if train
+            if not self.scaler.use_cached: # write if not reading from cache
+                self.scaler.write("dynamic_inputs")
+                self.scaler.write("static_inputs")
+                self.scaler.write("target_variables")
+            else: # if reading from cache
+                if self.scaler.flag_stats_computed: # if stats were not found in cache
+                    self.scaler.write("dynamic_inputs")
+                    self.scaler.write("static_inputs")
+                    self.scaler.write("target_variables")
+
+    def __len__(self):
+        return len((range(len(self.coord_samples))))
+
+    def __getitem__(self, index):
+        
+        if self.scale_ontraining:
+            pass
+            #TODO: implement 
+            # xd = torch.tensor(
+            #     self.scaler.transform(self.xd[item_index], "dynamic_inputs").values
+            # ).float()
+
+            # y = torch.tensor(
+            #     self.scaler.transform(self.y[item_index], "target_variables").values
+            # ).float()
+
+            # if self.scaling_static_range is not None:
+            #     xs = torch.tensor(
+            #         self.scaler.transform_custom_range(
+            #             self.xs[item_index],
+            #             "static_inputs",
+            #             self.static_scale,
+            #             self.static_center,
+            #         ).values
+            #     ).float()
+            # else:
+            #     xs = torch.tensor(
+            #         self.scaler.transform(self.xs[item_index], "static_inputs").values
+            #     ).float()
+
+        else:
+            if self.cfg.downsampling_temporal_dynamic:
+                lat, lon = self.coord_samples[index]
+
+                ds_pixel_dynamic = self.xd.isel(lat=lat, lon=lon) # lat, lon, time -> time
+                ds_pixel_target = self.y.isel(lat=lat, lon=lon)
+                ds_pixel_static = self.xs.isel(lat=lat, lon=lon)
+
+                ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+                ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+
+                ds_pixel_static = ds_pixel_static.to_array()
+                
+                xd  = torch.tensor(ds_pixel_dynamic.values).float()
+                xs = torch.tensor(ds_pixel_static.values).float()
+                y = torch.tensor(ds_pixel_target.values).float()
+            else:
+                idx_cell, idx_time = self.coord_samples[index]
+
+                idx_lat, idx_lon = idx_cell
+                # TODO: check
+                ds_pixel_dynamic = self.xd.isel(lat=idx_lat, 
+                                                        lon=idx_lon, 
+                                                        time=slice(idx_time - self.seq_len + 1, idx_time + 1)) # lat, lon, time -> time
+
+                ds_pixel_target = self.y.isel(lat=idx_lat, 
+                                                        lon=idx_lon, 
+                                                        time=slice(idx_time - self.seq_len + 1, idx_time + 1)) 
+                
+                ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
+        
+                ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+                ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+                ds_pixel_static = ds_pixel_static.to_array()
+                
+                xd  = torch.tensor(ds_pixel_dynamic.values).float()
+                xs = torch.tensor(ds_pixel_static.values).float()
+                y = torch.tensor(ds_pixel_target.values).float()
+
+        return {"xd": xd, "xs": xs, "y": y}
+
+class WflowSBMCal(BaseDataset):
+    """ """
+
+    def __init__(self, cfg, scaler, is_train=True, period="train"):
+        super().__init__()
+
+        self.cfg = cfg
+        self.scaler = scaler
+
+        self.downsampler = self.cfg[f"{period}_downsampler"]
+
+        self.period = period
+        self.period_range = slice(*cfg[f"{period}_temporal_range"])
+
+        urls = get_source_url(cfg)
+
+        # load datasets
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range).isel(lat=slice(None, None, -1))
+        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
+        data_target = read_from_zarr(url=urls["target_variables"], chunks="auto").sel(time=self.period_range)
+        
+        # select 
+        self.xs =  data_static[OmegaConf.to_object(cfg.static_inputs)]
+        self.xd = data_dynamic[OmegaConf.to_object(cfg.dynamic_inputs)]
+        self.y = data_target[OmegaConf.to_object(cfg.target_variables)]
+
+        # TODO: ensure they are all float32
+
+        # head_layer mask
+        head_mask = read_from_zarr(url=urls["head_model_mask"], chunks="auto")
+        self.head_mask = head_mask[OmegaConf.to_object(self.cfg.head_model_mask)].to_array().any("variable")
+        
+        # target mask, observation
+        if urls.get("target_variables_mask", None):
+            target_mask = read_from_zarr(url=urls["target_variables_mask"], chunks="auto").sel(time=self.period_range)
+            sel_target_mask = OmegaConf.to_object(self.cfg.target_variables_mask)[0] if isinstance(OmegaConf.to_object(self.cfg.target_variables_mask), list) else OmegaConf.to_object(self.cfg.target_variables_mask)
+            self.target_mask = target_mask[sel_target_mask]
+            self.target_mask = self.target_mask.resample({"time":"1D"}).max().astype(bool)
+            self.target_mask = self.target_mask.isnull().sum("time") > self.cfg.min_sample_target     
+        else:
+            self.target_mask = self.y.isnull().all("time")[OmegaConf.to_object(cfg.target_variables)[0]] #> self.cfg.min_sample_target   
+
+        # static mask, predictors
+        if urls.get("static_inputs_mask", None):
+            self.static_mask = read_from_zarr(url=urls["static_inputs_mask"], chunks="auto")[OmegaConf.to_object(self.cfg.static_inputs_mask)[0]]
+        else:
+            self.static_mask = self.xs[OmegaConf.to_object(self.cfg.static_inputs)].to_array().any("variable")
+        
+        # combine masks
+        self.mask = self.target_mask | self.head_mask | self.static_mask
+
+        if not self.cfg.data_lazy_load: # loading in memory
+            self.xd = self.xd.load()
+            self.xs = self.xs.load()
+            self.y = self.y.load()
+            self.mask = self.mask.load()
+
+        # Find indices of valid cells (not mask)
+        if self.period != "test":
+            self.coord_cells = np.argwhere(~self.mask.values) # indices of non-zero
+        elif self.period == "test":
+            # in test, keep nans
+            self.temp = np.ones(self.mask.shape).astype(bool)
+            self.coord_cells = np.argwhere(self.temp)
+
+        # Linear index, map to tuple of lat, lon coordinates
+        self.cell_linear_index = np.arange(0, len(self.coord_cells), 1)
+
+        # Compute time index
+        if self.cfg.downsampling_temporal_dynamic or self.period == "test":
+            self.time_index = np.arange(0, len(self.xd.time.values), 1)
+        else:
+            self.time_index = np.arange((self.seq_len -1), # size to index 
+                                        len(self.xd.time.values), # not inclusive 
+                                        1)
+
+        # Reduce dataset size
+        if self.downsampler is not None:
+            self.cell_linear_index, self.time_index = self.downsampler.sampling_idx([self.cell_linear_index, self.time_index])
+
+        # Generate dataset indices 
+        if self.cfg.downsampling_temporal_dynamic:
+            # This assumes that the time index for sampling the sequences are generated at runtime.
+            # The dataset returns the whole time series for each data sample
+            # In this way it is possible to generate new random time indices every epoch to dynamically subsample the time domain. 
+            self.coord_samples = self.coord_cells[self.cell_linear_index]
+        else:
+            # Combined cell and time indices
+            self.coord_samples = list(itertools.product(*(self.coord_cells[self.cell_linear_index].tolist(), self.time_index.tolist() )))  
+
+        # Normalize
+        self.scaler.load_or_compute(
+            self.xd, "dynamic_inputs", is_train, axes=("lat","lon", "time")
+        )
+
+        self.scaler.load_or_compute(
+            self.xs, "static_inputs", is_train, axes=("lat","lon")
+        )
+
+        self.scaler.load_or_compute(
+            self.y, "target_variables", is_train, axes=("lat", "lon", "time")
+        )
+
+        self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
+        self.xs = self.scaler.transform(self.xs, "static_inputs")
+        self.y = self.scaler.transform(self.y, "target_variables")
+
+        if is_train: # write if train
+            if not self.scaler.use_cached: # write if not reading from cache
+                self.scaler.write("dynamic_inputs")
+                self.scaler.write("static_inputs")
+                self.scaler.write("target_variables")
+            else: # if reading from cache
+                if self.scaler.flag_stats_computed: # if stats were not found in cache
+                    self.scaler.write("dynamic_inputs")
+                    self.scaler.write("static_inputs")
+                    self.scaler.write("target_variables")
+
+    def __len__(self):
+        return len((range(len(self.coord_samples))))
+
+    def __getitem__(self, index):
+
+        if self.cfg.downsampling_temporal_dynamic or self.period != "test":
+
+            idx_lat, idx_lon = self.coord_samples[index]
+
+            ds_pixel_dynamic = self.xd.isel(lat=idx_lat, lon=idx_lon) # lat, lon, time -> time
+            ds_pixel_target = self.y.isel(lat=idx_lat, lon=idx_lon)
+            ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
+
+            ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+            ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+
+            ds_pixel_static = ds_pixel_static.to_array()
+            
+            # TODO: remove call to float
+            xd  = torch.tensor(ds_pixel_dynamic.values).float()
+            xs = torch.tensor(ds_pixel_static.values).float()
+            y = torch.tensor(ds_pixel_target.values).float()
+        else:
+            idx_cell, idx_time = self.coord_samples[index]
+
+            idx_lat, idx_lon = idx_cell
+            # TODO: check
+            ds_pixel_dynamic = self.xd.isel(
+                                            lat=idx_lat, 
+                                            lon=idx_lon, 
+                                            time=slice(idx_time - (self.seq_len -1), # size seq_len to index 
+                                                       idx_time + 1) # not inclusive
+                                                       ) 
+
+            ds_pixel_target = self.y.isel(  
+                                            lat=idx_lat, 
+                                            lon=idx_lon, 
+                                            time=slice(idx_time - (self.seq_len - 1), idx_time + 1)) 
+            
+            ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
+    
+            ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+            ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+            ds_pixel_static = ds_pixel_static.to_array()
+            
+            # TODO: remove call to float
+            xd  = torch.tensor(ds_pixel_dynamic.values).float()
+            xs = torch.tensor(ds_pixel_static.values).float()
+            y = torch.tensor(ds_pixel_target.values).float()
+
+        return {"xd": xd, "xs": xs, "y": y}
 
 class Wflow1dCal(BaseDataset):
     """ """
