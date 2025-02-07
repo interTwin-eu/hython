@@ -58,9 +58,9 @@ class RandomDownsampler(AbstractDownSampler):
     def sampling_idx(self, coords):
         space, time = coords
         if self.frac_time:
-            time = np.sort(np.random.choice(space, int(len(space)*self.frac_time), replace=False))
+            time = np.sort(np.random.choice(time, int(len(time)*self.frac_time), replace=False))
         if self.frac_space:
-            space = np.sort(np.random.choice(time, int(len(time)*self.frac_space), replace=False))
+            space = np.sort(np.random.choice(space, int(len(space)*self.frac_space), replace=False))
         return [space, time]
 
 

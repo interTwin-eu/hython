@@ -18,6 +18,8 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         self,
         # == common ==
         dataset: str,
+        downsampling_temporal_dynamic: bool,
+        data_lazy_load: bool,
         scaling_variant: str,
         experiment_name: str,
         experiment_run: str,
@@ -54,5 +56,5 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         train_dataset = get_dataset(self.cfg.dataset)(self.cfg, scaler, True, "train")
 
         val_dataset = get_dataset(self.cfg.dataset)(self.cfg, scaler, False, "valid")
-
+        
         return train_dataset, val_dataset, None

@@ -7,14 +7,14 @@ DIR_CONFIG = Path(__file__).parent.parent / "hython/itwinai"
 
 
 def test_training():
-    ret = subprocess.run(
+    ret = subprocess.call(
         [
             "itwinai",
             "exec-pipeline",
             "--config",
             f"{str(DIR_CONFIG)}/training.yaml",
             "--pipe-key",
-            "rnn_training_pipeline",
+            "training_pipeline",
             "-o",
             "epochs=2",
         ]

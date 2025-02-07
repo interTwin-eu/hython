@@ -4,9 +4,9 @@ experiment_run: "vwc_actevap"
 
 work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
-train_temporal_range: ["2016-01-01", "2018-12-31"]
-valid_temporal_range: ["2019-01-01", "2020-12-31"]
-test_temporal_range: ["2019-01-01", "2020-12-31"]
+train_temporal_range: ["2017-01-01", "2017-12-31"]
+valid_temporal_range: ["2017-01-01", "2017-12-31"]
+test_temporal_range: ["2017-01-01", "2017-12-31"]
 
 seed: 10 
 
@@ -64,14 +64,14 @@ predict_steps: 0 # all # (prediction: 0 = t ), ( forecasts: 1 = t+1, 2 = t + 2)
 
 # spatial downsampling
 train_downsampler: #None
-  _target_: hython.sampler.downsampler.RegularIntervalDownsampler
-  intervals: [3,3]
-  origin: [0,0]
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac_time: null
+  frac_space: 0.1
 
 valid_downsampler: #None
-  _target_: hython.sampler.downsampler.RegularIntervalDownsampler
-  intervals: [3,3]
-  origin: [1,1]
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac_time: null
+  frac_space: 0.1
 
 test_downsampler: null
   # _target_: hython.sampler.downsampler.RegularIntervalDownsampler
@@ -80,18 +80,22 @@ test_downsampler: null
 
 
 # temporal downsampling
+downsampling_temporal_dynamic: True
 temporal_downsampling: True
 temporal_subset: [200, 150]
 
 
 # === Data ===
 
-dataset: Wflow1d
+data_lazy_load: False
+
+dataset: WflowSBM
 
 data_source:
   file:
-    data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input #!! change to your directory
-    data_file: adg_eobs_test_preprocessed.zarr
+    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_static.zarr
+    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
+    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
   # s3:
   #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
 
@@ -138,6 +142,8 @@ training_pipeline:
           train_temporal_range: ${train_temporal_range}
           valid_temporal_range: ${valid_temporal_range}
           dataset: ${dataset}
+          data_lazy_load: ${data_lazy_load}
+          downsampling_temporal_dynamic: ${downsampling_temporal_dynamic}
           data_source: ${data_source}
           scaling_variant: ${scaling_variant}
           experiment_name: ${experiment_name}
@@ -157,6 +163,7 @@ training_pipeline:
             learning_rate: ${learning_rate}
             num_workers_dataloader: 1
             hython_trainer: ${hython_trainer}
+            #temporal_downsampling_dynamic: ${downsampling_temporal_dynamic}
             temporal_downsampling: ${temporal_downsampling}
             temporal_subset: ${temporal_subset}
             seq_length: ${seq_length}

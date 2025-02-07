@@ -206,6 +206,7 @@ class WflowSBM(BaseDataset):
 
         # compute cell index 
         self.cell_index = np.arange(0, len(self.coords), 1)
+        
         # compute time index
         if self.cfg.downsampling_temporal_dynamic or self.period == "test":
             self.time_index = np.arange(0, len(self.xd.time.values), 1)
