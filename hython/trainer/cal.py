@@ -27,7 +27,7 @@ class CalTrainer(AbstractTrainer):
             target = self.target_step(target_b, steps=self.cfg.predict_steps)
             # TODO: consider moving missing values loss handling in the compute loss method
             valid_mask = ~target.isnan()  # non null values
-
+            
             self._concatenate_result(output, target, valid_mask)
 
             mini_batch_loss = self._compute_batch_loss(

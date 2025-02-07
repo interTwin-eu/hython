@@ -1,3 +1,4 @@
+from pathlib import Path
 import xarray as xr
 from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
@@ -60,11 +61,11 @@ def write_to_zarr(
             init = arr.isel(time=slice(0, time_chunk_size)).persist()
             # init[group].attrs.clear()
 
-            init.to_zarr(fs_store, consolidated=True, group=group, mode=overwrite)
+            init.to_zarr(fs_store, consolidated=True, mode=overwrite) #group=group
 
             for t in range(time_chunk_size, shape[1], time_chunk_size):  # append time
                 arr.isel(time=slice(t, t + time_chunk_size)).to_zarr(
-                    fs_store, append_dim="time", consolidated=True, group=group
+                    fs_store, append_dim="time", consolidated=True, #group=group
                 )
         else:
             if flat:
@@ -74,14 +75,22 @@ def write_to_zarr(
                     store=url, storage_options=storage_options, mode=overwrite, append_dim=append_dim
                 )
             else:
+
                 arr.to_zarr(
-                    store=url, storage_options=storage_options, mode=overwrite, group=group
+                    store=url, storage_options=storage_options, mode=overwrite, group=group, append_dim=append_dim
                 )               
 
 
-def read_from_zarr(url, group=None, multi_index=None, engine="xarray", chunks=None):
-    if engine == "xarray":
-        ds = xr.open_dataset(url, group=group, engine="zarr", chunks=chunks)
-        if multi_index:
-            ds = cfxr.decode_compress_to_multi_index(ds, multi_index)
-        return ds
+def read_from_zarr(url, group=None, multi_index=None, engine=None, chunks=None, **xarray_kwargs):
+    
+    if 'zar' in Path(url).suffix:
+        engine = 'zarr' 
+
+    if group is not None:
+        ds = xr.open_dataset(url, group=group, engine=engine, chunks=chunks, **xarray_kwargs)
+    else:
+        ds = xr.open_dataset(url, engine=engine, chunks=chunks, **xarray_kwargs)
+    if multi_index:
+        ds = cfxr.decode_compress_to_multi_index(ds, multi_index)
+
+    return ds

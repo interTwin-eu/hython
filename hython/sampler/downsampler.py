@@ -13,6 +13,7 @@ from hython.utils import (
     get_unique_time_idxs,
     downsample_spacetime,
     downsample_time,
+    downsample_space
 )
 
 
@@ -48,19 +49,19 @@ class AbstractDownSampler(ABC):
 class RandomDownsampler(AbstractDownSampler):
     def __init__(
         self,
-        frac: float = 0.5,
-        how="time",  # time, spacetime
+        frac_time: float | None = 0.5,
+        frac_space: float | None = 0.5,  
     ):
-        self.frac = frac
-        self.how = how
+        self.frac_time = frac_time 
+        self.frac_space = frac_space
 
     def sampling_idx(self, coords):
-        if self.how == "time":
-            coords = downsample_time(coords, self.frac)
-        elif self.how == "spacetime":
-            coords = downsample_spacetime(coords, self.frac)
-
-        return coords
+        space, time = coords
+        if self.frac_time:
+            time = np.sort(np.random.choice(space, int(len(space)*self.frac_time), replace=False))
+        if self.frac_space:
+            space = np.sort(np.random.choice(time, int(len(time)*self.frac_space), replace=False))
+        return [space, time]
 
 
 class CubeletsDownsampler(AbstractDownSampler):

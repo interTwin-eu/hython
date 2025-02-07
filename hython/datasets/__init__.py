@@ -15,7 +15,8 @@ from hython.utils import (
     compute_cubelet_tuple_idxs,
     compute_grid_indices,
     generate_run_folder,
-    get_source_url
+    get_source_url,
+    get_source_url_old
 )
 
 try:
@@ -49,11 +50,19 @@ from .wflow_sbm import *
 
 DATASETS = {
     "Wflow1d": Wflow1d,
+    "WflowSBM": WflowSBM,
+    "WflowSBMCal":WflowSBMCal,
     "Wflow1dCal": Wflow1dCal,
     "Wflow2d": Wflow2d,
     "Wflow2dCal": Wflow2dCal,
 }
 
+DEPRECATED = ["Wflow1d", "Wflow1dCal"]
 
 def get_dataset(dataset):
-    return DATASETS.get(dataset)
+    if dataset in DEPRECATED:
+        VALID = set(DATASETS.keys()).difference(set(DEPRECATED))
+        raise DeprecationWarning(f"dataset {dataset} is deprecated, available datasets {VALID}")
+    ds = DATASETS.get(dataset)
+
+    return ds

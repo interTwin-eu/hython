@@ -66,17 +66,20 @@ class Scaler:
     def transform_custom_range(self, data, type, scale, center):
         return (data - center) / scale
 
-    def transform_inverse(self, data, type):
+    def transform_inverse(self, data, type, **kwargs):
         stats_dist = self.archive.get(type)
 
         if stats_dist is not None:
-            if isinstance(data, xr.DataArray) or not isinstance(data, xr.Dataset):
+            if isinstance(data, xr.DataArray):
                 stats_dist_arr = {}
                 stats_dist_arr["center"] = stats_dist["center"].values
                 stats_dist_arr["scale"] = stats_dist["scale"].values
                 return (data * stats_dist_arr["scale"]) + stats_dist_arr["center"]
-            else:
+            elif isinstance(data, xr.Dataset):
                 return (data * stats_dist["scale"]) + stats_dist["center"]
+            else:
+                pos = kwargs.get("var_order")
+                return (data * stats_dist["scale"][pos].to_array().values) + stats_dist["center"][pos].to_array().values
 
     def compute(self, data, type, axes=(0, 1)):
         "Compute assumes the features are the last dimension of the array."

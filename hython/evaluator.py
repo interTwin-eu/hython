@@ -10,8 +10,10 @@ def predict(dataset, model, batch_size, device, target="y_hat"):
 
     model = model.to(device)
 
-    n, t, _ = dataset.xd.shape
-
+    try:
+        n, t, _ = dataset.xd.shape
+    except:
+        n, t, _ = list(dataset.xd.dims.values())
     arr = []
     for i in range(0, n, batch_size):
         d = torch.from_numpy(dataset.xd[i : (i + batch_size)].values).float().to(device)
@@ -51,7 +53,10 @@ def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=Fal
     """
     model = model.to(device)
 
-    t, c, h, w = dataset.xd.shape
+    try:
+        t, c, h, w   = dataset.xd.shape
+    except:
+        t, c, h, w  = list(dataset.xd.dims.values())
 
     arr = []  # loop over seq_lengh
     for i in range(0, t, seq_len):

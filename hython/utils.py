@@ -388,9 +388,24 @@ def downsample_time(coords, frac):
     return arr
 
 
+def downsample_space(coords, frac):
+    un = np.unique(coords[:, 1])
+    for i, u in enumerate(un):
+        idx = np.argwhere(coords[:, 1] == u)
+        l = int(len(idx) * frac)
+        idx2 = np.random.randint(idx[0], idx[-1] + 1, l)
+        if i == 0:
+            arr = coords[idx2]
+        else:
+            arr = np.concatenate([arr, coords[idx2]], axis=0)
+    return arr
+
 def downsample_spacetime(coords, frac):
     l = int(len(coords) * frac)
+
     idx = np.random.randint(0, len(coords), l)
+    
+    
     return coords[idx]
 
 
@@ -433,7 +448,7 @@ def get_temporal_steps(steps):
 
 
 
-def get_source_url(cfg):
+def get_source_url_old(cfg):
     
     for k in cfg.data_source:
         if cfg.data_source.get(k, None) is not None:
@@ -445,3 +460,16 @@ def get_source_url(cfg):
     else:
         raise AttributeError
     return url
+
+def get_source_url(cfg):
+    
+    for k in cfg.data_source:
+        if cfg.data_source.get(k, None) is not None:
+            source = k
+    if source == "file":
+        urls = {k:v for k,v in cfg.data_source['file'].items()}
+    elif source == "s3":
+        urls = {k:v for k,v in cfg.data_source['s3'].items()}
+    else:
+        raise AttributeError
+    return urls
