@@ -9,7 +9,7 @@ The package enables the development of deep learning based surrogates for semi-d
 ## High level class diagram
 
 <p align="center">
- <a href="https://github.com/interTwin-eu/hython"><img src="https://github.com/interTwin-eu/hython/blob/dev/assets/img/hython.png" alt="layout" width="600" height="600">></a>
+ <a href="https://github.com/interTwin-eu/hython"><img src="https://github.com/interTwin-eu/hython/blob/dev/assets/img/hython.png" alt="layout" width="700" height="500"></a>
 </p>
 
 TODOs:
