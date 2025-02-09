@@ -6,6 +6,17 @@
 The package enables the development of deep learning based surrogates for semi-distributed and distributed hydrological models.
 
 
+## High level class diagram
+
+<p align="center">
+ <a href="https://github.com/interTwin-eu/hython"><img src="https://github.com/interTwin-eu/hython/blob/dev/assets/img/hython.png" alt="layout"></a>
+</p>
+
+TODOs:
+- consider associating downsampler to sampler class. Remove association with dataset class.
+- move train function into trainer class
+- consider tighter integration betweeen hython and itwinain trainers
+
 ## Installation
 
 
