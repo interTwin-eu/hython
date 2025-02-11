@@ -1,12 +1,14 @@
 import numpy as np
 import torch
-
+import logging 
 from abc import ABC
 from typing import Dict, Iterable, List
 
 from hython.utils import get_optimizer, get_lr_scheduler, get_temporal_steps, generate_run_folder
 from hython.metrics import MetricCollection
 from hython.models.head import *
+
+LOGGER = logging.getLogger(__name__)
 
 class AbstractTrainer(ABC):
     def __init__(self, cfg):
@@ -27,8 +29,8 @@ class AbstractTrainer(ABC):
         else:
             self.model_path = f"{self.run_dir}/model.pt"
 
-        print(f"Run directory: {self.run_dir}") 
-        print(f"Model path: {self.model_path}") 
+        LOGGER.info(f"Run directory: {self.run_dir}") 
+        LOGGER.info(f"Model path: {self.model_path}") 
         
 
     def _set_dynamic_temporal_downsampling(self, data_loaders=None, opt=None):
@@ -319,5 +321,5 @@ class AbstractTrainer(ABC):
         if onnx:
             raise NotImplementedError()
         else:
-            print(f"save weights to: {fp}")
+            LOGGER.info(f"save weights to: {fp}")
             torch.save(model.state_dict(), fp)
