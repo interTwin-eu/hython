@@ -21,6 +21,7 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         downsampling_temporal_dynamic: bool,
         data_lazy_load: bool,
         scaling_variant: str,
+        scaling_use_cached: bool,
         experiment_name: str,
         experiment_run: str,
         data_source: dict,
