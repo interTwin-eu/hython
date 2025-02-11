@@ -1,3 +1,5 @@
+scalability*
+.env_mlflow
 ml-logs
 mllogs
 .vscode/settings.json

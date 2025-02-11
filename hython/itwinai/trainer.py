@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from timeit import default_timer as timer
+from timeit import default_timer
 from typing import Dict, Literal, Optional, Union, Any, Tuple
 from tqdm.auto import tqdm
 import copy
@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 import torch
 import torch.nn as nn
 import pandas as pd
+from ray import train
 
 
 from hython.sampler import SamplerBuilder
@@ -20,6 +21,8 @@ from itwinai.torch.distributed import (
     NonDistributedStrategy,
     TorchDDPStrategy,
 )
+
+from itwinai.torch.monitoring.monitoring import measure_gpu_utilization
 from itwinai.distributed import suppress_workers_print
 from itwinai.loggers import EpochTimeTracker, Logger
 from itwinai.torch.config import TrainingConfiguration
@@ -65,7 +68,7 @@ class RNNDistributedTrainer(TorchTrainer):
         epochs: int,
         model: Optional[Union[str, nn.Module]] = None,
         strategy: Optional[
-            Literal["ddp", "deepspeed", "horovod", "sequential"]
+            Literal["ddp", "deepspeed", "horovod"]
         ] = "ddp",
         validation_every: Optional[int] = 1,
         test_every: Optional[int] = None,
@@ -142,9 +145,11 @@ class RNNDistributedTrainer(TorchTrainer):
                 head_kwargs= self.config.model_head_kwargs if self.config.model_head_kwargs is not None else {}
             )
 
+            model_pt = Path(self.config.work_dir) / self.config.model_head_dir / self.config.model_head_file
+
             surrogate.load_state_dict(
                 torch.load(
-                    f"{self.config.work_dir}/{self.config.model_head_dir}/{self.config.model_head_file}"
+                   model_pt
                 )
             )
 
@@ -198,17 +203,22 @@ class RNNDistributedTrainer(TorchTrainer):
             self.train_loader.sampler.set_epoch(epoch)
             self.val_loader.sampler.set_epoch(epoch)
 
+    #@measure_gpu_utilization
     def train(self):
         """Override train_val version of hython to support distributed strategy."""
 
         # Tracking epoch times for scaling test
-        if self.strategy.is_main_worker and self.strategy.is_distributed:
+        if self.strategy.is_main_worker:
             num_nodes = os.environ.get("SLURM_NNODES", "unk")
             series_name = os.environ.get("DIST_MODE", "unk") + "-torch"
-            file_name = f"epochtime_{series_name}_{num_nodes}N.csv"
-            file_path = Path("logs_epoch") / file_name
+            epoch_time_output_dir = Path("scalability-metrics/epoch-time")
+            epoch_time_file_name = f"epochtime_{self.strategy.name}_{num_nodes}N.csv"
+            epoch_time_output_path = epoch_time_output_dir / epoch_time_file_name
+
             epoch_time_tracker = EpochTimeTracker(
-                series_name=series_name, csv_file=file_path
+                strategy_name=self.strategy.name,
+                save_path=epoch_time_output_path,
+                num_nodes=num_nodes
             )
 
         device = self.strategy.device()
@@ -222,7 +232,7 @@ class RNNDistributedTrainer(TorchTrainer):
 
         best_loss = float("inf")
         for epoch in tqdm(range(self.epochs)):
-            epoch_start_time = timer()
+            epoch_start_time = default_timer()
             self.set_epoch(epoch)
 
             # run train_valid epoch step of hython trainer
@@ -268,12 +278,10 @@ class RNNDistributedTrainer(TorchTrainer):
             metric_history_ = {}
             for period in metric_history:
                 for target in metric_history[period]:
-                    for key, value in target.items():
-                        l = []
-                        k = key.lower().split("metric")[0]
-                        n = period + "_" + k
-                        l.append(value)
-                        metric_history_[n] = l
+                    for imetric, metric_value in target.items():
+                        metric_key = imetric.lower().split("metric")[0]
+                        new_metric_key = period + "_" + metric_key
+                        metric_history_[new_metric_key] = [metric_value]
 
             avg_metrics = pd.DataFrame(metric_history_).mean().to_dict()
             for m_name, m_val in avg_metrics.items():
@@ -287,29 +295,21 @@ class RNNDistributedTrainer(TorchTrainer):
             if avg_val_loss < best_loss:
                 best_loss = avg_val_loss
                 best_model = self.model.state_dict()
-                self.hython_trainer.save_weights(self.model)
+                #self.hython_trainer.save_weights(self.model)
 
-            epoch_end_time = timer()
-            if self.strategy.is_distributed:
-                epoch_time_tracker.add_epoch_time(
-                    epoch - 1, epoch_end_time - epoch_start_time
-                )
+            epoch_time = default_timer() - epoch_start_time
+            epoch_time_tracker.add_epoch_time(epoch + 1, epoch_time)
 
         if self.strategy.is_main_worker:
+            epoch_time_tracker.save()
             self.model.load_state_dict(best_model)
+            # log model
             self.log(item=self.model, identifier="LSTM", kind="model")
 
-            
-
             # Report training metrics of last epoch to Ray
-            try:
-                from ray import train
+            train.report({"loss": avg_val_loss.item(), "train_loss": train_loss.item()})
 
-                train.report(
-                    {"loss": avg_val_loss.item(), "train_loss": train_loss.item()}
-                )
-            except:
-                pass
+
 
         return loss_history, metric_history
 
