@@ -1,4 +1,5 @@
 import numpy as np
+import logging
 import xarray as xr
 import torch
 import yaml
@@ -9,6 +10,7 @@ from omegaconf import DictConfig, OmegaConf
 from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 from hython.utils import generate_run_folder
 
+LOGGER = logging.getLogger(__name__)
 
 class Scaler:
     """Class for performing scaling of input features. Currently supports minmax and standard scaling."""
@@ -35,7 +37,7 @@ class Scaler:
         except:
             self.run_dir = Path(".")
 
-        print(f"Data statistics saved to: {str(self.run_dir)}") 
+        LOGGER.info(f"Data statistics saved to: {str(self.run_dir)}") 
 
         self.archive = {}
 
@@ -48,7 +50,7 @@ class Scaler:
                 try:
                     self.load(type)
                 except FileNotFoundError:
-                    print(f"Statistics not found in {str(self.run_dir)} for {type}, computing statistics..")
+                    LOGGER.info(f"Statistics not found in {str(self.run_dir)} for {type}, computing statistics..")
                     self.compute(data, type, axes)
                     self.flag_stats_computed = True
             else:
