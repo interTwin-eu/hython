@@ -1,15 +1,15 @@
 # === Experiment === 
-experiment_name: "cal"
-experiment_run: "lstm"
+experiment_name: "calibration"
+experiment_run: "test"
 
 # the base directory with all the runs
 # here a new directory <experiment_name>_<experiment_run> is created
 work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run 
 
-train_temporal_range: ["2017-01-01", "2018-12-31"]
-cal_temporal_range: ["2018-01-01", "2021-12-31"]  # calibration
-valid_temporal_range: ["2019-01-01", "2020-12-31"]
-test_temporal_range: ["2019-01-01", "2020-12-31"]
+train_temporal_range: ["2017-01-01", "2017-12-31"]
+cal_temporal_range: ["2017-01-01", "2017-12-30"]  # calibration
+valid_temporal_range: ["2017-01-01", "2017-12-30"]
+test_temporal_range: ["2017-01-01", "2017-12-31"]
 
 seed: 10 
 
@@ -21,7 +21,7 @@ model_file_name: model.pt # default is model.pt
 
 # > hybrid < 
 
-model: hybrid # model class
+model: Hybrid # model class
 
 freeze_head: True
 
@@ -31,7 +31,7 @@ scale_head_output: False
 
 # > transfernn < 
 
-model_transfer: transfernn # model class
+model_transfer: TransferNN # model class
 
 mt_output_dim: 1
 mt_hidden_dim: 5
@@ -40,7 +40,7 @@ mt_n_layers: 3
 
 # > head model < 
 
-model_head: cudalstm # model class
+model_head: CudaLSTM # model class
 
 model_head_dir: itwinai_vwc_actevap # directory to load the surrogate model, relative to work_dir.
 
@@ -58,9 +58,9 @@ model_head_kwargs: null
 
 # === Training ===
 
-hython_trainer: caltrainer # trainer class
+strategy: null
 
-distributed: False
+hython_trainer: caltrainer # trainer class
 
 loss_fn:
   _target_: hython.losses.RMSELoss
@@ -94,43 +94,52 @@ predict_steps: all # all # (prediction: 0 = t ), ( forecasts: 1 = t+1, 2 = t + 2
 # spatial downsampling
 train_downsampler: 
   _target_: hython.sampler.downsampler.RandomDownsampler
-  frac: 0.01
-  how: time
+  frac_time: 0.1
+  frac_space: 0.1
 
 valid_downsampler: #None
   _target_: hython.sampler.downsampler.RandomDownsampler
-  frac: 0.01
-  how: time
+  frac_time: 0.05
+  frac_space: 0.01
 
 cal_downsampler: #None
   _target_: hython.sampler.downsampler.RandomDownsampler
-  frac: 0.01
-  how: time
+  frac_time: 0.05
+  frac_space: 0.01
+
+
 
 test_downsampler: null
 
+downsampling_temporal_dynamic: True
 temporal_downsampling: null
 
 # === Data ===
 
-dataset: Wflow1dCal # dataset class
+data_lazy_load: False
+
+dataset: WflowSBMCal # dataset class
 
 data_source:
   file:
-    data_dir: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input #!! change to your directory
-    data_file: adg_eobs_test_preprocessed.zarr
+    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_alps.zarr
+    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
+    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/daily/alps_masked_20170101-20171231.nc
+    #target_variables_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/daily/alps_masked_20170101-20171231.nc
+    mask_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_static.zarr
+    static_inputs_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_alps.zarr
   # s3:
   #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
   
-data_static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_lstm.zarr
 
-data_dynamic_inputs: ${data_source.file.data_dir}/${data_source.file.data_file}
-
-data_target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/daily/adige_2018-2021.nc
-
-data_target_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/adige_mask_2017_2022.nc
-
+scaling_use_cached: True
 scaling_variant: minmax
+scaling_static_range:
+    thetaS: [0.25, 0.95]
+    #thetaR: [0.01, 0.25]
+    c: [1, 20]
+    KsatVer: [1, 10000]
+
 
 head_model_inputs:
   - thetaS
@@ -139,15 +148,15 @@ head_model_inputs:
   - c
   - f
 
+
 static_inputs:
-  - ch
   - oc_sl1
   - sndppt_sl1
   - bd_sl1
   - clyppt_sl1
   - sltppt_sl1
   - elev
-  - slope
+  - slp
   - aspect
 
 dynamic_inputs:
@@ -162,34 +171,84 @@ mask_variables:
   - mask_missing
   - mask_lake
 
+#target_variables_mask:
+#  - ssm
+
+static_inputs_mask:
+  - mask
+
 min_sample_target: 10
+
+
+# ==== MODEL LOGGER ========
+
+# where the model is loaded/saved
+model_logger:
+    mlflow: 
+    # - ``/Users/me/path/to/local/model``
+    # - ``relative/path/to/local/model``
+    # - ``s3://my_bucket/path/to/model``
+    # - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
+    # - ``models:/<model_name>/<model_version>``
+    # - ``models:/<model_name>/<stage>``
+      Hybrid:
+          model_component: model # the main model
+          model_name: ${model}
+          log: False
+          load: False
+      CudaLSTM:
+          model_component: head # submodule
+          model_name: ${model_head}
+          model_uri: "models:/${model_head}/latest"
+          log: False
+          load: True
+      TransferNN:
+          model_component: transfernn # submodule
+          model_name: ${model_transfer}  # for saving the model
+          model_uri: "models:/${model_transfer}/latest"  # for loading the model
+          log: True
+          load: False
+    # local:
+    #   CudaLSTM:
+    #     model_file_path: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt # model is saved and loaded to/from this file
+      # TransfeRNN: 
+      #   model_file_name: ${transfernn}.pt
 
 # == Pipeline == 
 
-calibration_pipeline:
+pipeline:
   class_path: itwinai.pipeline.Pipeline
   init_args:
     steps:
       - class_path: data.RNNDatasetGetterAndPreprocessor
         init_args:
+          hython_trainer: ${hython_trainer}
           dynamic_inputs: ${dynamic_inputs}
           static_inputs: ${static_inputs}
           target_variables: ${target_variables}
+          head_model_inputs: ${head_model_inputs}
+
           mask_variables: ${mask_variables}
+          static_inputs_mask: ${static_inputs_mask}
+          
+          
           train_temporal_range: ${train_temporal_range}
           valid_temporal_range: ${valid_temporal_range}
+          cal_temporal_range: ${cal_temporal_range}
           dataset: ${dataset}
+          data_lazy_load: ${data_lazy_load}
+          downsampling_temporal_dynamic: ${downsampling_temporal_dynamic}
           data_source: ${data_source}
           scaling_variant: ${scaling_variant}
+          scaling_use_cached: ${scaling_use_cached}
+          scaling_static_range: ${scaling_static_range}
           experiment_name: ${experiment_name}
           experiment_run: ${experiment_run}
           work_dir: ${work_dir}
-          data_dynamic_inputs: ${data_dynamic_inputs}
-          data_static_inputs: ${data_static_inputs}
-          data_target_variables: ${data_target_variables}
-          data_target_mask: ${data_target_mask}
+
           train_downsampler: ${train_downsampler}
           valid_downsampler: ${valid_downsampler}
+          cal_downsampler: ${cal_downsampler}
           min_sample_target: ${min_sample_target}
           seq_length: ${seq_length}
       - class_path: trainer.RNNDistributedTrainer
@@ -207,7 +266,7 @@ calibration_pipeline:
             temporal_downsampling: ${temporal_downsampling}
             seq_length: ${seq_length}
             target_variables: ${target_variables}
-            distributed: ${distributed}
+            #distributed: ${distributed}
             dynamic_inputs: ${dynamic_inputs}
             static_inputs: ${static_inputs}
 
@@ -256,8 +315,10 @@ calibration_pipeline:
 
             predict_steps: ${predict_steps}
 
+            # model logger
+            model_logger: ${model_logger}
           
-          strategy: sequential
+          strategy: ${strategy}
           epochs: ${epochs}
           random_seed: ${seed}
           logger:
@@ -267,9 +328,9 @@ calibration_pipeline:
                 - class_path: itwinai.loggers.ConsoleLogger
                   init_args:
                     log_freq: 1
-                # - class_path: itwinai.loggers.MLFlowLogger
-                #   init_args:
-                #     experiment_name: ${experiment_name}
-                #     run_name: ${experiment_run}
-                #     log_freq: batch
-                #     savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs
+                - class_path: itwinai.loggers.MLFlowLogger
+                  init_args:
+                    experiment_name: ${experiment_name}
+                    run_name: ${experiment_run}
+                    log_freq: batch
+                    savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs

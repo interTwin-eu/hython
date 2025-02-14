@@ -382,8 +382,8 @@ class WflowSBMCal(BaseDataset):
         # TODO: ensure they are all float32
 
         # head_layer mask
-        head_mask = read_from_zarr(url=urls["head_model_mask"], chunks="auto")
-        self.head_mask = head_mask[OmegaConf.to_object(self.cfg.head_model_mask)].to_array().any("variable")
+        head_mask = read_from_zarr(url=urls["mask_variables"], chunks="auto")
+        self.head_mask = head_mask[OmegaConf.to_object(self.cfg.mask_variables)].to_array().any("variable")
         
         # target mask, observation
         if urls.get("target_variables_mask", None):

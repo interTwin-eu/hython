@@ -1,11 +1,11 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from . import BaseModel
+from .base import BaseModel
 from .head import get_head_layer
 
 
-class CuDNNLSTM(BaseModel):
+class CudaLSTM(BaseModel):
     def __init__(
         self,
         hidden_size: int = 34,
@@ -21,7 +21,7 @@ class CuDNNLSTM(BaseModel):
         head_kwargs: dict = {},
         cfg = None,
     ):
-        super(CuDNNLSTM, self).__init__(cfg=cfg)
+        super(CudaLSTM, self).__init__(cfg=cfg)
 
         self.output_size = output_size
 

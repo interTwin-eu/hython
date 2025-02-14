@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from .head import RegressionHead, NormalDistrHead
-from . import BaseModel
+from .base import BaseModel
 
 
 class Hybrid(BaseModel):
