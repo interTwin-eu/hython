@@ -19,7 +19,7 @@ def load_model(model_registry: dict, model_name):
     elif (local_models := model_registry.get("local")) is not None:
         config = local_models.get(model_name)
         model = get_model_class(model_name)
-        model_fp = config.get("model_file_path")
+        model_fp = config.get("model_uri")
         model.load_state_dict(torch.load(model_fp))
     return model
 

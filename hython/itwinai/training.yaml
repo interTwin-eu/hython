@@ -144,11 +144,13 @@ model_logger:
           model_uri: "models:/${model}/latest"
           log: True
           load: False
-    # local:
-    #   CudaLSTM:
-    #     model_file_path: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt # model is saved and loaded to/from this file
-      # TransfeRNN: 
-      #   model_file_name: ${transfernn}.pt
+    local:
+      CudaLSTM:
+          model_component: model
+          model_name: ${model}
+          model_uri: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt
+          log: True
+          load: False
 
 
 # == Pipeline == 
