@@ -125,8 +125,10 @@ class RNNDistributedTrainer(TorchTrainer):
         self.model_api = ModelLogAPI(self.config)
 
         if self.config.hython_trainer == "rnntrainer":
-
+            
             # LOAD MODEL
+            self.model_logger = self.model_api.get_model_logger("model")
+            
             self.model = self.model_class(
                 hidden_size=self.config.hidden_size,
                 dynamic_input_size=len(self.config.dynamic_inputs),
@@ -140,9 +142,12 @@ class RNNDistributedTrainer(TorchTrainer):
             self.hython_trainer = RNNTrainer(self.config)
 
         elif self.config.hython_trainer == "caltrainer":
+            
             # LOAD MODEL HEAD/SURROGATE
+            self.model_logger = self.model_api.get_model_logger("head")
+
             # TODO: remove if condition, logic is  delegated to model api
-            if self.config.model_logger.get("mlflow"):
+            if self.model_logger == "mlflow":
                 surrogate = self.model_api.load_model("head")
             else:
                 surrogate = get_hython_model(self.config.model_head)(
@@ -156,13 +161,7 @@ class RNNDistributedTrainer(TorchTrainer):
                     head_kwargs= self.config.model_head_kwargs if self.config.model_head_kwargs is not None else {}
                 )
 
-                model_pt = Path(self.config.work_dir) / self.config.model_head_dir / self.config.model_head_file
-
-                surrogate.load_state_dict(
-                    torch.load(
-                    model_pt
-                    )
-                )
+                surrogate = self.model_api.load_model("head", surrogate)
 
             transfer_nn = get_hython_model(self.config.model_transfer)(
                 self.config.head_model_inputs,
@@ -314,20 +313,22 @@ class RNNDistributedTrainer(TorchTrainer):
         if self.strategy.is_main_worker:
             epoch_time_tracker.save()
             self.model.load_state_dict(best_model)
-
-            #  === LOG MODEL ====
-            if self.config.model_logger.get("mlflow"):
-                model_log_names = self.model_api.get_model_log_names()
-            else:
-                # TODO: log to local file system
-                pass
             
+            # MODEL LOGGING
+            model_log_names = self.model_api.get_model_log_names()
+
             for module_name, model_class_name in model_log_names.items():
                 if module_name == "model": # main model
-                    self.log(item=self.model, identifier = model_class_name, kind="model", registered_model_name = model_class_name)
+                    if self.model_logger == "mlflow":
+                        self.log(item=self.model, identifier = model_class_name, kind="model", registered_model_name = model_class_name)
+                    else:
+                        self.model_api.log_model(module_name, self.model)
                 else: # submodule
-                    self.log(item=self.model.get_submodule(module_name), identifier = model_class_name, kind="model", registered_model_name = model_class_name)
-            
+                    if self.model_logger == "mlflow":
+                        self.log(item=self.model.get_submodule(module_name), identifier = model_class_name, kind="model", registered_model_name = model_class_name)
+                    else:
+                        self.model_api.log_model(module_name, self.model.get_submodule(module_name))
+
             # Report training metrics of last epoch to Ray
             train.report({"loss": avg_val_loss.item(), "train_loss": train_loss.item()})
 

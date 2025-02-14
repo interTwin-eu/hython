@@ -182,53 +182,89 @@ min_sample_target: 10
 
 # ==== MODEL LOGGER ========
 
-# where the model is loaded/saved
+
 model_logger:
-    mlflow: 
+    #mlflow: 
     # - ``/Users/me/path/to/local/model``
     # - ``relative/path/to/local/model``
     # - ``s3://my_bucket/path/to/model``
     # - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
     # - ``models:/<model_name>/<model_version>``
     # - ``models:/<model_name>/<stage>``
-      Hybrid:
-          model_component: model # the main model
-          model_name: ${model}
-          log: False
-          load: False
-      CudaLSTM:
-          model_component: head # submodule
-          model_name: ${model_head}
-          model_uri: "models:/${model_head}/latest"
-          log: False
-          load: True
-      TransferNN:
-          model_component: transfernn # submodule
-          model_name: ${model_transfer}  # for saving the model
-          model_uri: "models:/${model_transfer}/latest"  # for loading the model
-          log: True
-          load: False
-    local:
-      Hybrid:
-          model_component: model # the main model
-          model_name: ${model}
-          log: False
-          load: False
-      CudaLSTM:
-          model_component: head # submodule
-          model_name: ${model_head}
-          model_uri: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt
-          log: False
-          load: True
-      TransferNN:
-          model_component: transfernn # submodule
-          model_name: ${model_transfer}  # for saving the model
-          model_uri: "models:/${model_transfer}/latest"  # for loading the model
-          log: True
-    #   CudaLSTM:
-    #     model_file_path: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt # model is saved and loaded to/from this file
-      # TransfeRNN: 
-      #   model_file_name: ${transfernn}.pt
+    #local:
+    # "/home/iferrario/dev/notebooks/config/lstm_v2.yaml"
+    # /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc/model.pt
+  Hybrid:
+     logger: mlflow #local
+     model_component: model # the main model
+     model_name: ${model}
+     model_uri: "models:/${model_head}/latest"
+     log: False
+     load: False
+  CudaLSTM:
+      logger: mlflow #local #mlflow # local
+      model_component: head
+      model_name: ${model_head}
+      model_uri: "models:/${model_head}/latest" # <---- mlflow
+      #model_uri: "/home/iferrario/dev/hython/hython/itwinai/training.yaml" # <-- local
+      log: False
+      load: True
+  TransferNN:
+      logger: mlflow #local #mlflow # local
+      model_component: transfernn
+      model_name: ${model_transfer}  # for saving the model
+      model_uri: "models:/${model_transfer}/latest" # <---- mlflow
+      #model_uri: ${work_dir}/${experiment_name}_${experiment_run}/${model_transfer}.pt  # <-- local
+      log: True
+      load: False
+
+# # where the model is loaded/saved
+# model_logger:
+#     mlflow: 
+#     # - ``/Users/me/path/to/local/model``
+#     # - ``relative/path/to/local/model``
+#     # - ``s3://my_bucket/path/to/model``
+#     # - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
+#     # - ``models:/<model_name>/<model_version>``
+#     # - ``models:/<model_name>/<stage>``
+#       Hybrid:
+#           model_component: model # the main model
+#           model_name: ${model}
+#           log: False
+#           load: False
+#       CudaLSTM:
+#           model_component: head # submodule
+#           model_name: ${model_head}
+#           model_uri: "models:/${model_head}/latest"
+#           log: False
+#           load: True
+#       TransferNN:
+#           model_component: transfernn # submodule
+#           model_name: ${model_transfer}  # for saving the model
+#           model_uri: "models:/${model_transfer}/latest"  # for loading the model
+#           log: True
+#           load: False
+#     local:
+#       Hybrid:
+#           model_component: model # the main model
+#           model_name: ${model}
+#           log: False
+#           load: False
+#       CudaLSTM:
+#           model_component: head # submodule
+#           model_name: ${model_head}
+#           model_uri: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt
+#           log: False
+#           load: True
+#       TransferNN:
+#           model_component: transfernn # submodule
+#           model_name: ${model_transfer}  # for saving the model
+#           model_uri: "models:/${model_transfer}/latest"  # for loading the model
+#           log: True
+#     #   CudaLSTM:
+#     #     model_file_path: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt # model is saved and loaded to/from this file
+#       # TransfeRNN: 
+#       #   model_file_name: ${transfernn}.pt
 
 # == Pipeline == 
 

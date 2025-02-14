@@ -129,28 +129,51 @@ scaling_use_cached: True
 
 # ==== MODEL LOGGER ========
 
+# # where the model is loaded/saved
+# model_logger:
+#     mlflow: 
+#     # - ``/Users/me/path/to/local/model``
+#     # - ``relative/path/to/local/model``
+#     # - ``s3://my_bucket/path/to/model``
+#     # - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
+#     # - ``models:/<model_name>/<model_version>``
+#     # - ``models:/<model_name>/<stage>``
+#       CudaLSTM:
+#           model_component: model # the main model
+#           model_name: ${model}
+#           model_uri: "models:/${model}/latest"
+#           log: True
+#           load: False
+#     local:
+#       CudaLSTM:
+#           model_component: model
+#           model_name: ${model}
+#           model_uri: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt
+#           log: True
+#           load: False
+
 # where the model is loaded/saved
 model_logger:
-    mlflow: 
+    # mlflow: 
     # - ``/Users/me/path/to/local/model``
     # - ``relative/path/to/local/model``
     # - ``s3://my_bucket/path/to/model``
     # - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
     # - ``models:/<model_name>/<model_version>``
     # - ``models:/<model_name>/<stage>``
-      CudaLSTM:
-          model_component: model # the main model
-          model_name: ${model}
-          model_uri: "models:/${model}/latest"
-          log: True
-          load: False
-    local:
-      CudaLSTM:
-          model_component: model
-          model_name: ${model}
-          model_uri: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt
-          log: True
-          load: False
+  CudaLSTM:
+      logger: mlflow # local
+      model_component: model # the main model
+      model_name: ${model}
+      #model_uri: ${work_dir}/${experiment_name}_${experiment_run}/${model}.pt
+      model_uri: "models:/${model}/latest" #  
+      log: True
+      load: False
+    # local:
+    #   CudaLSTM:
+    #     model_file_path: ${work_dir}/${experiment_name}/${experiment_run}/${model}.pt # model is saved and loaded to/from this file
+      # TransfeRNN: 
+      #   model_file_name: ${transfernn}.pt
 
 
 # == Pipeline == 
@@ -196,7 +219,6 @@ pipeline:
             temporal_subset: ${temporal_subset}
             seq_length: ${seq_length}
             target_variables: ${target_variables}
-            hython_trainer: ${hython_trainer}
             # distributed: ${distributed}
             dynamic_inputs: ${dynamic_inputs}
             static_inputs: ${static_inputs}
