@@ -1,136 +1,107 @@
-# General configuration
-experiment_name: "training"
-experiment_run: "test"
+# === GENERAL ===
 
-work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+general:
+  experiment_name: "training"
+  experiment_run: "test"
+  work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+  train_temporal_range: ["2017-01-01", "2017-12-31"]
+  valid_temporal_range: ["2017-01-01", "2017-12-31"]
+  test_temporal_range: ["2017-01-01", "2017-12-31"]
+  seed: 10 
+  device: "cuda:0"
 
-train_temporal_range: ["2017-01-01", "2017-12-31"]
-valid_temporal_range: ["2017-01-01", "2017-12-31"]
-test_temporal_range: ["2017-01-01", "2017-12-31"]
+# === MODEL ===
 
-seed: 10 
-
-device: "cuda:0"
-
-# === Model ===
-
-model_file_name: model.pt
-
-model: CudaLSTM
-
-hidden_size: 136
-dropout: 0.1
-
-model_head_layer: regression # distr_normal
-model_head_activation: linear
-model_head_kwargs: null
+model:
+  model_file_name: model.pt
+  model: CudaLSTM
+  hidden_size: 136
+  dropout: 0.1
+  model_head_layer: regression # distr_normal
+  model_head_activation: linear
+  model_head_kwargs: null
   
-# === Training ===
+# === TRAINING ===
 
-strategy: null
+training:
+  strategy: null
+  hython_trainer: rnntrainer
+  loss_fn:
+    _target_: hython.losses.RMSELoss    
+  metric_fn:
+    _target_: hython.metrics.MSEMetric
+  optimizer: adam
+  lr_scheduler:
+    mode: min
+    factor: 0.5
+    patience: 10
+  seq_length: 120
+  learning_rate: 0.001
+  batch: 256
+  epochs: 30
+  gradient_clip: null
+  target_weights: even # null, even, or dict
+  # which steps are used in the computation of the loss function
+  predict_steps: 0 # all # (prediction: 0 = t ), ( forecasts: 1 = t+1, 2 = t + 2)
+  downsampling:
+    # spatial downsampling
+    train_downsampler: #None
+      _target_: hython.sampler.downsampler.RandomDownsampler
+      frac_time: null
+      frac_space: 0.005
 
-hython_trainer: rnntrainer
+    valid_downsampler: #None
+      _target_: hython.sampler.downsampler.RandomDownsampler
+      frac_time: null
+      frac_space: 0.005
 
-loss_fn:
-  _target_: hython.losses.RMSELoss
-    
-metric_fn:
-  _target_: hython.metrics.MSEMetric
-
-optimizer: adam
-
-lr_scheduler:
-  mode: min
-  factor: 0.5
-  patience: 10
-
-seq_length: 120
-
-learning_rate: 0.001
-
-batch: 256
-
-epochs: 30
-
-gradient_clip: null
-
-target_weights: even # null, even, or dict
-
-# which steps are used in the computation of the loss function
-predict_steps: 0 # all # (prediction: 0 = t ), ( forecasts: 1 = t+1, 2 = t + 2)
-
-
-# > Donwsampling < 
-
-# spatial downsampling
-train_downsampler: #None
-  _target_: hython.sampler.downsampler.RandomDownsampler
-  frac_time: null
-  frac_space: 0.005
-
-valid_downsampler: #None
-  _target_: hython.sampler.downsampler.RandomDownsampler
-  frac_time: null
-  frac_space: 0.005
-
-test_downsampler: null
-  # _target_: hython.sampler.downsampler.RegularIntervalDownsampler
-  # intervals: [3,3]
-  # origin: [2,2]
+    test_downsampler: null
+      # _target_: hython.sampler.downsampler.RegularIntervalDownsampler
+      # intervals: [3,3]
+      # origin: [2,2]
 
 
-# temporal downsampling
-downsampling_temporal_dynamic: True
-temporal_downsampling: True
-temporal_subset: [10, 10]
+    # temporal downsampling
+    downsampling_temporal_dynamic: True
+    temporal_downsampling: True
+    temporal_subset: [10, 10]
 
+# === DATA ===
 
-# === Data ===
-
-data_lazy_load: False
-
-dataset: WflowSBM
-
-data_source:
-  file:
-    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_static.zarr
-    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
-    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
-  # s3:
-  #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
-
-static_categorical_inputs:
-   - wflow_landuse
-   - wflow_soil
-
-static_inputs:
-  - thetaS
-  - thetaR
-  - KsatVer
-  - c
-  - f
-
-dynamic_inputs:
-  - precip
-  - pet
-  - temp
-  
-target_variables:
-  - vwc
-
-mask_variables:
-  - mask_missing
-  - mask_lake
-
-# Scaling
-
-scaling_variant: minmax
-scaling_use_cached: True
+data:
+  data_lazy_load: False
+  scaling:
+    scaling_variant: minmax
+    scaling_use_cached: True
+  dataset: WflowSBM
+  data_source:
+    file:
+      static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_static.zarr
+      dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
+      target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
+    # s3:
+    #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
+  static_categorical_inputs:
+    - wflow_landuse
+    - wflow_soil
+  static_inputs:
+    - thetaS
+    - thetaR
+    - KsatVer
+    - c
+    - f
+  dynamic_inputs:
+    - precip
+    - pet
+    - temp
+  target_variables:
+    - vwc
+  mask_variables:
+    - mask_missing
+    - mask_lake
 
 # ==== MODEL LOGGER ========
 
-
-# where the model is loaded/saved
 model_logger:
     # mlflow: 
     # - ``/Users/me/path/to/local/model``
@@ -148,9 +119,7 @@ model_logger:
       log: True
       load: False
 
-
-
-# == Pipeline == 
+# === PIPELINE === 
 
 pipeline:
   class_path: itwinai.pipeline.Pipeline
