@@ -65,7 +65,7 @@ class Scaler:
         if stats_dist is not None:
             return (data - stats_dist["center"]) / stats_dist["scale"]
 
-    def transform_custom_range(self, data, type, scale, center):
+    def transform_custom_range(self, data, scale, center):
         return (data - center) / scale
 
     def transform_inverse(self, data, type, **kwargs):
