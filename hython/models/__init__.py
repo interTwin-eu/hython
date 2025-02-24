@@ -3,6 +3,7 @@ from typing import Dict
 import importlib
 from pathlib import Path
 from .cudnnLSTM import CudaLSTM
+from .convLSTM import ConvLSTM
 from .hybrid import Hybrid
 from .transferNN import TransferNN
 
