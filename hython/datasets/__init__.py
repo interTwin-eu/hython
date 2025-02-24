@@ -49,15 +49,13 @@ class BaseDataset(Dataset):
 from .wflow_sbm import *
 
 DATASETS = {
-    "Wflow1d": Wflow1d,
     "WflowSBM": WflowSBM,
     "WflowSBMCal":WflowSBMCal,
-    "Wflow1dCal": Wflow1dCal,
-    "Wflow2d": Wflow2d,
+    "WflowSBMCube": WflowSBMCube,
     "Wflow2dCal": Wflow2dCal,
 }
 
-DEPRECATED = ["Wflow1d", "Wflow1dCal"]
+DEPRECATED = ["Wflow2dCal"]
 
 def get_dataset(dataset):
     if dataset in DEPRECATED:
