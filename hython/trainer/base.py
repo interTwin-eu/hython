@@ -35,8 +35,13 @@ class AbstractTrainer(ABC):
 
     def _set_dynamic_temporal_downsampling(self, data_loaders=None, opt=None):
         """Return the temporal indices of the timeseries, it may be a subset"""
-
-        if self.cfg.temporal_downsampling:
+        
+        try:
+            temporal_downsampling = self.cfg.temporal_downsampling
+        except:
+            temporal_downsampling = False
+            
+        if temporal_downsampling:
             if len(self.cfg.temporal_subset) > 1:
                 # use different time indices for training and validation
 

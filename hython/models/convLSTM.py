@@ -1,7 +1,8 @@
 import torch
 from torch import nn
 from typing import List
-
+from .head import get_head_layer
+from .base import BaseModel
 
 class ConvLSTMCell(nn.Module):
     def __init__(self, input_dim, hidden_dim, kernel_size, bias):
@@ -97,32 +98,20 @@ class ConvLSTMCell(nn.Module):
         )
 
 
-class ConvLSTM(nn.Module):
+class ConvLSTM(BaseModel):
     def __init__(
         self,
-        input_dim: int = 2,
-        output_dim: int = 2,
-        hidden_dim: int = 24,
-        kernel_size: list[int] | tuple[int] = [3, 3],
-        num_layers: int = 1,
+        cfg,
         batch_first: bool = False,
         bias: bool = True,
-        return_all_layers: bool = False,
+        return_all_layers: bool = False
     ):
-        """_summary_
+        """
 
         Parameters
         ----------
-        input_dim : int
-            Input dimensions, by default 2
-        output_dim : int
-            Output dimensions, by default 2
-        hidden_dim : int, optional
-            Hidden or filter dimensions, by default 24
-        kernel_size : list[int] | tuple[int], optional
-            Kernel size, by default [3,3]
-        num_layers : int, optional
-            Number of convolutional layers, by default 1
+        cfg: config,
+            Configuration file
         batch_first : bool, optional
             Decide whether the batch dimension should be first or second, by default False
         bias : bool, optional
@@ -133,16 +122,23 @@ class ConvLSTM(nn.Module):
         """
         super(ConvLSTM, self).__init__()
 
-        kernel_size = self._extend_for_multilayer(kernel_size, num_layers)
-        hidden_dim = self._extend_for_multilayer(hidden_dim, num_layers)
+        self.num_layers = cfg.num_lstm_layer
+        self.kernel_size = self._extend_for_multilayer(cfg.kernel_size, self.num_layers)
+        self.hidden_dim = self._extend_for_multilayer(cfg.hidden_size, self.num_layers)
 
-        if not len(kernel_size) == len(hidden_dim) == num_layers:
+        self.input_dim = len(cfg.dynamic_inputs) + len(cfg.static_inputs)
+        self.output_dim = len(cfg.target_variables)
+        
+
+        self.head_layer = cfg.model_head_layer
+        self.head_activation = cfg.model_head_activation
+        self.head_kwargs = cfg.model_head_kwargs if cfg.model_head_kwargs is not None else {}
+
+
+
+        if not len(self.kernel_size) == len(self.hidden_dim) == self.num_layers:
             raise ValueError("Inconsistent list length.")
 
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.kernel_size = kernel_size
-        self.num_layers = num_layers
         self.batch_first = batch_first
         self.bias = bias
         self.return_all_layers = return_all_layers
@@ -164,7 +160,14 @@ class ConvLSTM(nn.Module):
 
         # output
 
-        self.fc1 = nn.Linear(hidden_dim[-1], output_dim)
+        self.fc1 = nn.Linear(self.hidden_dim[-1], self.output_dim)
+
+
+        self.head = get_head_layer(self.head_layer, 
+                                   input_dim= self.hidden_dim[-1], 
+                                   output_dim= self.output_dim, 
+                                   head_activation= self.head_activation,
+                                       **self.head_kwargs)
 
     def forward(self, input_tensor, hidden_state=None):
         """
@@ -179,9 +182,9 @@ class ConvLSTM(nn.Module):
         -------
         last_state_list, layer_output
         """
-        if not self.batch_first:
+        #if not self.batch_first:
             # (t, b, c, h, w) -> (b, t, c, h, w)
-            input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
+            #input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
 
         b, it, _, h, w = input_tensor.size()
 
@@ -194,6 +197,8 @@ class ConvLSTM(nn.Module):
 
         layer_output_list = []
         last_state_list = []
+        h_n = []
+        c_n = []
 
         seq_len = it
         cur_layer_input = input_tensor
@@ -213,16 +218,18 @@ class ConvLSTM(nn.Module):
             layer_output_list.append(layer_output)
             last_state_list.append([h, c])
 
+
         if not self.return_all_layers:
             layer_output_list = layer_output_list[-1:]  # N L C H W
-            last_state_list = last_state_list[-1:]
+            h_n, c_n = last_state_list[-1:][-1]
 
-        # FC Head
         out = torch.permute(layer_output_list[0], (0, 1, 3, 4, 2))  # N L H W Ch
 
-        out = self.fc1(torch.relu(out))  # N L H W Cout
+        head_out = self.head(torch.relu(out))  # N L H W Cout
 
-        return out, last_state_list
+        pred = {"h_n": h_n, "c_n": c_n} | head_out 
+
+        return pred
 
     def _init_hidden(self, batch_size, image_size):
         init_states = []

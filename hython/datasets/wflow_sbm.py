@@ -691,32 +691,32 @@ class Wflow2d(BaseDataset):
 
         self.downsampler = self.cfg[f"{period}_downsampler"]
 
-        self.period = slice(*cfg[f"{period}_temporal_range"])
+        self.period = period
+        self.period_range = slice(*cfg[f"{period}_temporal_range"])
 
-        file_path = f"{cfg.data_dir}/{cfg.data_file}"
+        urls = get_source_url(cfg)
 
-        self.xd = read_from_zarr(url=file_path, group="xd").sel(time=self.period)[
-            list(self.cfg.dynamic_inputs)
-        ]
+        self.scaling_static_range = self.cfg.get("scaling_static_range")
 
-        self.xs = read_from_zarr(url=file_path, group="xs")[
-            list(self.cfg.static_inputs)
-        ]
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range).isel(lat=slice(None, None, -1))
+        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
 
-        self.y = read_from_zarr(url=file_path, group="y").sel(time=self.period)[
-            list(self.cfg.target_variables)
-        ]
+        self.xd = data_dynamic[OmegaConf.to_object(cfg.dynamic_inputs)]
+        self.xs = data_static[OmegaConf.to_object(cfg.static_inputs)]
+        self.y = data_dynamic[OmegaConf.to_object(cfg.target_variables)]
 
+        
         self.shape = self.xd[self.cfg.dynamic_inputs[0]].shape
 
-        if self.cfg.mask_variables is not None:
-            self.mask = (
-                read_from_zarr(url=file_path, group="mask")
-                .mask.sel(mask_layer=self.cfg.mask_variables)
-                .any(dim="mask_layer")
-            )
-        else:
-            self.mask = None
+        if self.cfg.mask_variables is not None and self.period != "test":
+            # apply mask 
+            mask = data_static[OmegaConf.to_object(self.cfg.mask_variables)].to_array().any("variable")
+            self.mask = mask
+            #self.coords = np.argwhere(~mask.values)
+        elif self.period == "test": # no masking when period is test 
+            shape = list(self.xs.dims.values())
+            self.coords =  np.argwhere(np.ones(shape).astype(bool))
+
 
         (
             self.cbs_spatial_idxs,
@@ -763,6 +763,7 @@ class Wflow2d(BaseDataset):
 
             # Scaling
 
+
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("time", "lat", "lon")
         )
@@ -777,14 +778,50 @@ class Wflow2d(BaseDataset):
 
         if not self.scale_ontraining:
             self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
-            self.xs = self.scaler.transform(self.xs, "static_inputs")
+
             self.y = self.scaler.transform(self.y, "target_variables")
 
-        if is_train:
-            self.scaler.write("dynamic_inputs")
-            self.scaler.write("static_inputs")
-            self.scaler.write("target_variables")
+            if self.scaling_static_range is not None:
+                scaling_static_reordered = {
+                    k: self.cfg.scaling_static_range[k]
+                    for k in self.cfg.static_inputs
+                    if k in self.cfg.scaling_static_range
+                }
 
+                self.static_scale, self.static_center = self.get_scaling_parameter(
+                    scaling_static_reordered, self.cfg.static_inputs
+                )
+
+                self.xs = self.scaler.transform_custom_range(
+                    self.xs, "static_inputs", self.static_scale, self.static_center
+                )
+            else:
+                self.xs = self.scaler.transform(self.xs, "static_inputs")
+        else:
+            # these will be used in the getitem by the scaler.transform_custom_range
+            scaling_static_reordered = {
+                k: self.cfg.scaling_static_range[k]
+                for k in self.cfg.static_inputs
+                if k in self.cfg.scaling_static_range
+            }
+
+            self.static_scale, self.static_center = self.get_scaling_parameter(
+                scaling_static_reordered, self.cfg.static_inputs
+            )
+
+
+        if is_train: # write if train
+            if not self.scaler.use_cached: # write if not reading from cache
+                self.scaler.write("dynamic_inputs")
+                self.scaler.write("static_inputs")
+                self.scaler.write("target_variables")
+            else: # if reading from cache
+                if self.scaler.flag_stats_computed: # if stats were not found in cache
+                    self.scaler.write("dynamic_inputs")
+                    self.scaler.write("static_inputs")
+                    self.scaler.write("target_variables")
+
+        #import pdb;pdb.set_trace()
         xd_data_vars = list(self.xd.data_vars)
         self.xd = self.xd.to_stacked_array(
             new_dim="feat", sample_dims=["time", "lat", "lon"]
@@ -815,10 +852,10 @@ class Wflow2d(BaseDataset):
             {"feat": xs_data_vars}
         )
 
-        if self.cfg.persist:
-            self.xd = self.xd.compute()
-            self.y = self.y.compute()
-            self.xs = self.xs.compute()
+        if not self.cfg.data_lazy_load: # loading in memory
+            self.xd = self.xd.load()
+            self.xs = self.xs.load()
+            self.y = self.y.load()
 
         # TODO: fix this
         self.xd = self.xd.fillna(self.cfg.fill_missing)
@@ -832,6 +869,7 @@ class Wflow2d(BaseDataset):
         return list(range(len(self.cbs_mapping_idxs)))
 
     def __getitem__(self, index):
+
         cubelet_idx = list(self.cbs_mapping_idxs.keys())[index]
 
         time_slice = self.cbs_mapping_idxs[cubelet_idx]["time"]
@@ -846,40 +884,14 @@ class Wflow2d(BaseDataset):
         xd = torch.tensor(xd)
         y = torch.tensor(y)
 
-        if self.xs is not None:
-            xs = self.xs[:, lat_slice, lon_slice].values  # C H W
-            xs = torch.tensor(xs)
-        else:
-            xs = None
+        xs = self.xs[:, lat_slice, lon_slice].values  # C H W
+        xs = torch.tensor(xs)
 
-        if self.lstm_1d:
-            # Super slow when persist == False
-            # If True means that the xsize and ysize is equal to 1
+        if self.cfg.static_to_dynamic:
+            xs = xs.unsqueeze(0).repeat(xd.size(0), 1, 1, 1)
 
-            # xd = xd.flatten(2,3) # L C H W => L C N
-            xd = xd.squeeze()  # L C H W, but H W is size 1,1 => L C
-            # xd = torch.permute(xd, (2, 0, 1)) # N L C, , but N = 1
-            # xd = x.squeeze(0)
+        return {"xd": xd, "xs": xs, "y": y}
 
-            # y = y.flatten(2,3) # L C H W => L C N
-            y = y.squeeze()  # L C H W, but H W is size 1,1 => L C
-            # y = torch.permute(y, (2, 0, 1)) # N L C, but N = 1
-            # y = y.squeeze(0)
-            if self.xs is not None:
-                xs = xs.squeeze()  # C H W => C N
-
-        if self.xs is not None:
-            if self.static_to_dynamic:
-                if self.lstm_1d:
-                    xs = xs.unsqueeze(0).repeat(
-                        xd.size(0),
-                        1,
-                    )
-                else:
-                    xs = xs.unsqueeze(0).repeat(xd.size(0), 1, 1, 1)
-            return xd, xs, y
-        else:
-            return xd, torch.tensor([]), y
 
 
 class Wflow2dCal(BaseDataset):
