@@ -101,10 +101,7 @@ class ConvLSTMCell(nn.Module):
 class ConvLSTM(BaseModel):
     def __init__(
         self,
-        cfg,
-        batch_first: bool = False,
-        bias: bool = True,
-        return_all_layers: bool = False
+        cfg
     ):
         """
 
@@ -112,13 +109,6 @@ class ConvLSTM(BaseModel):
         ----------
         cfg: config,
             Configuration file
-        batch_first : bool, optional
-            Decide whether the batch dimension should be first or second, by default False
-        bias : bool, optional
-            Add bias, by default True
-        return_all_layers : bool, optional
-            Whether returning all the stacked convolutional layers or only the last one, by default False
-
         """
         super(ConvLSTM, self).__init__()
 
@@ -139,9 +129,8 @@ class ConvLSTM(BaseModel):
         if not len(self.kernel_size) == len(self.hidden_dim) == self.num_layers:
             raise ValueError("Inconsistent list length.")
 
-        self.batch_first = batch_first
-        self.bias = bias
-        self.return_all_layers = return_all_layers
+        self.bias = cfg.convlstm_bias 
+        self.return_all_layers = cfg.convlstm_return_all_layers
 
         cell_list = []
         for i in range(0, self.num_layers):
@@ -182,9 +171,7 @@ class ConvLSTM(BaseModel):
         -------
         last_state_list, layer_output
         """
-        #if not self.batch_first:
-            # (t, b, c, h, w) -> (b, t, c, h, w)
-            #input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
+
 
         b, it, _, h, w = input_tensor.size()
 

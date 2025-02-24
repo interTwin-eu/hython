@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 from omegaconf import OmegaConf
 from hython.io import read_from_zarr
 from hython.preprocessor import reshape
+from hython.config import Config
 
 from hython.utils import (
     compute_cubelet_spatial_idxs,
@@ -44,6 +45,25 @@ class BaseDataset(Dataset):
                 center.append(0)
 
         return np.array(scale), np.array(center)
+
+    def to_list(self, x):
+        """Handle omegaconf object"""
+        #if len(x) > 1:
+        return [i for i in x]
+
+
+    def validate_config(self, cfg):
+        if isinstance(cfg, Config):
+            c = cfg
+        elif isinstance(cfg, dict):
+            c = OmegaConf.create(cfg)
+        elif isinstance(cfg, str):
+            c = OmegaConf.load(cfg)
+        else:
+            c = cfg
+        return c
+
+    # def get_variable(self, cfg, variable)
 
 
 from .wflow_sbm import *

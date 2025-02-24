@@ -5,10 +5,11 @@ import torch
 import yaml
 from pathlib import Path
 from copy import deepcopy
-from typing import Union, Dict
+from typing import Union, Dict, Any
 from omegaconf import DictConfig, OmegaConf
 from dask.array import expand_dims, nanmean, nanstd, nanmin, nanmax
 from hython.utils import generate_run_folder
+from hython.config import Config
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,7 +22,9 @@ class Scaler:
         is_train: bool = True,
         use_cached: bool = False,
     ):
-        if isinstance(cfg, dict):
+        if isinstance(cfg, Config):
+            self.cfg = cfg
+        elif isinstance(cfg, dict):
             self.cfg = OmegaConf.create(cfg)
         elif isinstance(cfg, str):
             self.cfg = OmegaConf.load(cfg)

@@ -8,7 +8,8 @@ class WflowSBM(BaseDataset):
     ):
         self.scale_ontraining = scale_ontraining
         self.scaler = scaler
-        self.cfg = cfg
+
+        self.cfg = self.validate_config(cfg)
 
         self.downsampler = self.cfg[f"{period}_downsampler"]
 
@@ -21,11 +22,12 @@ class WflowSBM(BaseDataset):
 
         data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range).isel(lat=slice(None, None, -1))
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
+        
+        self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
+        self.xs = data_static[self.to_list(cfg.static_inputs)]
+        self.y = data_dynamic[self.to_list(cfg.target_variables)]
 
-        self.xd = data_dynamic[OmegaConf.to_object(cfg.dynamic_inputs)]
-        self.xs = data_static[OmegaConf.to_object(cfg.static_inputs)]
-        self.y = data_dynamic[OmegaConf.to_object(cfg.target_variables)]
-
+        
         if not self.cfg.data_lazy_load: # loading in memory
             self.xd = self.xd.load()
             self.xs = self.xs.load()
@@ -33,7 +35,7 @@ class WflowSBM(BaseDataset):
 
         if self.cfg.mask_variables is not None and self.period != "test":
             # apply mask 
-            mask = data_static[OmegaConf.to_object(self.cfg.mask_variables)].to_array().any("variable")
+            mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
             self.mask = mask
             self.coords = np.argwhere(~mask.values)
         elif self.period == "test": # no masking when period is test 
@@ -195,7 +197,8 @@ class WflowSBMCal(BaseDataset):
     def __init__(self, cfg, scaler, is_train=True, period="train"):
         super().__init__()
 
-        self.cfg = cfg
+        self.cfg = self.validate_config(cfg)
+
         self.scaler = scaler
 
         self.downsampler = self.cfg[f"{period}_downsampler"]
@@ -211,31 +214,32 @@ class WflowSBMCal(BaseDataset):
         data_target = read_from_zarr(url=urls["target_variables"], chunks="auto").sel(time=self.period_range)
         
         # select 
-        self.xs =  data_static[OmegaConf.to_object(cfg.static_inputs)]
-        self.xd = data_dynamic[OmegaConf.to_object(cfg.dynamic_inputs)]
-        self.y = data_target[OmegaConf.to_object(cfg.target_variables)]
+        
+        self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
+        self.xs = data_static[self.to_list(cfg.static_inputs)]
+        self.y = data_target[self.to_list(cfg.target_variables)]
 
         # TODO: ensure they are all float32
 
         # head_layer mask
         head_mask = read_from_zarr(url=urls["mask_variables"], chunks="auto")
-        self.head_mask = head_mask[OmegaConf.to_object(self.cfg.mask_variables)].to_array().any("variable")
-        
+        self.head_mask = head_mask[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
+
         # target mask, observation
         if urls.get("target_variables_mask", None):
             target_mask = read_from_zarr(url=urls["target_variables_mask"], chunks="auto").sel(time=self.period_range)
-            sel_target_mask = OmegaConf.to_object(self.cfg.target_variables_mask)[0] if isinstance(OmegaConf.to_object(self.cfg.target_variables_mask), list) else OmegaConf.to_object(self.cfg.target_variables_mask)
+            sel_target_mask = self.to_list(self.cfg.target_variables_mask)[0] if isinstance(self.to_list(self.cfg.target_variables_mask), list) else self.to_list(self.cfg.target_variables_mask)
             self.target_mask = target_mask[sel_target_mask]
             self.target_mask = self.target_mask.resample({"time":"1D"}).max().astype(bool)
             self.target_mask = self.target_mask.isnull().sum("time") > self.cfg.min_sample_target     
         else:
-            self.target_mask = self.y.isnull().all("time")[OmegaConf.to_object(cfg.target_variables)[0]] #> self.cfg.min_sample_target   
+            self.target_mask = self.y.isnull().all("time")[self.to_list(cfg.target_variables)[0]] #> self.cfg.min_sample_target   
 
         # static mask, predictors
         if urls.get("static_inputs_mask", None):
-            self.static_mask = read_from_zarr(url=urls["static_inputs_mask"], chunks="auto")[OmegaConf.to_object(self.cfg.static_inputs_mask)[0]]
+            self.static_mask = read_from_zarr(url=urls["static_inputs_mask"], chunks="auto")[self.to_list(self.cfg.static_inputs_mask)[0]]
         else:
-            self.static_mask = self.xs[OmegaConf.to_object(self.cfg.static_inputs)].to_array().any("variable")
+            self.static_mask = self.xs[self.to_list(self.cfg.static_inputs)].to_array().any("variable")
         
         # combine masks
         self.mask = self.target_mask | self.head_mask | self.static_mask
@@ -379,16 +383,16 @@ class WflowSBMCube(BaseDataset):
         data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range).isel(lat=slice(None, None, -1))
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
 
-        self.xd = data_dynamic[OmegaConf.to_object(cfg.dynamic_inputs)]
-        self.xs = data_static[OmegaConf.to_object(cfg.static_inputs)]
-        self.y = data_dynamic[OmegaConf.to_object(cfg.target_variables)]
+        self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)]
+        self.xs = data_static[self.to_list(cfg.static_inputs)]
+        self.y = data_dynamic[self.to_list(cfg.target_variables)]
 
         
         self.shape = self.xd[self.cfg.dynamic_inputs[0]].shape
 
         if self.cfg.mask_variables is not None and self.period != "test":
             # apply mask 
-            mask = data_static[OmegaConf.to_object(self.cfg.mask_variables)].to_array().any("variable")
+            mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
             self.mask = mask
             #self.coords = np.argwhere(~mask.values)
         elif self.period == "test": # no masking when period is test 

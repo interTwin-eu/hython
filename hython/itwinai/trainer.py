@@ -115,11 +115,11 @@ class RNNDistributedTrainer(TorchTrainer):
 
     def init_hython_trainer(self) -> None:
         self.config.loss_fn = instantiate(
-            OmegaConf.create({"loss_fn": self.config.loss_fn})
+            {"loss_fn": self.config.loss_fn}
         )["loss_fn"]
 
         self.config.metric_fn = instantiate(
-            OmegaConf.create({"metric_fn": self.config.metric_fn})
+            {"metric_fn": self.config.metric_fn}
         )["metric_fn"]
 
         self.model_api = ModelLogAPI(self.config)
@@ -130,14 +130,15 @@ class RNNDistributedTrainer(TorchTrainer):
             self.model_logger = self.model_api.get_model_logger("model")
             
             self.model = self.model_class(
-                hidden_size=self.config.hidden_size,
-                dynamic_input_size=len(self.config.dynamic_inputs),
-                static_input_size=len(self.config.static_inputs),
-                output_size=len(self.config.target_variables),
-                dropout=self.config.dropout,
-                head_layer=self.config.model_head_layer,
-                head_activation=self.config.model_head_activation,
-                head_kwargs= self.config.model_head_kwargs if self.config.model_head_kwargs is not None else {}   
+                self.config
+                # hidden_size=self.config.hidden_size,
+                # dynamic_input_size=len(self.config.dynamic_inputs),
+                # static_input_size=len(self.config.static_inputs),
+                # output_size=len(self.config.target_variables),
+                # dropout=self.config.dropout,
+                # head_layer=self.config.model_head_layer,
+                # head_activation=self.config.model_head_activation,
+                # head_kwargs= self.config.model_head_kwargs if self.config.model_head_kwargs is not None else {}   
             )
             self.hython_trainer = RNNTrainer(self.config)
 
@@ -151,14 +152,7 @@ class RNNDistributedTrainer(TorchTrainer):
                 surrogate = self.model_api.load_model("head")
             else:
                 surrogate = get_hython_model(self.config.model_head)(
-                    hidden_size=self.config.model_head_hidden_size,
-                    dynamic_input_size=len(self.config.dynamic_inputs),
-                    static_input_size=len(self.config.head_model_inputs),
-                    output_size=len(self.config.target_variables),
-                    dropout=self.config.model_head_dropout,
-                    head_layer=self.config.model_head_layer,
-                    head_activation=self.config.model_head_activation,
-                    head_kwargs= self.config.model_head_kwargs if self.config.model_head_kwargs is not None else {}
+                    self.config
                 )
 
                 surrogate = self.model_api.load_model("head", surrogate)
