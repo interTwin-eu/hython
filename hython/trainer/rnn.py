@@ -37,7 +37,7 @@ class RNNTrainer(AbstractTrainer):
 
                 pred = model(x_concat)
 
-                output = self.predict_step(pred, steps=c)
+                output = self.predict_step(pred, steps=self.cfg.predict_steps)
                 target = self.target_step(targets_bt, steps=self.cfg.predict_steps)
                 
                 self._concatenate_result(output, target) 
