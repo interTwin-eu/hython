@@ -44,7 +44,6 @@ class AbstractTrainer(ABC):
         if temporal_downsampling:
             if len(self.cfg.temporal_subset) > 1:
                 # use different time indices for training and validation
-
                 if opt is None:
                     # validation
                     time_range = next(iter(data_loaders[-1]))["xd"].shape[1]

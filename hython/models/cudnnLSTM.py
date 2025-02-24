@@ -8,45 +8,35 @@ from .head import get_head_layer
 class CudaLSTM(BaseModel):
     def __init__(
         self,
-        hidden_size: int = 34,
-        dynamic_input_size: int = 3,
-        static_input_size: int = 5,
-        output_size: int = 2,
-        lstm_layers: int = 1,
-        dropout: float = 0.0,
-        batch_norm: bool = False,
-    
-        head_layer: str = "regression",
-        head_activation: str = "linear",
-        head_kwargs: dict = {},
-        cfg = None,
-    ):
+        cfg):
         super(CudaLSTM, self).__init__(cfg=cfg)
 
-        self.output_size = output_size
+        self.output_size = len(cfg.target_variables)
+        self.dynamic_input_size = len(cfg.dynamic_inputs)
+        self.static_input_size = len(cfg.static_inputs)
+        self.bn_flag = cfg.lstm_batch_norm
 
-        self.bn_flag = batch_norm
-        if batch_norm:
+        if cfg.lstm_batch_norm:
             self.bn_layer = nn.BatchNorm1d(
-                dynamic_input_size + static_input_size
+                self.dynamic_input_size + self.static_input_size
             )  # expects N C T
 
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=cfg.dropout)
 
-        self.fc0 = nn.Linear(dynamic_input_size + static_input_size, hidden_size)
+        self.fc0 = nn.Linear(self.dynamic_input_size + self.static_input_size, cfg.hidden_size)
 
         self.lstm = nn.LSTM(
-            hidden_size,
-            hidden_size,
-            num_layers=lstm_layers,
+            cfg.hidden_size,
+            cfg.hidden_size,
+            num_layers=cfg.lstm_layers,
             batch_first=True,
         )
 
-        self.head = get_head_layer(head_layer, 
-                                   input_dim= hidden_size, 
-                                   output_dim= output_size, 
-                                   head_activation= head_activation,
-                                       **head_kwargs)
+        self.head = get_head_layer(cfg.model_head_layer, 
+                                   input_dim= cfg.hidden_size, 
+                                   output_dim= self.output_size, 
+                                   head_activation= cfg.model_head_activation,
+                                       **cfg.model_head_kwargs)
 
 
     def forward(self, x):

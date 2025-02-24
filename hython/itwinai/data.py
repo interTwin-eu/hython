@@ -1,17 +1,18 @@
-from typing import Optional, Tuple, Any
+from typing import Dict, List, Tuple
 import xarray as xr
 from itwinai.components import DataProcessor, DataSplitter, monitor_exec
 from hython.io import read_from_zarr
-from hython.datasets import get_dataset
-from hython.datasets.wflow_sbm import Wflow1d
 from hython.scaler import Scaler
+from hython.datasets import get_dataset
+from hython.datasets.wflow_sbm import WflowSBM
 from hython.sampler.downsampler import AbstractDownSampler
+from hython.config import Config
+
 
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
 from copy import deepcopy
-
 
 class RNNDatasetGetterAndPreprocessor(DataSplitter):
     def __init__(
@@ -37,8 +38,8 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         train_temporal_range: list[str] = ["", ""],
         valid_temporal_range: list[str] = ["", ""],
         cal_temporal_range: list[str] = ["", ""],
-        train_downsampler: dict = None,
-        valid_downsampler: dict = None,
+        train_downsampler: AbstractDownSampler | None = None,
+        valid_downsampler: AbstractDownSampler | None = None,
         cal_downsampler: dict = None,
         # == calibration ==
         # data_dynamic_inputs: str = None,
@@ -51,22 +52,23 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
     ) -> None:
         self.save_parameters(**self.locals2params(locals()))
 
-        self.cfg = deepcopy(self.locals2params(locals()))
-
-        self.cfg = instantiate(OmegaConf.create(self.cfg))
 
     @monitor_exec
-    def execute(self) -> Tuple[Wflow1d, Wflow1d, None]:
+    def execute(self) -> Tuple[WflowSBM, WflowSBM, None]:
+       
+        cfg = Config() 
 
-        scaler = Scaler(self.cfg)
-        
+        for i in self.parameters: setattr(cfg, i, self.parameters[i])
+
+        scaler = Scaler(cfg, cfg.scaling_use_cached)
+
         period = "train"
         istrain = True
-        if "cal" in self.cfg.hython_trainer:
+        if "cal" in cfg.hython_trainer:
             period = "cal" 
         
-        train_dataset = get_dataset(self.cfg.dataset)(self.cfg, scaler, istrain, period)
+        train_dataset = get_dataset(cfg.dataset)(cfg, scaler, istrain, period)
 
-        val_dataset = get_dataset(self.cfg.dataset)(self.cfg, scaler, False, "valid")
+        val_dataset = get_dataset(cfg.dataset)(cfg, scaler, False, "valid")
         
         return train_dataset, val_dataset, None

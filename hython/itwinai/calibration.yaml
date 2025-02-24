@@ -42,17 +42,19 @@ mt_n_layers: 3
 
 model_head: CudaLSTM # model class
 
-model_head_dir: itwinai_vwc_actevap # directory to load the surrogate model, relative to work_dir.
+model_head_dir: lstm_vwc # directory to load the surrogate model, relative to work_dir.
 
 model_head_file: model.pt
 
 model_head_hidden_size: 136
 
 model_head_dropout: 0.4
+model_lstm_layers: 1
+model_lstm_batch_norm: False
 
 model_head_layer: regression # distr_normal
 model_head_activation: linear
-model_head_kwargs: null
+model_head_kwargs: {}
   #hidden_dim:  32
   #n_layers: 2
 
@@ -107,10 +109,7 @@ cal_downsampler: #None
   frac_time: 0.05
   frac_space: 0.01
 
-
-
 test_downsampler: null
-
 downsampling_temporal_dynamic: True
 temporal_downsampling: null
 
@@ -195,147 +194,141 @@ model_logger:
     # "/home/iferrario/dev/notebooks/config/lstm_v2.yaml"
     # /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc/model.pt
   Hybrid:
-     logger: mlflow #local
+     logger: local
      model_component: model # the main model
      model_name: ${model}
      model_uri: "models:/${model_head}/latest"
      log: False
      load: False
   CudaLSTM:
-      logger: mlflow #local #mlflow # local
+      logger: local #mlflow # local
       model_component: head
       model_name: ${model_head}
-      model_uri: "models:/${model_head}/latest" # <---- mlflow
-      #model_uri: "/home/iferrario/dev/hython/hython/itwinai/training.yaml" # <-- local
+      #model_uri: "models:/${model_head}/latest" # <---- mlflow
+      model_uri: "/home/iferrario/dev/hython/hython/itwinai/training.yaml" # <-- local
       log: False
       load: True
   TransferNN:
-      logger: mlflow #local #mlflow # local
+      logger: local #mlflow # local
       model_component: transfernn
       model_name: ${model_transfer}  # for saving the model
-      model_uri: "models:/${model_transfer}/latest" # <---- mlflow
-      #model_uri: ${work_dir}/${experiment_name}_${experiment_run}/${model_transfer}.pt  # <-- local
+      #model_uri: "models:/${model_transfer}/latest" # <---- mlflow
+      model_uri: ${work_dir}/${experiment_name}_${experiment_run}/${model_transfer}.pt  # <-- local
       log: True
       load: False
 
 
 # == Pipeline == 
 
-pipeline:
-  class_path: itwinai.pipeline.Pipeline
-  init_args:
-    steps:
-      - class_path: data.RNNDatasetGetterAndPreprocessor
-        init_args:
-          hython_trainer: ${hython_trainer}
-          dynamic_inputs: ${dynamic_inputs}
-          static_inputs: ${static_inputs}
-          target_variables: ${target_variables}
-          head_model_inputs: ${head_model_inputs}
+training_pipeline:
+  _target_: itwinai.pipeline.Pipeline
+  steps:
+    - _target_: data.RNNDatasetGetterAndPreprocessor
+      hython_trainer: ${hython_trainer}
+      dynamic_inputs: ${dynamic_inputs}
+      static_inputs: ${static_inputs}
+      target_variables: ${target_variables}
+      head_model_inputs: ${head_model_inputs}
 
-          mask_variables: ${mask_variables}
-          static_inputs_mask: ${static_inputs_mask}
-          
-          
-          train_temporal_range: ${train_temporal_range}
-          valid_temporal_range: ${valid_temporal_range}
-          cal_temporal_range: ${cal_temporal_range}
-          dataset: ${dataset}
-          data_lazy_load: ${data_lazy_load}
-          downsampling_temporal_dynamic: ${downsampling_temporal_dynamic}
-          data_source: ${data_source}
-          scaling_variant: ${scaling_variant}
-          scaling_use_cached: ${scaling_use_cached}
-          scaling_static_range: ${scaling_static_range}
-          experiment_name: ${experiment_name}
-          experiment_run: ${experiment_run}
-          work_dir: ${work_dir}
+      mask_variables: ${mask_variables}
+      static_inputs_mask: ${static_inputs_mask}
+      
+      
+      train_temporal_range: ${train_temporal_range}
+      valid_temporal_range: ${valid_temporal_range}
+      cal_temporal_range: ${cal_temporal_range}
+      dataset: ${dataset}
+      data_lazy_load: ${data_lazy_load}
+      downsampling_temporal_dynamic: ${downsampling_temporal_dynamic}
+      data_source: ${data_source}
+      scaling_variant: ${scaling_variant}
+      scaling_use_cached: ${scaling_use_cached}
+      scaling_static_range: ${scaling_static_range}
+      experiment_name: ${experiment_name}
+      experiment_run: ${experiment_run}
+      work_dir: ${work_dir}
 
-          train_downsampler: ${train_downsampler}
-          valid_downsampler: ${valid_downsampler}
-          cal_downsampler: ${cal_downsampler}
-          min_sample_target: ${min_sample_target}
-          seq_length: ${seq_length}
-      - class_path: trainer.RNNDistributedTrainer
-        init_args:
-          model: ${model}
-          config:
-            experiment: ${experiment_name}/${experiment_run}
+      train_downsampler: ${train_downsampler}
+      valid_downsampler: ${valid_downsampler}
+      cal_downsampler: ${cal_downsampler}
+      min_sample_target: ${min_sample_target}
+      seq_length: ${seq_length}
+    - _target_: trainer.RNNDistributedTrainer
+      model: ${model}
+      config:
+        experiment: ${experiment_name}/${experiment_run}
+        experiment_name: ${experiment_name}
+        experiment_run: ${experiment_run}
+        work_dir: ${work_dir}
+        batch_size: ${batch}
+        learning_rate: ${learning_rate}
+        num_workers_dataloader: 1
+        hython_trainer: ${hython_trainer}
+        temporal_downsampling: ${temporal_downsampling}
+        seq_length: ${seq_length}
+        target_variables: ${target_variables}
+        #distributed: ${distributed}
+        dynamic_inputs: ${dynamic_inputs}
+        static_inputs: ${static_inputs}
+
+        optimizer: ${optimizer}
+        lr_scheduler: ${lr_scheduler}
+        target_weights: ${target_weights}
+
+        # model config
+
+        model: ${model}
+        
+        model_head: ${model_head}
+
+        head_model_inputs: ${head_model_inputs}
+
+        freeze_head: ${freeze_head}
+
+        scale_head_input_parameter: ${scale_head_input_parameter} 
+
+        # > transfernn < 
+
+        model_transfer: ${model_transfer}
+
+        mt_output_dim: ${mt_output_dim}
+        mt_hidden_dim: ${mt_hidden_dim}
+        mt_n_layers: ${mt_n_layers}
+
+        # > head model < 
+        model_file_name: ${model_file_name}
+        model_head_dir: ${model_head_dir}
+
+        model_head_file: ${model_head_file}
+        hidden_size: ${model_head_hidden_size}
+        dropout: ${model_head_dropout}
+        lstm_layers: ${model_lstm_layers}
+        lstm_batch_norm: ${model_lstm_batch_norm}
+
+        model_head_layer: ${model_head_layer}
+        model_head_activation: ${model_head_activation}
+        model_head_kwargs: ${model_head_kwargs}
+        
+        loss_fn: ${loss_fn}
+        metric_fn: ${metric_fn}
+
+        gradient_clip: ${gradient_clip}
+
+        predict_steps: ${predict_steps}
+
+        # model logger
+        model_logger: ${model_logger}
+      
+      strategy: ${strategy}
+      epochs: ${epochs}
+      random_seed: ${seed}
+      logger:
+        _target_: itwinai.loggers.LoggersCollection
+        loggers:
+          - _target_: itwinai.loggers.ConsoleLogger
+            log_freq: 1
+          - _target_: itwinai.loggers.MLFlowLogger
             experiment_name: ${experiment_name}
-            experiment_run: ${experiment_run}
-            work_dir: ${work_dir}
-            batch_size: ${batch}
-            learning_rate: ${learning_rate}
-            num_workers_dataloader: 1
-            hython_trainer: ${hython_trainer}
-            temporal_downsampling: ${temporal_downsampling}
-            seq_length: ${seq_length}
-            target_variables: ${target_variables}
-            #distributed: ${distributed}
-            dynamic_inputs: ${dynamic_inputs}
-            static_inputs: ${static_inputs}
-
-            optimizer: ${optimizer}
-            lr_scheduler: ${lr_scheduler}
-            target_weights: ${target_weights}
-
-            # model config
-
-            model: ${model}
-            
-            model_head: ${model_head}
-
-            head_model_inputs: ${head_model_inputs}
-
-            freeze_head: ${freeze_head}
-
-            scale_head_input_parameter: ${scale_head_input_parameter} 
-
-            # > transfernn < 
-
-            model_transfer: ${model_transfer}
-
-            mt_output_dim: ${mt_output_dim}
-            mt_hidden_dim: ${mt_hidden_dim}
-            mt_n_layers: ${mt_n_layers}
-
-            # > head model < 
-            model_file_name: ${model_file_name}
-            model_head_dir: ${model_head_dir}
-
-            model_head_file: ${model_head_file}
-
-            model_head_hidden_size: ${model_head_hidden_size}
-
-            model_head_dropout: ${model_head_dropout}
-
-            model_head_layer: ${model_head_layer}
-            model_head_activation: ${model_head_activation}
-            model_head_kwargs: ${model_head_kwargs}
-            
-            loss_fn: ${loss_fn}
-            metric_fn: ${metric_fn}
-
-            gradient_clip: ${gradient_clip}
-
-            predict_steps: ${predict_steps}
-
-            # model logger
-            model_logger: ${model_logger}
-          
-          strategy: ${strategy}
-          epochs: ${epochs}
-          random_seed: ${seed}
-          logger:
-            class_path: itwinai.loggers.LoggersCollection
-            init_args:
-              loggers:
-                - class_path: itwinai.loggers.ConsoleLogger
-                  init_args:
-                    log_freq: 1
-                - class_path: itwinai.loggers.MLFlowLogger
-                  init_args:
-                    experiment_name: ${experiment_name}
-                    run_name: ${experiment_run}
-                    log_freq: batch
-                    savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs
+            run_name: ${experiment_run}
+            log_freq: batch
+            savedir: /home/iferrario/dev/hython/hython/itwinai/mllogs
