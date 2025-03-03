@@ -394,10 +394,8 @@ class WflowSBMCube(BaseDataset):
             # apply mask 
             mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
             self.mask = mask
-            #self.coords = np.argwhere(~mask.values)
         elif self.period == "test": # no masking when period is test 
-            shape = list(self.xs.dims.values())
-            self.coords =  np.argwhere(np.ones(shape).astype(bool))
+            self.mask = None
 
 
         (
