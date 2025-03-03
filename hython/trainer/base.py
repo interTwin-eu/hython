@@ -24,13 +24,13 @@ class AbstractTrainer(ABC):
 
         # model file
 
-        if self.cfg.model_file_name is not None:
-            self.model_path = f"{self.run_dir}/{self.cfg.model_file_name}"
-        else:
-            self.model_path = f"{self.run_dir}/model.pt"
+        # if self.cfg.model_file_name is not None:
+        #     self.model_path = f"{self.run_dir}/{self.cfg.model_file_name}"
+        # else:
+        #     self.model_path = f"{self.run_dir}/model.pt"
 
         LOGGER.info(f"Run directory: {self.run_dir}") 
-        LOGGER.info(f"Model path: {self.model_path}") 
+        #LOGGER.info(f"Model path: {self.model_path}") 
         
 
     def _set_dynamic_temporal_downsampling(self, data_loaders=None, opt=None):
