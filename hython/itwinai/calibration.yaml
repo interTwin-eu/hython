@@ -4,7 +4,7 @@ experiment_run: "run_1"
 
 # the base directory with all the runs
 # here a new directory <experiment_name>_<experiment_run> is created
-work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run 
+work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
 train_temporal_range: ["2017-01-01", "2017-12-31"]
 cal_temporal_range: ["2017-01-01", "2017-12-30"]  # calibration
@@ -16,8 +16,6 @@ seed: 10
 device: "cuda:0"
 
 # === Model ===
-
-model_file_name: model.pt # default is model.pt
 
 # > hybrid < 
 
@@ -82,7 +80,7 @@ learning_rate: 0.001
 
 batch: 256
 
-epochs: 30
+epochs: 2
 
 gradient_clip: null
 
@@ -180,26 +178,25 @@ min_sample_target: 10
 
 
 # ==== MODEL LOGGER ========
-
+#mlflow: 
+# - ``/Users/me/path/to/local/model``
+# - ``relative/path/to/local/model``
+# - ``s3://my_bucket/path/to/model``
+# - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
+# - ``models:/<model_name>/<model_version>``
+# - ``models:/<model_name>/<stage>``
+#local:
+# "/home/iferrario/dev/notebooks/config/lstm_v2.yaml"
+# /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc/model.pt
 
 model_logger:
-    #mlflow: 
-    # - ``/Users/me/path/to/local/model``
-    # - ``relative/path/to/local/model``
-    # - ``s3://my_bucket/path/to/model``
-    # - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
-    # - ``models:/<model_name>/<model_version>``
-    # - ``models:/<model_name>/<stage>``
-    #local:
-    # "/home/iferrario/dev/notebooks/config/lstm_v2.yaml"
-    # /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc/model.pt
-  Hybrid:
-     logger: local
-     model_component: model # the main model
-     model_name: ${model}
-     model_uri: "models:/${model_head}/latest"
-     log: False
-     load: False
+  # Hybrid:
+  #    logger: local
+  #    model_component: model # the main model
+  #    model_name: ${model}
+  #    model_uri: "models:/${model_head}/latest"
+  #    log: False
+  #    load: False
   CudaLSTM:
       logger: local #mlflow # local
       model_component: head
@@ -296,7 +293,7 @@ training_pipeline:
         mt_n_layers: ${mt_n_layers}
 
         # > head model < 
-        model_file_name: ${model_file_name}
+        # model_file_name: ${model_file_name}
         model_head_dir: ${model_head_dir}
 
         model_head_file: ${model_head_file}
