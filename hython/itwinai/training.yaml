@@ -14,7 +14,7 @@ device: "cuda:0"
 
 # === Model ===
 
-model_file_name: model.pt
+
 
 model: CudaLSTM
 
@@ -129,17 +129,19 @@ scaling_variant: minmax
 scaling_use_cached: True
 
 # ==== MODEL LOGGER ========
-
+#mlflow: 
+# - ``/Users/me/path/to/local/model``
+# - ``relative/path/to/local/model``
+# - ``s3://my_bucket/path/to/model``
+# - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
+# - ``models:/<model_name>/<model_version>``
+# - ``models:/<model_name>/<stage>``
+#local:
+# "/home/iferrario/dev/notebooks/config/lstm_v2.yaml"
+# /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc/model.pt
 
 # where the model is loaded/saved
 model_logger:
-    # mlflow: 
-    # - ``/Users/me/path/to/local/model``
-    # - ``relative/path/to/local/model``
-    # - ``s3://my_bucket/path/to/model``
-    # - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
-    # - ``models:/<model_name>/<model_version>``
-    # - ``models:/<model_name>/<stage>``
   CudaLSTM:
       logger: local
       model_component: model # the main model
@@ -200,7 +202,7 @@ training_pipeline:
 
         # model config
 
-        model_file_name: ${model_file_name}
+
         hidden_size: ${hidden_size}
         dropout: ${dropout}
         lstm_layers: ${lstm_layers}
