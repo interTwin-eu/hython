@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import pandas as pd
 from ray import train
-
+from copy import deepcopy
 
 from hython.sampler import SamplerBuilder
 from hython.trainer import RNNTrainer, CalTrainer
@@ -128,33 +128,31 @@ class RNNDistributedTrainer(TorchTrainer):
             
             # LOAD MODEL
             self.model_logger = self.model_api.get_model_logger("model")
-            
-            self.model = self.model_class(
-                self.config
-                # hidden_size=self.config.hidden_size,
-                # dynamic_input_size=len(self.config.dynamic_inputs),
-                # static_input_size=len(self.config.static_inputs),
-                # output_size=len(self.config.target_variables),
-                # dropout=self.config.dropout,
-                # head_layer=self.config.model_head_layer,
-                # head_activation=self.config.model_head_activation,
-                # head_kwargs= self.config.model_head_kwargs if self.config.model_head_kwargs is not None else {}   
-            )
-            self.hython_trainer = RNNTrainer(self.config)
+            self.model = self.model_class(self.config)
 
+            self.hython_trainer = RNNTrainer(self.config)
+            
         elif self.config.hython_trainer == "caltrainer":
             
             # LOAD MODEL HEAD/SURROGATE
             self.model_logger = self.model_api.get_model_logger("head")
 
-            # TODO: remove if condition, logic is  delegated to model api
+            # TODO: to remove if condition, delegate logic to model api
             if self.model_logger == "mlflow":
                 surrogate = self.model_api.load_model("head")
             else:
+                # FIXME: There is a clash in "static_inputs" semantics between training and calibration
+                # In the training the "static_inputs" are used to train the CudaLSTM model (main model - the surrogate -)
+                # In the calibration the "static_inputs" are other input features that are used to train the TransferNN model. 
+                # Hence during calibration, when loading the weights of the surrogate,
+                # I need to replace the CudaLSTM (now the head model) "static_inputs" with the correct "head_model_inputs"
+                # in order to avoid clashes with the TransferNN model inputs
+                config = deepcopy(self.config)
+                config.static_inputs = config.head_model_inputs
                 surrogate = get_hython_model(self.config.model_head)(
-                    self.config
+                    config
                 )
-
+                
                 surrogate = self.model_api.load_model("head", surrogate)
 
             transfer_nn = get_hython_model(self.config.model_transfer)(
@@ -310,7 +308,6 @@ class RNNDistributedTrainer(TorchTrainer):
             
             # MODEL LOGGING
             model_log_names = self.model_api.get_model_log_names()
-
             for module_name, model_class_name in model_log_names.items():
                 if module_name == "model": # main model
                     if self.model_logger == "mlflow":

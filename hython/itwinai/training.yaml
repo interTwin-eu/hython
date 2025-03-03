@@ -1,6 +1,6 @@
 # General configuration
 experiment_name: "training"
-experiment_run: "test"
+experiment_run: "run_1"
 
 work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
@@ -18,7 +18,7 @@ model_file_name: model.pt
 
 model: CudaLSTM
 
-hidden_size: 136
+hidden_size: 64
 dropout: 0.1
 lstm_layers: 1
 lstm_batch_norm: False
@@ -52,7 +52,7 @@ learning_rate: 0.001
 
 batch: 256
 
-epochs: 30
+epochs: 2
 
 gradient_clip: null
 
@@ -110,7 +110,6 @@ static_inputs:
   - thetaR
   - KsatVer
   - c
-  - f
 
 dynamic_inputs:
   - precip
@@ -192,7 +191,6 @@ training_pipeline:
         temporal_subset: ${temporal_subset}
         seq_length: ${seq_length}
         target_variables: ${target_variables}
-        # distributed: ${distributed}
         dynamic_inputs: ${dynamic_inputs}
         static_inputs: ${static_inputs}
 

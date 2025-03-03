@@ -1,6 +1,6 @@
 # === Experiment === 
 experiment_name: "calibration"
-experiment_run: "test"
+experiment_run: "run_1"
 
 # the base directory with all the runs
 # here a new directory <experiment_name>_<experiment_run> is created
@@ -34,7 +34,7 @@ scale_head_output: False
 model_transfer: TransferNN # model class
 
 mt_output_dim: 1
-mt_hidden_dim: 5
+mt_hidden_dim: 10
 mt_n_layers: 3
 
 
@@ -42,13 +42,12 @@ mt_n_layers: 3
 
 model_head: CudaLSTM # model class
 
-model_head_dir: lstm_vwc # directory to load the surrogate model, relative to work_dir.
+model_head_dir: training_test # directory to load the surrogate model, relative to work_dir.
 
 model_head_file: model.pt
 
-model_head_hidden_size: 136
-
-model_head_dropout: 0.4
+model_head_hidden_size: 64
+model_head_dropout: 0.1
 model_lstm_layers: 1
 model_lstm_batch_norm: False
 
@@ -110,8 +109,8 @@ cal_downsampler: #None
   frac_space: 0.01
 
 test_downsampler: null
-downsampling_temporal_dynamic: True
 temporal_downsampling: null
+downsampling_temporal_dynamic: True
 
 # === Data ===
 
@@ -131,11 +130,13 @@ data_source:
   #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
   
 
+# > Scaling < 
+
 scaling_use_cached: True
 scaling_variant: minmax
 scaling_static_range:
     thetaS: [0.25, 0.95]
-    #thetaR: [0.01, 0.25]
+    thetaR: [0.01, 0.25]
     c: [1, 20]
     KsatVer: [1, 10000]
 
@@ -145,7 +146,6 @@ head_model_inputs:
   - thetaR
   - KsatVer
   - c
-  - f
 
 
 static_inputs:
@@ -266,8 +266,8 @@ training_pipeline:
         hython_trainer: ${hython_trainer}
         temporal_downsampling: ${temporal_downsampling}
         seq_length: ${seq_length}
+        
         target_variables: ${target_variables}
-        #distributed: ${distributed}
         dynamic_inputs: ${dynamic_inputs}
         static_inputs: ${static_inputs}
 
