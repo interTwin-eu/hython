@@ -136,7 +136,11 @@ class Scaler:
         path = self.run_dir
 
         if not path.exists():
-            path.mkdir()
+            # path may be already created when running distributed
+            try: 
+                path.mkdir()
+            except FileExistsError:
+                pass
 
         # transform Dataset or DataArray to dictionary
         if isinstance(stats_dict["center"], xr.Dataset) or isinstance(
