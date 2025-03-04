@@ -55,7 +55,12 @@ def log_model(model_registry: dict, model_name, model):
         raise NotImplementedError
     if logger == "local":
         if n_device > 1:
-            torch.save(model.module.state_dict(), model_uri)
+            try: 
+                # When torch parallel saves model weights prepending "module"
+                # https://discuss.pytorch.org/t/prefix-parameter-names-in-saved-model-if-trained-by-multi-gpu/494/6
+                torch.save(model.module.state_dict(), model_uri)
+            except: # if the model is a submodule no need to remove "module"
+                torch.save(model.state_dict(), model_uri)
         else:
             torch.save(model.state_dict(), model_uri)
 
