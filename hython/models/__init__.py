@@ -7,7 +7,11 @@ from .convLSTM import ConvLSTM
 from .hybrid import Hybrid
 from .transferNN import TransferNN
 
-torch.serialization.add_safe_globals([CudaLSTM, Hybrid, ConvLSTM, TransferNN])
+try:
+    # it fails if torch < 2.4
+    torch.serialization.add_safe_globals([CudaLSTM, Hybrid, ConvLSTM, TransferNN])
+except:
+    print(f"{torch.__version__}")
 
 MODULE_MODELS = importlib.import_module("hython.models")
 
