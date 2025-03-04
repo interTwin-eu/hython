@@ -48,12 +48,16 @@ def log_model(model_registry: dict, model_name, model):
     model_uri = Path(model_config.get("model_uri"))
     
     logger = model_config.get("logger")
+
+    n_device = torch.cuda.device_count()
     
     if logger == "mlflow":
         raise NotImplementedError
     if logger == "local":
-        torch.save(model.state_dict(), model_uri)
-
+        if n_device > 1:
+            torch.save(model.module.state_dict(), model_uri)
+        else:
+            torch.save(model.state_dict(), model_uri)
 
 
 class ModelLogAPI():
