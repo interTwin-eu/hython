@@ -7,6 +7,8 @@ from .convLSTM import ConvLSTM
 from .hybrid import Hybrid
 from .transferNN import TransferNN
 
+torch.serialization.add_safe_globals([CudaLSTM, Hybrid, ConvLSTM, TransferNN])
+
 MODULE_MODELS = importlib.import_module("hython.models")
 
 def get_model_class(model_name: str):
@@ -34,7 +36,7 @@ def load_model(model_registry: dict, model_name, model = None):
             # model_uri = Path(config.work_dir) / f"{config.experiment_name}_{config.experiment_run}" / config.model_file_name
         elif ext == ".pt" or  ext == "pth":
             pass
-        model.load_state_dict(torch.load(model_uri))
+        model.load_state_dict(torch.load(model_uri, weights_only=False))
     return model
 
 def log_model(model_registry: dict, model_name, model):
