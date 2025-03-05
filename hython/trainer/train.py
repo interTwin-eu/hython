@@ -1,13 +1,13 @@
 from . import *
-
+from hython.models import ModelLogAPI
 
 def train_val(
     trainer,
     model,
     train_loader,
     val_loader,
-    epochs,
     device,
+    cfg
 ):
     loss_history = {"train": [], "val": []}
     metric_history = {f"train_{target}": [] for target in trainer.cfg.target_variables}
@@ -15,9 +15,11 @@ def train_val(
         {f"val_{target}": [] for target in trainer.cfg.target_variables}
     )
 
+    model_api = ModelLogAPI(cfg)
+
     best_loss = float("inf")
 
-    epoch_iterator = tqdm(range(epochs)) if tqdm_support else range(epochs)
+    epoch_iterator = tqdm(range(cfg.epochs)) if tqdm_support else range(cfg.epochs)
 
     trainer.init_trainer(model)
 
@@ -38,13 +40,17 @@ def train_val(
         if val_loss < best_loss:
             best_loss = val_loss
             best_model_weights = copy.deepcopy(model.state_dict())
-            trainer.save_weights(model)
-            print("Copied best model weights!")
 
         if not tqdm_support:
             print(f"Epoch: {epoch}")
         print(f"Losses - train: {train_loss.item():.6f}  val: {val_loss.item():.6f}")
 
     model.load_state_dict(best_model_weights)
+    model_log_names = model_api.get_model_log_names()
+    for module_name, model_class_name in model_log_names.items():
+        if module_name == "model": # main model
+            model_api.log_model(module_name, model)
+        else: # submodule
+            model_api.log_model(module_name, model.get_submodule(module_name))
 
     return model, loss_history, metric_history
