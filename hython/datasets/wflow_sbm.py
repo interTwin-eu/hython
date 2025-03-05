@@ -20,7 +20,7 @@ class WflowSBM(BaseDataset):
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
 
-        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range).isel(lat=slice(None, None, -1))
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range)
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
         
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
@@ -209,7 +209,7 @@ class WflowSBMCal(BaseDataset):
         urls = get_source_url(cfg)
 
         # load datasets
-        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range).isel(lat=slice(None, None, -1))
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range)
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
         data_target = read_from_zarr(url=urls["target_variables"], chunks="auto").sel(time=self.period_range)
         
