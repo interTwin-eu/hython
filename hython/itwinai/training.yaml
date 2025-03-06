@@ -4,8 +4,8 @@ experiment_run: "run_1"
 
 work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
-train_temporal_range: ["2017-01-01", "2017-12-31"]
-valid_temporal_range: ["2017-01-01", "2017-12-31"]
+train_temporal_range: ["2017-01-01", "2017-12-30"]
+valid_temporal_range: ["2017-01-01", "2017-12-30"]
 test_temporal_range: ["2017-01-01", "2017-12-31"]
 
 seed: 10 
@@ -13,8 +13,6 @@ seed: 10
 device: "cuda:0"
 
 # === Model ===
-
-
 
 model: CudaLSTM
 
@@ -95,9 +93,9 @@ dataset: WflowSBM
 
 data_source:
   file:
-    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_static.zarr
-    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
-    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
+    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/eobs_static.zarr
+    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/eobs_dynamic.zarr
+    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/eobs_dynamic.zarr
   # s3:
   #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
 
