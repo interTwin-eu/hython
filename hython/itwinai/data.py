@@ -14,7 +14,6 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         # == common ==
         hython_trainer: str,
         dataset: str,
-        downsampling_temporal_dynamic: bool,
         data_lazy_load: bool,
         scaling_variant: str,
         scaling_use_cached: bool,
@@ -31,17 +30,12 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         head_model_inputs: list[str] = None,
         train_temporal_range: list[str] = ["", ""],
         valid_temporal_range: list[str] = ["", ""],
-        cal_temporal_range: list[str] = ["", ""],
         train_downsampler: AbstractDownSampler | None = None,
         valid_downsampler: AbstractDownSampler | None = None,
-        cal_downsampler: dict = None,
+        downsampling_temporal_dynamic: bool | None = None,
         # == calibration ==
-        # data_dynamic_inputs: str = None,
-        # data_static_inputs: str = None,
-        # data_target_variables: str = None,
-        # data_target_mask: str = None,
         min_sample_target: int = None,
-        seq_length: int = None,
+        seq_length: int | None = None,
         # == training ==
     ) -> None:
         self.save_parameters(**self.locals2params(locals()))
@@ -55,13 +49,8 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         for i in self.parameters: setattr(cfg, i, self.parameters[i])
 
         scaler = Scaler(cfg, cfg.scaling_use_cached)
-
-        period = "train"
-        istrain = True
-        if "cal" in cfg.hython_trainer:
-            period = "cal" 
         
-        train_dataset = get_dataset(cfg.dataset)(cfg, scaler, istrain, period)
+        train_dataset = get_dataset(cfg.dataset)(cfg, scaler, True, "train")
 
         val_dataset = get_dataset(cfg.dataset)(cfg, scaler, False, "valid")
         

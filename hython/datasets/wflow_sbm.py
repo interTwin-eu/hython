@@ -89,11 +89,10 @@ class WflowSBM(BaseDataset):
                 }
 
                 self.static_scale, self.static_center = self.get_scaling_parameter(
-                    scaling_static_reordered, self.cfg.static_inputs
+                    scaling_static_reordered, self.cfg.static_inputs, output_type="xarray"
                 )
-
                 self.xs = self.scaler.transform_custom_range(
-                    self.xs, "static_inputs", self.static_scale, self.static_center
+                    self.xs, self.static_scale, self.static_center
                 )
             else:
                 self.xs = self.scaler.transform(self.xs, "static_inputs")
@@ -194,11 +193,11 @@ class WflowSBM(BaseDataset):
 class WflowSBMCal(BaseDataset):
     """ """
 
-    def __init__(self, cfg, scaler, is_train=True, period="train"):
+    def __init__(self, cfg, scaler, is_train=True, period="train", scale_ontraining=False):
         super().__init__()
 
         self.cfg = self.validate_config(cfg)
-
+        self.scale_ontraining = scale_ontraining
         self.scaler = scaler
 
         self.downsampler = self.cfg[f"{period}_downsampler"]
@@ -206,6 +205,8 @@ class WflowSBMCal(BaseDataset):
         self.period = period
         self.period_range = slice(*cfg[f"{period}_temporal_range"])
 
+        self.scaling_static_range = self.cfg.get("scaling_static_range")
+        
         urls = get_source_url(cfg)
 
         # load datasets
@@ -220,7 +221,6 @@ class WflowSBMCal(BaseDataset):
         self.y = data_target[self.to_list(cfg.target_variables)]
 
         # TODO: ensure they are all float32
-
         # head_layer mask
         head_mask = read_from_zarr(url=urls["mask_variables"], chunks="auto")
         self.head_mask = head_mask[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
@@ -254,34 +254,34 @@ class WflowSBMCal(BaseDataset):
         if self.period != "test":
             self.coord_cells = np.argwhere(~self.mask.values) # indices of non-zero
         elif self.period == "test":
-            # in test, keep nans
+            # during test, don't need to mask so to reconstruct original dataset shape
             self.temp = np.ones(self.mask.shape).astype(bool)
             self.coord_cells = np.argwhere(self.temp)
 
-        # Linear index, map to tuple of lat, lon coordinates
+        # Linear index, map integer sequence to tuple of (lat, lon) coordinates
         self.cell_linear_index = np.arange(0, len(self.coord_cells), 1)
 
         # Compute time index
-        if self.cfg.downsampling_temporal_dynamic or self.period == "test":
-            self.time_index = np.arange(0, len(self.xd.time.values), 1)
-        else:
-            self.time_index = np.arange((self.seq_len -1), # size to index 
-                                        len(self.xd.time.values), # not inclusive 
-                                        1)
+        #if self.cfg.downsampling_temporal_dynamic or self.period == "test":
+        self.time_index = np.arange(0, len(self.xd.time.values), 1)
+        # else:
+        #     self.time_index = np.arange((self.seq_len -1), # size to index 
+        #                                 len(self.xd.time.values), # not inclusive 
+        #                                 1)
 
         # Reduce dataset size
         if self.downsampler is not None:
             self.cell_linear_index, self.time_index = self.downsampler.sampling_idx([self.cell_linear_index, self.time_index])
 
         # Generate dataset indices 
-        if self.cfg.downsampling_temporal_dynamic:
+        #if self.cfg.downsampling_temporal_dynamic:
             # This assumes that the time index for sampling the sequences are generated at runtime.
             # The dataset returns the whole time series for each data sample
             # In this way it is possible to generate new random time indices every epoch to dynamically subsample the time domain. 
-            self.coord_samples = self.coord_cells[self.cell_linear_index]
-        else:
+        self.coord_samples = self.coord_cells[self.cell_linear_index]
+        #else:
             # Combined cell and time indices
-            self.coord_samples = list(itertools.product(*(self.coord_cells[self.cell_linear_index].tolist(), self.time_index.tolist() )))  
+        #    self.coord_samples = list(itertools.product(*(self.coord_cells[self.cell_linear_index].tolist(), self.time_index.tolist() )))  
 
         # Normalize
         self.scaler.load_or_compute(
@@ -316,50 +316,50 @@ class WflowSBMCal(BaseDataset):
 
     def __getitem__(self, index):
 
-        if self.cfg.downsampling_temporal_dynamic or self.period != "test":
+        #if self.cfg.downsampling_temporal_dynamic or self.period != "test":
 
-            idx_lat, idx_lon = self.coord_samples[index]
+        idx_lat, idx_lon = self.coord_samples[index]
 
-            ds_pixel_dynamic = self.xd.isel(lat=idx_lat, lon=idx_lon) # lat, lon, time -> time
-            ds_pixel_target = self.y.isel(lat=idx_lat, lon=idx_lon)
-            ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
+        ds_pixel_dynamic = self.xd.isel(lat=idx_lat, lon=idx_lon) # lat, lon, time -> time
+        ds_pixel_target = self.y.isel(lat=idx_lat, lon=idx_lon)
+        ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
 
-            ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-            ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+        ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+        ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
 
-            ds_pixel_static = ds_pixel_static.to_array()
+        ds_pixel_static = ds_pixel_static.to_array()
+        
+        # TODO: remove call to float
+        xd  = torch.tensor(ds_pixel_dynamic.values).float()
+        xs = torch.tensor(ds_pixel_static.values).float()
+        y = torch.tensor(ds_pixel_target.values).float()
+        # else:
+        #     idx_cell, idx_time = self.coord_samples[index]
+
+        #     idx_lat, idx_lon = idx_cell
+        #     # TODO: check
+        #     ds_pixel_dynamic = self.xd.isel(
+        #                                     lat=idx_lat, 
+        #                                     lon=idx_lon, 
+        #                                     time=slice(idx_time - (self.seq_len -1), # size seq_len to index 
+        #                                                idx_time + 1) # not inclusive
+        #                                                ) 
+
+        #     ds_pixel_target = self.y.isel(  
+        #                                     lat=idx_lat, 
+        #                                     lon=idx_lon, 
+        #                                     time=slice(idx_time - (self.seq_len - 1), idx_time + 1)) 
             
-            # TODO: remove call to float
-            xd  = torch.tensor(ds_pixel_dynamic.values).float()
-            xs = torch.tensor(ds_pixel_static.values).float()
-            y = torch.tensor(ds_pixel_target.values).float()
-        else:
-            idx_cell, idx_time = self.coord_samples[index]
-
-            idx_lat, idx_lon = idx_cell
-            # TODO: check
-            ds_pixel_dynamic = self.xd.isel(
-                                            lat=idx_lat, 
-                                            lon=idx_lon, 
-                                            time=slice(idx_time - (self.seq_len -1), # size seq_len to index 
-                                                       idx_time + 1) # not inclusive
-                                                       ) 
-
-            ds_pixel_target = self.y.isel(  
-                                            lat=idx_lat, 
-                                            lon=idx_lon, 
-                                            time=slice(idx_time - (self.seq_len - 1), idx_time + 1)) 
-            
-            ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
+        #     ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
     
-            ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-            ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
-            ds_pixel_static = ds_pixel_static.to_array()
+        #     ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+        #     ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+        #     ds_pixel_static = ds_pixel_static.to_array()
             
-            # TODO: remove call to float
-            xd  = torch.tensor(ds_pixel_dynamic.values).float()
-            xs = torch.tensor(ds_pixel_static.values).float()
-            y = torch.tensor(ds_pixel_target.values).float()
+        #     # TODO: remove call to float
+        #     xd  = torch.tensor(ds_pixel_dynamic.values).float()
+        #     xs = torch.tensor(ds_pixel_static.values).float()
+        #     y = torch.tensor(ds_pixel_target.values).float()
 
         return {"xd": xd, "xs": xs, "y": y}
 
