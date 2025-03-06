@@ -4,8 +4,8 @@ experiment_run: "run_1"
 
 work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
 
-train_temporal_range: ["2017-01-01", "2017-12-31"]
-valid_temporal_range: ["2017-01-01", "2017-12-31"]
+train_temporal_range: ["2017-01-01", "2017-12-30"]
+valid_temporal_range: ["2017-01-01", "2017-12-30"]
 test_temporal_range: ["2017-01-01", "2017-12-31"]
 
 seed: 10 
