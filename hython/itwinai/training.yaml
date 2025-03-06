@@ -14,8 +14,6 @@ device: "cuda:0"
 
 # === Model ===
 
-
-
 model: CudaLSTM
 
 hidden_size: 64
@@ -95,9 +93,9 @@ dataset: WflowSBM
 
 data_source:
   file:
-    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_static.zarr
-    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
-    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/alps2_dynamic.zarr
+    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/eobs_static.zarr
+    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/eobs_dynamic.zarr
+    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/eobs_dynamic.zarr
   # s3:
   #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
 

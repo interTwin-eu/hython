@@ -27,7 +27,7 @@ except:
 
 
 class BaseDataset(Dataset):
-    def get_scaling_parameter(self, var_toscale, var_all):
+    def get_scaling_parameter(self, var_toscale, var_all, output_type = "numpy"):
         """Project inputs to custom range. Inputs are expected to be normalized, either
         by minmax or standard scaling"""
 
@@ -43,8 +43,14 @@ class BaseDataset(Dataset):
             else:
                 scale.append(1)
                 center.append(0)
-
-        return np.array(scale), np.array(center)
+        
+        if output_type == "xarray":
+            #FIXME: temporary fix, need to refactor
+            scale = {k:([], scale[i]) for i, k in enumerate(var_toscale.keys()) }
+            center = {k:([], center[i]) for i, k in enumerate(var_toscale.keys()) }
+            return xr.Dataset(scale), xr.Dataset(center)
+        else:
+            return np.array(scale), np.array(center)
 
     def to_list(self, x):
         """Handle omegaconf object"""
