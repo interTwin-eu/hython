@@ -79,7 +79,9 @@ class Hybrid(BaseModel):
         return {"param": param} | output
 
     def rescale_output(self, data):
-
+        """ Rescale the output of the head layer. This is useful when the head layer output (e.g. surrogate output) and the calibration target
+        are in different ranges. For example, if the head layer output is soil volumetric water content and the calibration target is degree of saturation from satellite 
+        estimates. The rescale_output method applies a linear transformation to the output of the head layer to bring it to the range of the original data."""
         return data*self.scale + self.center 
     
     def rescale_input(self, param):

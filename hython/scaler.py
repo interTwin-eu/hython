@@ -71,6 +71,9 @@ class Scaler:
     def transform_custom_range(self, data, scale, center):
         return (data - center) / scale
 
+    def transform_inverse_custom_range(self, data, scale, center):
+        return (data * scale) + center
+    
     def transform_inverse(self, data, type, **kwargs):
         stats_dist = self.archive.get(type)
 
