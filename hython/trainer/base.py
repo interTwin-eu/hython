@@ -98,43 +98,36 @@ class AbstractTrainer(ABC):
             
             iypred = {}
 
+            # If valid_mask then imask is a boolean mask (N, T). Indexing
+            # the target or prediction tensors (N, T) will flatten the resulting tensor
+            # to 1-D shape (N*T)[valid_mask]
             if valid_mask is not None:
                 imask = valid_mask[..., i]
             else:
                 imask = Ellipsis
             
-            # target
             iytrue = target[..., i][imask] 
 
             if self.cfg.model_head_layer == "regression":
                 iypred["y_pred"] = prediction["y_hat"][..., i][imask]
-                n = torch.ones_like(iypred["y_pred"])
             elif self.cfg.model_head_layer == "distr_normal":
                 iypred["mu"] = prediction["mu"][..., i][imask]
                 iypred["sigma"] = prediction["sigma"][..., i][imask]
-                n = torch.ones_like(iypred["mu"])
 
-            #iypred = pred[..., i]
-            #iytrue = target[..., i]
-            # if valid_mask is not None:
-            #     n = torch.ones_like(iypred)
-            #     imask = valid_mask[..., i]
-            #     iypred = iypred[imask]
-            #     iytrue = iytrue[imask]
 
             w = target_weight[target_name]
-            # if isinstance(self.model.head, RegressionHead):
-            #     loss_tmp = self.cfg.loss_fn(iytrue, iypred)
-            # else:
+
+            # By default it computes the average loss per sample
             loss_tmp = self.cfg.loss_fn(iytrue, **iypred)
 
-            # in case there are missing observations in the batch
-            # the loss should be weighted to reduce the importance
-            # of the loss on the update of the NN weights
+            # If missing data in observation, each batch can have different number of valid samples.
+            # The average loss loose the information about the size of the valid sample
+            # Therefore, the loss is scaled by the fraction of valid samples in the batch
+            # As the greater the size of valid samples the greater the importance in updating
+            # the model parameters.
             if valid_mask is not None:
-                scaling_factor = torch.sum(imask) / torch.sum(n) # fraction valid samples per batch
-                # scale by number of valid samples in a mini-batch
-                loss_tmp =  loss_tmp * scaling_factor
+                scaling_factor = torch.sum(imask) / imask.flatten().shape[0] # fraction valid samples per batch
+                loss_tmp *=  scaling_factor
             
             loss =+ loss_tmp * w
 
@@ -273,11 +266,9 @@ class AbstractTrainer(ABC):
         
         
         model.train()
-
         # set time indices for training
         # TODO: This has effect only if the trainer overload the method (i.e. for RNN)
-        self._set_dynamic_temporal_downsampling([train_loader, val_loader])
-
+        self._set_dynamic_temporal_downsampling([train_loader, val_loader], opt=self.optimizer)
         train_loss, train_metric = self.epoch_step(
             model, train_loader, device, opt=self.optimizer
         )
@@ -285,8 +276,7 @@ class AbstractTrainer(ABC):
         model.eval()
         with torch.no_grad():
             # set time indices for validation
-            # This has effect only if the trainer overload the method (i.e. for RNN)
-            self._set_dynamic_temporal_downsampling([train_loader, val_loader])
+            self._set_dynamic_temporal_downsampling([train_loader, val_loader],opt=None)
 
             val_loss, val_metric = self.epoch_step(model, val_loader, device, opt=None)
 
