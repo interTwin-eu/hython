@@ -30,18 +30,16 @@ class CalTrainer(AbstractTrainer):
 
             self._concatenate_result(output, target, valid_mask)
 
+            # Compute loss: default returns average loss per sample
             mini_batch_loss = self._compute_batch_loss(
                 prediction=output,
                 target=target,
                 valid_mask=valid_mask,
                 target_weight=self.target_weights,
             )
-
             if self.cfg.predict_steps != 0:
                 mini_batch_loss = mini_batch_loss.mean()
-                self._backprop_loss(mini_batch_loss, opt)
-            else:
-                self._backprop_loss(mini_batch_loss, opt)
+            self._backprop_loss(mini_batch_loss, opt)
 
             # Accumulate mini-batch loss, only valid samples
             running_batch_loss += mini_batch_loss.detach()

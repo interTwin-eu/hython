@@ -15,7 +15,6 @@ class RNNTrainer(AbstractTrainer):
 
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
-        data_points = 0
 
         for data in dataloader:
             batch_temporal_loss = 0
@@ -41,7 +40,8 @@ class RNNTrainer(AbstractTrainer):
                 target = self.target_step(targets_bt, steps=self.cfg.predict_steps)
                 
                 self._concatenate_result(output, target) 
-                
+
+                # Compute loss: default returns average loss per sample
                 batch_sequence_loss = self._compute_batch_loss(
                     prediction=output,
                     target=target,
@@ -50,14 +50,14 @@ class RNNTrainer(AbstractTrainer):
                 )
 
                 self._backprop_loss(batch_sequence_loss, opt)
-
+                
                 batch_temporal_loss += batch_sequence_loss.detach()
-
-            data_points += data["xd"].size(0)
+            
+            batch_temporal_loss /= len(self.time_index)
 
             running_batch_loss += batch_temporal_loss
-
-        epoch_loss = running_batch_loss / data_points
+        
+        epoch_loss = running_batch_loss / len(dataloader)
 
         metric = self._compute_metric()
 
