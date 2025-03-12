@@ -52,7 +52,8 @@ batch: 256
 
 epochs: 2
 
-gradient_clip: null
+gradient_clip:
+  max_norm: 1.0
 
 target_weights: even # null, even, or dict
 
