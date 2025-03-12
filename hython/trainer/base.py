@@ -22,16 +22,7 @@ class AbstractTrainer(ABC):
 
         self.run_dir = generate_run_folder(self.cfg)
 
-        # model file
-
-        # if self.cfg.model_file_name is not None:
-        #     self.model_path = f"{self.run_dir}/{self.cfg.model_file_name}"
-        # else:
-        #     self.model_path = f"{self.run_dir}/model.pt"
-
-        LOGGER.info(f"Run directory: {self.run_dir}") 
-        #LOGGER.info(f"Model path: {self.model_path}") 
-        
+        LOGGER.info(f"Run directory: {self.run_dir}")         
 
     def _set_dynamic_temporal_downsampling(self, data_loaders=None, opt=None):
         """Return the temporal indices of the timeseries, it may be a subset"""
@@ -47,14 +38,23 @@ class AbstractTrainer(ABC):
                 if opt is None:
                     # validation
                     time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
-                    temporal_subset = self.cfg.temporal_subset[-1]
+                    temporal_subset_size = self.cfg.temporal_subset[-1]
+
+                    avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
+                    if avail_time > 0:
+                        choice = np.arange(0, time_range - self.cfg.seq_length, 1)
+                        self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
+                    else:
+                        self.time_index = np.arange(0, time_range - self.cfg.seq_length)
                 else:
                     time_range = next(iter(data_loaders[0]))["xd"].shape[1]
-                    temporal_subset = self.cfg.temporal_subset[0]
-
-                self.time_index = np.random.randint(
-                    0, time_range - self.cfg.seq_length, temporal_subset
-                )
+                    temporal_subset_size = self.cfg.temporal_subset[0]
+                    avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
+                    if avail_time > 0:
+                        choice = np.arange(0, time_range - self.cfg.seq_length, 1)
+                        self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
+                    else:
+                        self.time_index = np.arange(0, time_range - self.cfg.seq_length)
             else:
                 # use same time indices for training and validation, time indices are from train_loader
                 time_range = next(iter(data_loaders[0]))["xd"].shape[1]

@@ -5,13 +5,13 @@ from .utils import stack_mlps
 
 
 class TransferNN(nn.Module):
-    def __init__(self, params, input_dim, output_dim, hidden_dim, n_layers, bias=False):
+    def __init__(self, params, input_dim, output_dim, hidden_dim, n_layers, output_activation_layer = "linear", bias=False):
         super(TransferNN, self).__init__()
 
         self.params = params
         # make mlp layers
         self.mlp_dict = stack_mlps(
-            params, input_dim, output_dim, hidden_dim, n_layers, bias=False
+            params, input_dim, output_dim, hidden_dim, n_layers, output_activation_layer, bias=False
         )
 
     def forward(self, x):
