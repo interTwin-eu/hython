@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict
 import torch
 from torch import nn
 from torch.nn.modules.loss import _Loss
@@ -63,21 +63,24 @@ class ThetaReg(nn.Module):
 
 
 class RangeBoundReg(nn.Module):
-    def __init__(self, cfg) -> None:
+    def __init__(self, bounds: Dict) -> None:
         super(RangeBoundReg, self).__init__()
-        self.cfg = cfg
-        self.lb = torch.tensor(self.cfg.lb)
-        self.ub = torch.tensor(self.cfg.ub)
-        self.factor = torch.tensor(self.cfg.factor)
+        lbs = []
+        ubs = []
+        for k,v in bounds.items():
+            lbs.append(v[0]) # min
+            ubs.append(v[1]) # max
+        self.lbs = torch.tensor(lbs)
+        self.ubs = torch.tensor(ubs)
 
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         loss = 0
-        for i in range(len(inputs)):
-            lb = self.lb[i]
-            ub = self.ub[i]
-            upper_bound_loss = torch.relu(inputs[i] - ub)
-            lower_bound_loss = torch.relu(lb - inputs[i])
-            mean_loss = self.factor * (upper_bound_loss + lower_bound_loss).mean() / 2.0
+        for i in range(x.size(1)):
+            lb = self.lbs[i]
+            ub = self.ubs[i]
+            upper_bound_loss = torch.relu(x[i] - ub)
+            lower_bound_loss = torch.relu(lb - x[i])
+            mean_loss = (upper_bound_loss + lower_bound_loss).mean() / 2.0
             loss = loss + mean_loss
         return loss

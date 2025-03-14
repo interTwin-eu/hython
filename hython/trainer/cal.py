@@ -13,6 +13,13 @@ class CalTrainer(AbstractTrainer):
     def __init__(self, cfg):
         super(CalTrainer, self).__init__(cfg=cfg)
 
+    def _compute_regularization(self, param):
+        """Penalize transfernn outputs that are < 0 or > 1"""
+        if self.cfg.regularization is not None:
+            return self.cfg.regularization(param)
+        else:
+            return 0
+    
     def epoch_step(self, model, dataloader, device, opt=None):
         running_batch_loss = 0
 
@@ -37,9 +44,15 @@ class CalTrainer(AbstractTrainer):
                 valid_mask=valid_mask,
                 target_weight=self.target_weights,
             )
-            if self.cfg.predict_steps != 0:
+            
+            if self.cfg.predict_steps != 0: # not necessary as the loss is already averaged
                 mini_batch_loss = mini_batch_loss.mean()
-            self._backprop_loss(mini_batch_loss, opt)
+
+            # Add regularization 
+            reg_loss = self._compute_regularization(pred["param"])
+            loss = mini_batch_loss + reg_loss
+
+            self._backprop_loss(loss, opt)
 
             # Accumulate mini-batch loss, only valid samples
             running_batch_loss += mini_batch_loss.detach()
