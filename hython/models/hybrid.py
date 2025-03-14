@@ -51,7 +51,7 @@ class Hybrid(BaseModel):
             # transfernn
             param = self.rescale_input(param)  # output: N T C or N C
 
-        # concat to x_head, as of now add time dimension ot static params
+        # concat to x_head, same sequence of inputs of the surrogate model: concat(dynamic, static)
         x_head_concat = torch.concat(
             [
                 x_head,
