@@ -59,3 +59,36 @@ class ThetaReg(nn.Module):
         viol = F.relu(((thetaR + self.min_storage) - thetaS))
         loss = torch.sum(viol**2) / max(torch.sum(viol), 1)
         return {self.__name__: loss}
+
+
+
+class RangeBoundReg(nn.Module):
+    def __init__(self, cfg) -> None:
+        """
+        A loss function that ensures the learned paramters exist within logical physics bounds
+        :param cfg:
+        """
+        super(RangeBoundReg, self).__init__()
+        self.cfg = cfg
+        self.lb = torch.tensor(self.cfg.lb)
+        self.ub = torch.tensor(self.cfg.ub)
+        self.factor = torch.tensor(self.cfg.factor)
+
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """
+        The loss function. This determines if there are parameters outside of the
+        upper and lower bounds set in the cfg file. The loss is then averaged, and
+        reported back
+        :param inputs: parameter values
+        :return:
+        """
+        loss = 0
+        for i in range(len(inputs)):
+            lb = self.lb[i]
+            ub = self.ub[i]
+            upper_bound_loss = torch.relu(inputs[i] - ub)
+            lower_bound_loss = torch.relu(lb - inputs[i])
+            mean_loss = self.factor * (upper_bound_loss + lower_bound_loss).mean() / 2.0
+            loss = loss + mean_loss
+        return loss
