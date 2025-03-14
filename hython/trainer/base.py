@@ -79,12 +79,9 @@ class AbstractTrainer(ABC):
         else:
             raise NotImplementedError
 
-    def _set_regularization(self):
-        self.add_regularization = {}
-
-        # return a dictionary of { reg_func1: weight1, reg_func2: weight2, ...   }
-
-        # actually regularization should access any data in the trainig loop not only pred, target
+    def _compute_regularization(self):
+        """Overloaded by the specific trainer"""
+        raise NotImplementedError
 
     def _compute_batch_loss(
         self, prediction, target, valid_mask, target_weight, add_losses={}
@@ -166,9 +163,6 @@ class AbstractTrainer(ABC):
         #     w = target_weight[target_name]
         #     #loss += w * loss_sum.mean()
         #     loss += w * loss_avg
-
-
-        self._set_regularization()
 
         # compound more losses, in case dict is not empty
         #for i, (reg_func, reg_weight) in enumerate(self.add_regularization):
@@ -286,6 +280,7 @@ class AbstractTrainer(ABC):
         pass
 
     def epoch_step(self):
+        """Overloaded by the specific trainer"""
         pass
 
     def target_step(self, target, steps=1) -> torch.Tensor:
