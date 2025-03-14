@@ -129,7 +129,7 @@ class AbstractTrainer(ABC):
                 scaling_factor = torch.sum(imask) / imask.flatten().shape[0] # fraction valid samples per batch
                 loss_tmp *=  scaling_factor
             
-            loss =+ loss_tmp * w
+            loss += loss_tmp * w
 
         # TODO: this is another version that should be tested! 
         # for i, target_name in enumerate(target_weight):
