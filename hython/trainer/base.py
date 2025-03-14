@@ -97,7 +97,6 @@ class AbstractTrainer(ABC):
         for i, target_name in enumerate(target_weight):
             
             iypred = {}
-
             # If valid_mask then imask is a boolean mask (N, T). Indexing
             # the target or prediction tensors (N, T) will flatten the resulting tensor
             # to 1-D shape (N*T)[valid_mask]
@@ -105,7 +104,6 @@ class AbstractTrainer(ABC):
                 imask = valid_mask[..., i]
             else:
                 imask = Ellipsis
-            
             iytrue = target[..., i][imask] 
 
             if self.cfg.model_head_layer == "regression":
@@ -114,12 +112,11 @@ class AbstractTrainer(ABC):
                 iypred["mu"] = prediction["mu"][..., i][imask]
                 iypred["sigma"] = prediction["sigma"][..., i][imask]
 
-
             w = target_weight[target_name]
 
             # By default it computes the average loss per sample
             loss_tmp = self.cfg.loss_fn(iytrue, **iypred)
-
+            
             # If missing data in observation, each batch can have different number of valid samples.
             # The average loss loose the information about the size of the valid sample
             # Therefore, the loss is scaled by the fraction of valid samples in the batch
@@ -127,9 +124,9 @@ class AbstractTrainer(ABC):
             # the model parameters.
             if valid_mask is not None:
                 scaling_factor = torch.sum(imask) / imask.flatten().shape[0] # fraction valid samples per batch
-                loss_tmp *=  scaling_factor
-            
-            loss += loss_tmp * w
+                loss_tmp = loss_tmp * scaling_factor
+
+            loss = loss + loss_tmp * w
 
         # TODO: this is another version that should be tested! 
         # for i, target_name in enumerate(target_weight):
