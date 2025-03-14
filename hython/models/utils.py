@@ -35,7 +35,7 @@ def make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias=False, output_act
     return mlp
 
 
-def stack_mlps(params, input_dim, output_dim, hidden_dim, n_layers, output_activation_layer = "linear", bias=False):
+def stack_mlps(params, input_dim, output_dim, hidden_dim, n_layers, bias=False, output_activation_layer = "linear"):
     dct = {}
     for param in params:
         dct[param] = make_mlp(input_dim, output_dim, hidden_dim, n_layers, bias, output_activation_layer)

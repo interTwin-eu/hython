@@ -64,10 +64,6 @@ class ThetaReg(nn.Module):
 
 class RangeBoundReg(nn.Module):
     def __init__(self, cfg) -> None:
-        """
-        A loss function that ensures the learned paramters exist within logical physics bounds
-        :param cfg:
-        """
         super(RangeBoundReg, self).__init__()
         self.cfg = cfg
         self.lb = torch.tensor(self.cfg.lb)
@@ -76,13 +72,6 @@ class RangeBoundReg(nn.Module):
 
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        """
-        The loss function. This determines if there are parameters outside of the
-        upper and lower bounds set in the cfg file. The loss is then averaged, and
-        reported back
-        :param inputs: parameter values
-        :return:
-        """
         loss = 0
         for i in range(len(inputs)):
             lb = self.lb[i]
