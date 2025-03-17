@@ -324,9 +324,11 @@ def ts_compare(
             y.mean("time").plot(ax=ax_dict["C"], add_colorbar=False)
         df.plot(ax=ax_dict["C"], markersize=20, color="red")
         plt.title(f"lat, lon:  ({ ilat}, {ilon})")
+        plt.show()
         if save:
             fig = plt.gcf()
             fig.savefig(save)
+    return ax_dict
 
 
 def show_cubelet_tile(
@@ -403,3 +405,15 @@ def show_cubelet_tile(
             axs[2].set_title(title)
             plt.colorbar(p3, fraction=0.046, pad=0.04)
             axs[2].axis("off")
+
+
+
+
+def plot_distr(true: xr.DataArray, pred: xr.DataArray, bins:int=100, title = "ssm", xlabel="ssm [mm/mm]"):
+    f, ax = plt.subplots(figsize=(8,5))
+    true.plot(bins=bins, color="blue", ax=ax, label="true")
+    pred.plot(bins=bins, alpha=0.5, color="orange", ax=ax, label="pred")   
+    plt.legend()
+    plt.title(title)
+    plt.xlabel(xlabel)
+    return f, ax

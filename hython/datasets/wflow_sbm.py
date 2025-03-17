@@ -38,7 +38,8 @@ class WflowSBM(BaseDataset):
             mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
             self.mask = mask
             self.coords = np.argwhere(~mask.values)
-        elif self.period == "test": # no masking when period is test 
+        elif self.period == "test": # no masking when period is test, still compute mask
+            self.mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
             shape = list(self.xs.dims.values())
             self.coords =  np.argwhere(np.ones(shape).astype(bool))
 
