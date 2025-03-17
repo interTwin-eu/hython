@@ -197,6 +197,50 @@ def compute_nse(
 
     return value
 
+def compute_nse2(
+    y_true: xr.DataArray,
+    y_pred,
+    dim="time",
+    axis=0,
+    skipna=False,
+    sample_weight=None,
+    valid_mask=None,
+):
+    den = np.sum(((y_true - np.mean(y_pred)) ** 2))
+    num = np.sum(((y_pred - y_true) ** 2))
+
+    value = 1 - num / den
+
+    return value
+
+def compute_nse_parallel(y_true, y_pred, return_all=False):
+    if return_all:
+        nse = xr.apply_ufunc(
+            compute_nse2,
+            y_true,
+            y_pred,
+            input_core_dims=[["time"], ["time"]],
+            output_core_dims=[["kge"]],
+            output_dtypes=[float],
+            vectorize=True,
+            dask="parallelized",
+            dask_gufunc_kwargs={"output_sizes": {"kge": 4}},
+        )
+        #kge = kge.assign_coords({"kge": ["kge", "r", "alpha", "beta"]})
+    else:
+        nse = xr.apply_ufunc(
+            compute_nse,
+            y_true,
+            y_pred,
+            input_core_dims=[["time"], ["time"]],
+            #output_core_dims=[["kge"]],
+            output_dtypes=[float],
+            vectorize=True,
+            dask="parallelized",
+            #dask_gufunc_kwargs={"output_sizes": {"kge": 1}},
+        )
+        
+    return nse
 
 def compute_variance(ds, dim="time", axis=0, std=False):
     if isinstance(ds, xr.DataArray):
@@ -293,45 +337,75 @@ def compute_pearson(
 
 
 def compute_kge(y_true, y_pred, sample_weight=None, valid_mask=None, return_all=False):
-    if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)):
-        return np.array([np.nan, np.nan, np.nan, np.nan])
-
-    # r = np.corrcoef(observed, simulated)[1, 0]
-    # alpha = np.std(simulated, ddof=1) /np.std(observed, ddof=1)
-    # beta = np.mean(simulated) / np.mean(observed)
-    # kge = 1 - np.sqrt(np.power(r-1, 2) + np.power(alpha-1, 2) + np.power(beta-1, 2))
-    y_true, y_pred = keep_valid(y_true, y_pred)
-
-    m_ytrue, m_ypred = np.mean(y_true, axis=0), np.mean(y_pred, axis=0)
-    num_r = np.sum((y_true - m_ytrue) * (y_pred - m_ypred), axis=0)
-    den_r = np.sqrt(np.sum((y_true - m_ytrue) ** 2, axis=0)) * np.sqrt(
-        np.sum((y_pred - m_ypred) ** 2, axis=0)
-    )
-    r = num_r / den_r
-    beta = m_ypred / m_ytrue
-    gamma = (np.std(y_pred, axis=0) / m_ypred) / (np.std(y_true, axis=0) / m_ytrue)
-    kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (beta - 1.0) ** 2 + (gamma - 1.0) ** 2)
     if return_all:
-        ret = np.array([kge, r, gamma, beta])
+        if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)):
+            return np.array([np.nan, np.nan, np.nan, np.nan])
+    else:
+        if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)):
+            return np.array([np.nan])    
+
+    true, pred = keep_valid(y_true, y_pred)
+
+    # m_ytrue, m_ypred = np.mean(y_true, axis=0), np.mean(y_pred, axis=0)
+    # num_r = np.sum((y_true - m_ytrue) * (y_pred - m_ypred), axis=0)
+    # den_r = np.sqrt(np.sum((y_true - m_ytrue) ** 2, axis=0)) * np.sqrt(
+    #     np.sum((y_pred - m_ypred) ** 2, axis=0)
+    # )
+    # r = num_r / den_r
+    # beta = m_ypred / m_ytrue
+    # gamma = (np.std(y_pred, axis=0) / m_ypred) / (np.std(y_true, axis=0) / m_ytrue)
+    # kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (beta - 1.0) ** 2 + (gamma - 1.0) ** 2)
+
+    r = np.corrcoef(true, pred)[1, 0]
+    alpha = np.std(pred, ddof=1) / np.std(true, ddof=1)
+    beta = np.mean(pred) / np.mean(true)
+    #gamma = (np.std(y_pred, axis=0) / m_ypred) / (np.std(y_true, axis=0) / m_ytrue)
+    kge = 1 - np.sqrt(
+        np.power(r - 1, 2) + np.power(alpha - 1, 2) + np.power(beta - 1, 2)
+    )
+    if return_all:
+        ret = np.array([kge, r, alpha, beta])
     else:
         ret = kge
     return ret
 
+def compute_kge2(true, pred, sample_weight=None, valid_mask=None, return_all=False):
 
-def compute_kge_parallel(y_true, y_pred):
-    kge = xr.apply_ufunc(
-        compute_kge,
-        y_true,
-        y_pred,
-        input_core_dims=[["time"], ["time"]],
-        output_core_dims=[["kge"]],
-        output_dtypes=[float],
-        vectorize=True,
-        dask="parallelized",
-        dask_gufunc_kwargs={"output_sizes": {"kge": 4}},
+    r = np.corrcoef(true, pred)[1, 0]
+    alpha = np.std(pred, ddof=1) / np.std(true, ddof=1)
+    beta = np.mean(pred) / np.mean(true)
+    kge = 1 - np.sqrt(
+        np.power(r - 1, 2) + np.power(alpha - 1, 2) + np.power(beta - 1, 2)
     )
+    return kge
 
-    kge = kge.assign_coords({"kge": ["kge", "r", "alpha", "beta"]})
+def compute_kge_parallel(y_true, y_pred, return_all=False):
+    if return_all:
+        kge = xr.apply_ufunc(
+            compute_kge2,
+            y_true,
+            y_pred,
+            input_core_dims=[["time"], ["time"]],
+            output_core_dims=[["kge"]],
+            output_dtypes=[float],
+            vectorize=True,
+            dask="parallelized",
+            dask_gufunc_kwargs={"output_sizes": {"kge": 4}},
+        )
+        kge = kge.assign_coords({"kge": ["kge", "r", "alpha", "beta"]})
+    else:
+        kge = xr.apply_ufunc(
+            compute_kge2,
+            y_true,
+            y_pred,
+            input_core_dims=[["time"], ["time"]],
+            #output_core_dims=[["kge"]],
+            output_dtypes=[float],
+            vectorize=True,
+            dask="parallelized",
+            #dask_gufunc_kwargs={"output_sizes": {"kge": 1}},
+        )
+        
     return kge
 
 

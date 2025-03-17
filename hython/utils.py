@@ -473,3 +473,39 @@ def get_source_url(cfg):
     else:
         raise AttributeError
     return urls
+
+
+
+def create_xarray_data(
+    target,
+    coords,
+    output_shape,
+    to_dataset_dim = "variable",
+    crs = 4326,
+) -> xr.Dataset | xr.DataArray:
+    """
+    output_shape and coords should have same dimensions (i.e. lat,lon,time,...)
+    output_shape # (lat,lon,time)
+    """
+
+    if output_shape.get("variable") is None:
+        output_shape["variable"] = target.shape[-1]
+        
+    reordered_out_shape = {}
+    for v in ["lat", "lon", "time", "variable"]:
+        if output_shape.get(v):
+            reordered_out_shape[v] = output_shape[v]
+        
+    size = list(reordered_out_shape.values())
+
+    y = target.reshape(*size)
+
+    ds = xr.DataArray(y, dims=reordered_out_shape.keys(), coords=coords)
+    
+    if crs:
+        ds = ds.rio.write_crs(crs)
+        
+    if to_dataset_dim:
+        ds = ds.to_dataset(dim=to_dataset_dim)
+
+    return ds

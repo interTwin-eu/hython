@@ -63,8 +63,9 @@ class ThetaReg(nn.Module):
 
 
 class RangeBoundReg(nn.Module):
-    def __init__(self, bounds: Dict) -> None:
+    def __init__(self, bounds: Dict, factor: int = 1) -> None:
         super(RangeBoundReg, self).__init__()
+        self.factor = factor
         lbs = []
         ubs = []
         for k,v in bounds.items():
@@ -81,6 +82,6 @@ class RangeBoundReg(nn.Module):
             ub = self.ubs[i]
             upper_bound_loss = torch.relu(x[i] - ub)
             lower_bound_loss = torch.relu(lb - x[i])
-            mean_loss = (upper_bound_loss + lower_bound_loss).mean() / 2.0
+            mean_loss = self.factor * (upper_bound_loss + lower_bound_loss).mean() / 2.0
             loss = loss + mean_loss
         return loss
