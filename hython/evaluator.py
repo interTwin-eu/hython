@@ -9,6 +9,24 @@ from hython.viz import ts_compare,ts_plot, map_bias, map_kge, map_rmse, map_pear
 from hython.metrics import compute_kge_parallel, compute_bias, compute_pbias, compute_nse, compute_pearson, compute_rmse
 from typing import List
 
+def format_with_uncertainty(value, uncertainty):
+    return f"{value:.5f} ± {uncertainty:.5f}"
+
+def convert_to_uncertainty_format(df):
+    formatted_data = {}
+    columns = df.columns
+    
+    for i in range(0, len(columns), 2):
+        value_col = columns[i]
+        uncertainty_col = columns[i + 1]
+        new_col_name = value_col.replace("_std", "")
+        formatted_data[new_col_name] = [
+            format_with_uncertainty(val, unc) 
+            for val, unc in zip(df[value_col], df[uncertainty_col])
+        ]
+    
+    return pd.DataFrame(formatted_data)
+
 def predict(dataset, dataloader, model, device, target="y_hat"):
     model.eval()
 
@@ -158,13 +176,13 @@ class Evaluator:
                 elif metric == "pbias":
                     f, ax = map_bias(target[variable], pred[variable], cartopy=False, tiles=None , 
                                      percentage_bias=True, color_norm="bounded")
-                
+                ax.set_title(f"{variable}_{metric}")
                 if self.cfg.evaluator.map.write:
                     f.savefig(f"{str(self.out_dir)}/map_{variable}_{metric}.png")
         
     def distr(self, target, pred):
         for variable in self.cfg.evaluator.distr.var:  
-            f, ax = plot_distr(target[variable], pred[variable])
+            f, ax = plot_distr(target[variable], pred[variable],title=variable, xlabel=self.cfg.evaluator.var_metadata[variable].unit)
             if self.cfg.evaluator.distr.write:
                 f.savefig(f"{str(self.out_dir)}/distr_{variable}.png")
             
@@ -213,7 +231,9 @@ class Evaluator:
         df = pd.DataFrame(outd)
         if self.cfg.evaluator.global_metric.write:
             df.to_csv(f"{str(self.out_dir)}/global_metric.csv")
-        print(df.to_string())
+
+        formatted_df = convert_to_uncertainty_format(df)
+        print(formatted_df.to_string())
         return df
     
     

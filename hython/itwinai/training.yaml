@@ -150,7 +150,31 @@ model_logger:
       log: True
       load: False
 
+## ==== EVALUATION ====
 
+evaluator:
+    var_metadata:
+      vwc:
+        unit: "mm/mm"
+    dir_out: "${work_dir}/${experiment_name}_${experiment_run}/evaluate"
+    # map:
+    #   var: ["vwc"]
+    #   metric: ["bias", "pbias", "pearson", "nse"]
+    #   write: True
+    distr:
+      var: ["vwc"]
+      metric: null
+      write: True
+      kwargs: {}
+    # ts_compare:
+    #   var: ["vwc"]
+    #   metric: null
+    #   coords: [[48, 11], [45, 10]] # lat.lon 
+    #   write: False
+    # global_metric:
+    #   var: ["vwc"]
+    #   metric: ["kge", "bias", "pbias", "pearson","nse", "rmse"]
+    #   write: True
 
 # == Pipeline == 
 
