@@ -32,10 +32,10 @@ def predict(dataset, dataloader, model, device, target="y_hat"):
 
     model = model.to(device)
 
-    try:
-        n, t, _ = dataset.xd.shape
-    except:
-        n, t, _ = list(dataset.xd.dims.values())
+    # try:
+    #     n, t, _ = dataset.xd.shape
+    # except:
+    #     n, t, _ = list(dataset.xd.dims.values())
         
     arr = []
     for data in dataloader:
@@ -233,7 +233,7 @@ class Evaluator:
             df.to_csv(f"{str(self.out_dir)}/global_metric.csv")
 
         formatted_df = convert_to_uncertainty_format(df)
-        print(formatted_df.to_string())
+        print(formatted_df)
         return df
     
     

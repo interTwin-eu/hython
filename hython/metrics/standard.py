@@ -1,4 +1,6 @@
 import numpy as np
+import torch
+from torch import vmap
 import xarray as xr
 from hython.utils import keep_valid
 from typing import Dict, List
@@ -440,3 +442,85 @@ def kge_metric(y_true, y_pred, target_names):
         metrics[target] = kge
 
     return metrics
+
+
+# def spaeff_metric_torch(sim, obs, return_all = False):
+#     """
+#     Compute the SPAEF metric using PyTorch.
+
+#     Parameters:
+#     - sim: torch.Tensor, simulated  (1D or flattened 2D)
+#     - obs: torch.Tensor, observed (1D or flattened 2D)
+
+#     Returns:
+#     - spaef: float, SPAEF score
+#     - alpha: float, correlation coefficient
+#     - beta: float, coefficient of variation ratio
+#     - gamma: float, histogram intersection
+#     """
+#     # Remove NaNs
+#     mask = ~torch.isnan(sim) & ~torch.isnan(obs)
+#     sim, obs = sim[mask], obs[mask]
+
+#     # Compute correlation coefficient (alpha)
+#     alpha = torch.corrcoef(torch.stack((sim, obs)))[0, 1]
+
+#     # Compute coefficient of variation ratio (beta)
+#     beta = (torch.std(sim) / torch.mean(sim)) / (torch.std(obs) / torch.mean(obs))
+
+#     # Compute histogram intersection (gamma)
+#     bins = int(torch.sqrt(torch.tensor(len(obs), dtype=torch.float32)))
+#     hist_sim = torch.histc(sim, bins=bins, min=sim.min().item(), max=sim.max().item())
+#     hist_obs = torch.histc(obs, bins=bins, min=obs.min().item(), max=obs.max().item())
+
+#     gamma = torch.sum(torch.min(hist_sim, hist_obs)) / torch.sum(hist_obs)
+
+#     # Compute SPAEF
+#     spaef = 1 - torch.sqrt((alpha - 1) ** 2 + (beta - 1) ** 2 + (gamma - 1) ** 2)
+#     if return_all:
+#         return spaef, alpha, beta, gamma
+#     else:
+#         return spaef
+
+
+def compute_spaef(observed: torch.Tensor, simulated: torch.Tensor) -> torch.Tensor:
+    """
+    Compute the Spatial Efficiency (SPAEF) between an observed and simulated feature set.
+    :param observed: 1D torch tensor (true feature vector)
+    :param simulated: 1D torch tensor (simulated feature vector)
+    :return: SPAEF score (tensor)
+    """
+    r = torch.corrcoef(torch.stack([observed, simulated]))[0, 1]
+    alpha = torch.std(simulated) / torch.std(observed)
+    
+    hist_obs = torch.histc(observed, bins=100, min=observed.min(), max=observed.max())
+    hist_sim = torch.histc(simulated, bins=100, min=simulated.min(), max=simulated.max())
+    hist_obs /= hist_obs.sum()
+    hist_sim /= hist_sim.sum()
+    beta = torch.min(hist_obs, hist_sim).sum()
+    
+    return 1 - torch.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
+
+def aggregate_spaef_over_time(obs_series: torch.Tensor, sim_series: torch.Tensor, method: str = 'mean') -> torch.Tensor:
+    """
+    Compute the aggregated SPAEF score over a time series of feature vectors.
+    :param obs_series: 3D torch tensor (B, T, F) - observed feature vectors over time
+    :param sim_series: 3D torch tensor (B, T, F) - simulated feature vectors over time
+    :param method: Aggregation method ('mean', 'median', or 'percentile_X')
+    :return: Aggregated SPAEF score (tensor)
+    """
+    if obs_series.shape != sim_series.shape:
+        raise ValueError("Observed and simulated series must have the same shape")
+    
+    spaef_fn = vmap(vmap(compute_spaef, in_dims=(1, 1)), in_dims=(0, 0))  # Apply across time and batch
+    spaef_values = spaef_fn(obs_series, sim_series)
+    
+    if method == 'mean':
+        return torch.mean(spaef_values, dim=1)  # Aggregate over time for each batch
+    elif method == 'median':
+        return torch.median(spaef_values, dim=1).values
+    elif method.startswith('percentile_'):
+        percentile = float(method.split('_')[1])
+        return torch.quantile(spaef_values, percentile / 100, dim=1)
+    else:
+        raise ValueError("Invalid aggregation method. Choose 'mean', 'median', or 'percentile_X'")
