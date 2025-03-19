@@ -136,50 +136,13 @@ class PinballLoss(nn.Module):
 
 
 
-class SPAEFLoss(_Loss):
-    def __init__(self, return_all=False):
-        super(SPAEFLoss, self).__init__()
-        self.return_all = return_all
+# class SPAEFLoss(_Loss):
+#     def __init__(self, return_all=False):
+#         super(SPAEFLoss, self).__init__()
+#         self.return_all = return_all
 
-    def forward(self, y_true, y_pred):
+#     def forward(self, y_true, y_pred):
 
-        return spaeff_torch(y_pred, y_true, self.return_all)
+#         return spaeff_torch(y_pred, y_true, self.return_all)
 
 
-def spaeff_torch(sim, obs, return_all = False):
-    """
-    Compute the SPAEF metric using PyTorch.
-
-    Parameters:
-    - sim: torch.Tensor, simulated  (1D or flattened 2D)
-    - obs: torch.Tensor, observed (1D or flattened 2D)
-
-    Returns:
-    - spaef: float, SPAEF score
-    - alpha: float, correlation coefficient
-    - beta: float, coefficient of variation ratio
-    - gamma: float, histogram intersection
-    """
-    # Remove NaNs
-    mask = ~torch.isnan(sim) & ~torch.isnan(obs)
-    sim, obs = sim[mask], obs[mask]
-
-    # Compute correlation coefficient (alpha)
-    alpha = torch.corrcoef(torch.stack((sim, obs)))[0, 1]
-
-    # Compute coefficient of variation ratio (beta)
-    beta = (torch.std(sim) / torch.mean(sim)) / (torch.std(obs) / torch.mean(obs))
-
-    # Compute histogram intersection (gamma)
-    bins = int(torch.sqrt(torch.tensor(len(obs), dtype=torch.float32)))
-    hist_sim = torch.histc(sim, bins=bins, min=sim.min().item(), max=sim.max().item())
-    hist_obs = torch.histc(obs, bins=bins, min=obs.min().item(), max=obs.max().item())
-
-    gamma = torch.sum(torch.min(hist_sim, hist_obs)) / torch.sum(hist_obs)
-
-    # Compute SPAEF
-    spaef = 1 - torch.sqrt((alpha - 1) ** 2 + (beta - 1) ** 2 + (gamma - 1) ** 2)
-    if return_all:
-        return spaef, alpha, beta, gamma
-    else:
-        return spaef
