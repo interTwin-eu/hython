@@ -497,7 +497,11 @@ def create_xarray_data(
             reordered_out_shape[v] = output_shape[v]
         
     size = list(reordered_out_shape.values())
-
+    print(reordered_out_shape)
+    print(coords)
+    print(size)
+    print(target)
+    print(target.shape)
     y = target.reshape(*size)
 
     ds = xr.DataArray(y, dims=reordered_out_shape.keys(), coords=coords)
