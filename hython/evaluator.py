@@ -8,6 +8,8 @@ from .utils import get_temporal_steps, create_xarray_data
 from hython.viz import ts_compare,ts_plot, map_bias, map_kge, map_rmse, map_pearson, map_nse
 from hython.metrics import compute_kge_parallel, compute_bias, compute_pbias, compute_nse, compute_pearson, compute_rmse
 from typing import List
+from hython.datasets import WflowSBMCube
+from hython.models import *
 
 def format_with_uncertainty(value, uncertainty):
     return f"{value:.5f} ± {uncertainty:.5f}"
@@ -56,7 +58,8 @@ def predict(dataset, dataloader, model, device, target="y_hat"):
 
     return np.vstack(arr)
 
-def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=False):
+
+def predict_convlstm(dataset, model, seq_len, device, coords=None, target= "y_hat"):
     """_summary_
 
     Parameters
@@ -75,7 +78,7 @@ def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=Fal
         _description_, by default False
     """
     model = model.to(device)
-
+    model.eval()
     try:
         t, c, h, w   = dataset.xd.shape
     except:
@@ -83,25 +86,71 @@ def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=Fal
 
     arr = []  # loop over seq_lengh
     for i in range(0, t, seq_len):
-        xd = torch.FloatTensor(dataset.xd[i : (i + seq_len)].values[None])
-
+        
+        xd = torch.FloatTensor(dataset.xd[i : (i + seq_len)].values)
+        
         xs = (
-            torch.FloatTensor(dataset.xs.values[None])
-            .unsqueeze(1)
-            .repeat(1, xd.size(1), 1, 1, 1)
+            torch.FloatTensor(dataset.xs.values)
+            .unsqueeze(0)
+            .repeat(xd.size(0), 1, 1, 1)
         )
-
-        X = torch.concat([xd, xs], 2).to(device)
-
-        out = model(X)[0][0]  # remove batch
-        if transpose:  # -> T F H W
-            out = out.permute(0, 3, 1, 2)
+        
+        X = torch.concat([xd, xs], 1).to(device)
+        #import pdb;pdb.set_trace()
+        out = model(X.unsqueeze(0))[target][0]
 
         arr.append(out.detach().cpu().numpy())
     arr = np.vstack(arr)
     if coords is not None:
         arr = xr.DataArray(arr, coords=coords)
     return arr
+
+# def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=False):
+#     """_summary_
+
+#     Parameters
+#     ----------
+#     dataset : _type_
+#         _description_
+#     model : _type_
+#         _description_
+#     seq_len : _type_
+#         _description_
+#     device : _type_
+#         _description_
+#     coords : _type_, optional
+#         Dimensions ordered as "time","lat", "lon","feat", by default None
+#     transpose : bool, optional
+#         _description_, by default False
+#     """
+#     model = model.to(device)
+
+#     try:
+#         t, c, h, w   = dataset.xd.shape
+#     except:
+#         t, c, h, w  = list(dataset.xd.dims.values())
+
+#     arr = []  # loop over seq_lengh
+#     for i in range(0, t, seq_len):
+#         xd = torch.FloatTensor(dataset.xd[i : (i + seq_len)].values[None])
+
+#         xs = (
+#             torch.FloatTensor(dataset.xs.values[None])
+#             .unsqueeze(1)
+#             .repeat(1, xd.size(1), 1, 1, 1)
+#         )
+
+#         X = torch.concat([xd, xs], 2).to(device)
+
+#         out = model(X)[0][0]  # remove batch
+#         if transpose:  # -> T F H W
+#             out = out.permute(0, 3, 1, 2)
+
+#         arr.append(out.detach().cpu().numpy())
+#     arr = np.vstack(arr)
+#     if coords is not None:
+#         arr = xr.DataArray(arr, coords=coords)
+#     return arr
 
 REGISTERED_OUTPUT = ["map", "distr", "ts_compare", "global_metric"]
 
@@ -114,10 +163,14 @@ class Evaluator:
         if not self.out_dir.exists():
             self.out_dir.mkdir()
 
-    def predict(self, dataset, loader, model, device, target="y_hat"):
+    def predict(self, dataset, loader, model, device, target="y_hat", **kwargs):
         """ """
         # TODO: if condition to handle conv_lstm
-        return predict(dataset, loader, model, device, target=target)
+        if isinstance(model, ConvLSTM):
+            coords = kwargs.get("coords")
+            return predict_convlstm(dataset, model, self.cfg.seq_length, device, target=target, coords=coords)
+        if isinstance(model, CudaLSTM):
+            return predict(dataset, loader, model, device, target=target)
 
     def to_xarray(self, arr, coords, output_shape):
         
@@ -128,12 +181,19 @@ class Evaluator:
         
     def get_target(self, dataset):
         """get target from dataset"""
+        if isinstance(dataset, WflowSBMCube):
+            return dataset.y.to_dataset("feat")
         return dataset.y
         
-    def preprocess(self, dataset, loader, model, device, target="y_hat") -> List[xr.Dataset]:
+    def preprocess(self, dataset, loader, model, device, target="y_hat", kwargs_predict = {}) -> List[xr.Dataset]:
 
         ds_target = self.get_target(dataset)
+        #try:
         self.var_names = list(ds_target.data_vars)
+        # except:
+        #     # FIXME: this is due to WflowSBMCube which requires refactoring
+        #     self.var_names = list(ds_target.feat.values)
+        
         print("variables: ", self.var_names)
         
         # masking
@@ -143,7 +203,7 @@ class Evaluator:
         coords = xr.Coordinates({"lat":ds_target.lat, "lon":ds_target.lon, "time":ds_target.time, "variable":self.var_names})
         output_shape = {"lat":len(ds_target.lat),"lon":len(ds_target.lon),"time":len(ds_target.time), "variable":len(self.var_names)}
         
-        pred_arr = self.predict(dataset, loader, model, device, target=target)
+        pred_arr = self.predict(dataset, loader, model, device, target=target, **kwargs_predict)
         
         pred = self.to_xarray(pred_arr, coords, output_shape)
         return ds_target.where(mask), pred.where(mask)

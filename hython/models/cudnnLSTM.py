@@ -85,9 +85,9 @@ class LSTMModule(nn.Module):
         return lstm_output
 
 
-class LandSurfaceLSTM(nn.Module):
+class ModularLSTM(nn.Module):
     def __init__(self, module_dict, output_size, device=None):
-        super(LandSurfaceLSTM, self).__init__()
+        super(ModularLSTM, self).__init__()
 
         self.model_modules = nn.ModuleDict(
             {k: LSTMModule(**v) for k, v in module_dict.items()}

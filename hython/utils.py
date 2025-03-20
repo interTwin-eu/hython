@@ -271,11 +271,11 @@ def compute_cubelet_spatial_idxs(
                 # keep or not cubelets that are all nans
                 mask_cubelet = masks[yslice, xslice]
                 if missing_policy == "all":
-                    if mask_cubelet.all().item(0):
+                    if bool(mask_cubelet.all()):
                         cbs_indexes_missing.append(idx)
                         continue
                 elif missing_policy == "any":
-                    if mask_cubelet.any().item(0):
+                    if bool(mask_cubelet.any()):
                         cbs_indexes_missing.append(idx)
                         continue
                 else:
