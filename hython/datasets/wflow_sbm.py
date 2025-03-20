@@ -1,6 +1,9 @@
 """Wflow_sbm emulators"""
 from . import *
 import itertools
+import logging
+
+LOGGER = logging.getLogger(__name__)
     
 class WflowSBM(BaseDataset):
     def __init__(
@@ -83,6 +86,7 @@ class WflowSBM(BaseDataset):
             self.y = self.scaler.transform(self.y, "target_variables")
 
             if self.scaling_static_range is not None:
+                LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
                 scaling_static_reordered = {
                     k: self.cfg.scaling_static_range[k]
                     for k in self.cfg.static_inputs
@@ -396,7 +400,9 @@ class WflowSBMCube(BaseDataset):
             mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
             self.mask = mask
         elif self.period == "test": # no masking when period is test 
-            self.mask = None
+            # FIXME mask is still useful
+            mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
+            self.mask = mask
 
 
         (
@@ -463,6 +469,7 @@ class WflowSBMCube(BaseDataset):
             self.y = self.scaler.transform(self.y, "target_variables")
 
             if self.scaling_static_range is not None:
+                LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
                 scaling_static_reordered = {
                     k: self.cfg.scaling_static_range[k]
                     for k in self.cfg.static_inputs
@@ -472,9 +479,9 @@ class WflowSBMCube(BaseDataset):
                 self.static_scale, self.static_center = self.get_scaling_parameter(
                     scaling_static_reordered, self.cfg.static_inputs
                 )
-
+                
                 self.xs = self.scaler.transform_custom_range(
-                    self.xs, "static_inputs", self.static_scale, self.static_center
+                    self.xs, self.static_scale, self.static_center
                 )
             else:
                 self.xs = self.scaler.transform(self.xs, "static_inputs")

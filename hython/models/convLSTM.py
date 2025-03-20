@@ -5,7 +5,11 @@ from .head import get_head_layer
 from .base import BaseModel
 
 class ConvLSTMCell(nn.Module):
-    def __init__(self, input_dim, hidden_dim, kernel_size, bias):
+    def __init__(self, 
+                 input_dim, 
+                 hidden_dim, 
+                 kernel_size, 
+                 bias):
         """
         The ConvLSTM cell operates at each element of the sequence.
 
