@@ -97,3 +97,11 @@ class ModelLogAPI():
         return self.model_load_names
     def get_model_logger(self, model_component):
         return self.model_loggers[model_component]
+
+    def get_submodule(self, model, model_component):
+        try:
+            sub = model.get_submodule(model_component)
+        except:
+            # data parallel case
+            sub = model.module.get_submodule(model_component)
+        return sub
