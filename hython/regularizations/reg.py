@@ -81,6 +81,7 @@ class RangeBoundReg(nn.Module):
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+
         loss = 0
         for i in range(x.size(1)):
             lb = self.lbs[i]

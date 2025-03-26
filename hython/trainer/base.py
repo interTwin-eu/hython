@@ -84,10 +84,18 @@ class AbstractTrainer(ABC):
         raise NotImplementedError
 
     def _compute_batch_loss(
-        self, prediction, target, valid_mask, target_weight, add_losses={}
+        self, prediction, target, valid_mask, target_weight, calibration_var: List = None
     ) -> torch.Tensor:
 
-        
+        # if calibration training: remove non-calibration variables from target_weight
+        # so loss is not computed for them
+        # TODO: solve the fact that if a key is popped from the dict, 
+        # then the iteration indices over the dict will not be consistent 
+        # with the position of the variables in the tensors, like valid_mask, etc.
+        if calibration_var:
+            for t in target_weight:
+                if t not in calibration_var:
+                    target_weight.pop(t)    
         # Compute targets weighted loss. In case only one target, weight is 1
         # pred and target can be (N, C) or (N, T, C) depending on how the model is trained. 
         loss = 0
@@ -288,17 +296,22 @@ class AbstractTrainer(ABC):
 
         return target[:, selection]
 
-    def predict_step(self, prediction, steps=-1) -> Dict[str, torch.Tensor]:
+    def predict_step(self, prediction, steps=-1, **kwargs) -> Dict[str, torch.Tensor]:
         """Return the n steps that should be predicted"""
         selection = get_temporal_steps(steps)
 
+        subset_index = kwargs.get("subset_index")
 
         output = {}
         if self.cfg.model_head_layer == "regression":
             output["y_hat"] = prediction["y_hat"][:, selection]
+            if subset_index:
+                output["y_hat"] = output["y_hat"][..., subset_index]
         elif self.cfg.model_head_layer == "distr_normal":
             for k in prediction:
                 output[k] = prediction[k][:, selection]
+                if subset_index:
+                    output[k] = output[k][..., subset_index]
         return output
 
     def save_weights(self, model, fp=None, onnx=False):
