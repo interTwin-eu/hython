@@ -26,24 +26,24 @@ class RMSELoss(_Loss):
         super(RMSELoss, self).__init__()
         self.mseloss = nn.MSELoss()
 
-    def forward(self, y_true, y_pred):
+    def forward(self, target, y_pred):
         """
         Calculate the Root Mean Squared Error (RMSE) between two tensors.
 
         Parameters:
-        y_true (torch.Tensor): The true values.
+        target (torch.Tensor): The true values.
         y_pred (torch.Tensor): The predicted values.
-        valid_mask: A boolean mask to pre-filter the y_true and y_pred before they are used in the loss function.
+        valid_mask: A boolean mask to pre-filter the target and pred before they are used in the loss function.
 
         Shape
-        y_true: torch.Tensor of shape (N, C).
+        target: torch.Tensor of shape (N, C).
         y_pred: torch.Tensor of shape (N, C).
         valid_mask:
 
         Returns:
         torch.Tensor: The RMSE loss.
         """
-        return torch.sqrt(self.mseloss(y_true, y_pred))
+        return torch.sqrt(self.mseloss(target, y_pred))
 
 
 class MSELoss(_Loss):
@@ -59,10 +59,53 @@ class MSELoss(_Loss):
         super(MSELoss, self).__init__()
         self.mseloss = nn.MSELoss()
 
-    def forward(self, y_true, y_pred):
-        return self.mseloss(y_true, y_pred)
+    def forward(self, target, y_pred):
+        return self.mseloss(target, y_pred)
 
+class MSEWeightedModeLoss(_Loss):
+    def __init__(self, threshold=0.5, high_weight=1.0, low_weight=0.5):
+        """
+        Mean Squared Error (MSE) loss for bimodal distribution, where one mode is more important than the other.
 
+         Parameters:
+         threshold: The threshold value that separates the two modes.
+         high_weight: The weight of the high mode.
+         low_weight: The weight of the low mode.
+        """
+        super(MSEWeightedModeLoss, self).__init__()
+        self.threshold = threshold
+        self.high_weight = high_weight
+        self.low_weight = low_weight
+
+    def forward(self, target, y_pred):  
+
+        weights = torch.where(target > self.threshold, self.high_weight, self.low_weight)
+        weights = weights / torch.mean(weights)
+        loss = torch.mean(weights * (y_pred - target) ** 2)
+        return loss
+    
+class RMSEWeightedModeLoss(_Loss):
+    def __init__(self, threshold=0.5, high_weight=1.0, low_weight=0.5):
+        """
+        Root Mean Squared Error (MSE) loss for bimodal distribution, where one mode is more important than the other.
+
+         Parameters:
+         threshold: The threshold value that separates the two modes.
+         high_weight: The weight of the high mode.
+         low_weight: The weight of the low mode.
+        """
+        super(RMSEWeightedModeLoss, self).__init__()
+        self.threshold = threshold
+        self.high_weight = high_weight
+        self.low_weight = low_weight
+
+    def forward(self, target, y_pred):  
+
+        weights = torch.where(target > self.threshold, self.high_weight, self.low_weight)
+        weights = weights / torch.mean(weights)
+        loss = torch.sqrt(torch.mean(weights * (y_pred - target) ** 2))
+        return loss
+    
 class NegLLLoss(_Loss):
     def __init__(
         self
@@ -76,15 +119,15 @@ class NegLLLoss(_Loss):
 
         super(NegLLLoss, self).__init__()
 
-    def forward(self, y_true, mu, sigma):
+    def forward(self, target, mu, sigma):
         """
         Calculate the negative log-likelihood of the underlying normal distribution.
         Parameters:
-        y_true (torch.Tensor): The true values.
+        target (torch.Tensor): The true values.
         distr_mean (torch.Tensor): The predicted mean values. 
         distr_std (torch.Tensor): The predicted std values.
         Shape
-        y_true: torch.Tensor of shape (N, T).
+        target: torch.Tensor of shape (N, T).
         distr_mean: torch.Tensor of shape (N, T).
         distr_std: torch.Tensor of shape (N, T).
         (256,3) means 256 samples with 3 targets.
@@ -92,7 +135,7 @@ class NegLLLoss(_Loss):
         torch.Tensor: The NLL loss.
         """
         dist = Normal(mu, sigma)
-        total_nll_loss = -dist.log_prob(y_true).mean()
+        total_nll_loss = -dist.log_prob(target).mean()
         return total_nll_loss
     
 
@@ -114,23 +157,23 @@ class PinballLoss(nn.Module):
             raise ValueError("tau must be between 0 and 1")
         self.tau = tau
 
-    def forward(self, y_true, y_pred):
+    def forward(self, target, y_pred):
         """
         Calculate the Pinball Loss between two tensors.
 
         Parameters:
-        y_true (torch.Tensor): The true values.
+        target (torch.Tensor): The true values.
         y_pred (torch.Tensor): The predicted values.
 
         Shape:
-        y_true: torch.Tensor of shape (N, T).
+        target: torch.Tensor of shape (N, T).
         y_pred: torch.Tensor of shape (N, T).
         (256, 3) means 256 samples with 3 targets.
 
         Returns:
         torch.Tensor: The Pinball loss.
         """
-        error = y_true - y_pred
+        error = target - y_pred
         pinball_loss = torch.maximum(self.tau * error, (self.tau - 1) * error)
         return pinball_loss.mean()
 
@@ -141,8 +184,8 @@ class PinballLoss(nn.Module):
 #         super(SPAEFLoss, self).__init__()
 #         self.return_all = return_all
 
-#     def forward(self, y_true, y_pred):
+#     def forward(self, target, y_pred):
 
-#         return spaeff_torch(y_pred, y_true, self.return_all)
+#         return spaeff_torch(y_pred, target, self.return_all)
 
 

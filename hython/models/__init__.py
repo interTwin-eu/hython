@@ -6,10 +6,11 @@ from .cudnnLSTM import CudaLSTM
 from .convLSTM import ConvLSTM
 from .hybrid import Hybrid
 from .transferNN import TransferNN
+from .modularLSTM import ModularLSTM
 
 try:
     # it fails if torch < 2.4
-    torch.serialization.add_safe_globals([CudaLSTM, Hybrid, ConvLSTM, TransferNN])
+    torch.serialization.add_safe_globals([CudaLSTM, Hybrid, ConvLSTM, TransferNN, ModularLSTM])
 except:
     print(f"{torch.__version__}")
 
