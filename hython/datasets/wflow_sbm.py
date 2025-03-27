@@ -36,37 +36,44 @@ class WflowSBM(BaseDataset):
             self.xs = self.xs.load()
             self.y = self.y.load()
 
+        # == DATASET INDICES AND MASKING
+
         if self.cfg.mask_variables is not None and self.period != "test":
-            # apply mask 
-            mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
-            self.mask = mask
-            self.coords = np.argwhere(~mask.values)
-        elif self.period == "test": # no masking when period is test, still compute mask
+            # During training and validation remove cells marked as mask.
+            self.mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
+            self.coords = np.argwhere(~self.mask.values)
+        elif self.period == "test": 
+            # No masking during testing, however computing mask is still useful.
             self.mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
             shape = list(self.xs.dims.values())
             self.coords =  np.argwhere(np.ones(shape).astype(bool))
 
-        # compute cell index 
+        # Compute cell (spatial) index 
         self.cell_index = np.arange(0, len(self.coords), 1)
         
-        # compute time index
+        # Compute sequence (temporal) index
+        # Each cell has a time series of equal length, so the sequence index is the same for every cell
         if self.cfg.downsampling_temporal_dynamic or self.period == "test":
             self.time_index = np.arange(0, len(self.xd.time.values), 1)
         else:
             self.time_index = np.arange(self.seq_len, len(self.xd.time.values), 1)
         
-        # downsample indices based on rule
+        # == DOWNSAMPLING
+
+        # Downsample spatial and temporal indices based on rule
         if self.downsampler is not None:
             self.cell_index, self.time_index = self.downsampler.sampling_idx([self.cell_index, self.time_index])
 
-        # generate dataset indices 
+        # Generate dataset samples
         if self.cfg.downsampling_temporal_dynamic:
-            # This assumes that the time index for sampling the sequences are generated at runtime.
-            # In this way it is possible to generate new random time indices every epoch to dynamically subsample the time domain. 
+            # Only downsample the spatial index, the time index to downsample the sequences, is generated at runtime.
+            # Therefore the dataset samples are sequences of max time series length. 
             self.coord_samples = self.coords[self.cell_index]
         else:
-            # Combined cell and time indices
+            # The dataset samples are the combination of cell and time indices
             self.coord_samples = list(itertools.product(*(self.coords[self.cell_index].tolist(), self.time_index.tolist() )))  
+        
+        # == SCALING 
 
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("lat","lon", "time")
@@ -112,6 +119,8 @@ class WflowSBM(BaseDataset):
             self.static_scale, self.static_center = self.get_scaling_parameter(
                 scaling_static_reordered, self.cfg.static_inputs
             )
+        
+        # == WRITE SCALING STATS
 
         if is_train: # write if train
             if not self.scaler.use_cached: # write if not reading from cache
@@ -196,7 +205,8 @@ class WflowSBM(BaseDataset):
         return {"xd": xd, "xs": xs, "y": y}
 
 class WflowSBMCal(BaseDataset):
-    """ """
+    """Dataset returns sequences with length equal to calibration period
+    """
 
     def __init__(self, cfg, scaler, is_train=True, period="train", scale_ontraining=False):
         super().__init__()
@@ -230,6 +240,8 @@ class WflowSBMCal(BaseDataset):
         head_mask = read_from_zarr(url=urls["mask_variables"], chunks="auto")
         self.head_mask = head_mask[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
 
+        # == DATASET INDICES AND MASKING
+        
         # target mask, observation
         if urls.get("target_variables_mask", None):
             target_mask = read_from_zarr(url=urls["target_variables_mask"], chunks="auto").sel(time=self.period_range)

@@ -24,7 +24,7 @@ class CalTrainer(AbstractTrainer):
         # The model may predict one or many targets (N). 
         # The calibration may be performed on one to N targets.
         # Needs to subset the model output to match calibration 
-        index_tensor_pred = [self.cfg.head_target_variables.index(t) for t in self.cfg.calibration_target_variables]
+        index_tensor_pred = [self.cfg.head_output_variables.index(t) for t in self.cfg.target_variables]
         for data in dataloader:
             predictor_b = data["xs"].to(device)
             target_b = data["y"].to(device)
