@@ -5,6 +5,7 @@ import torch
 
 from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
 
+import datetime
 from typing import Any
 from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
@@ -15,12 +16,21 @@ from torch.optim import Adam
 
 
 def generate_run_folder(cfg):
-    return f"{cfg.work_dir}/{generate_experiment_id(cfg)}"
+    return f"{cfg.work_dir}/{generate_experiment_id(cfg)}/" # /{generate_timestamp()}
 
 
 def generate_experiment_id(cfg):
     return "_".join([cfg.experiment_name, cfg.experiment_run])
 
+def generate_timestamp():
+    now = datetime.datetime.now()
+    day = f"{now.day}".zfill(2)
+    month = f"{now.month}".zfill(2)
+    hour = f"{now.hour}".zfill(2)
+    minute = f"{now.minute}".zfill(2)
+    second = f"{now.second}".zfill(2)
+    timestamp = f'{day}{month}_{hour}{minute}{second}'
+    return timestamp
 
 def generate_model_name(surr_model_prefix, experiment, target_names, hidden_size, seed):
     TARGET_INITIALS = "".join([i[0].capitalize() for i in target_names])
