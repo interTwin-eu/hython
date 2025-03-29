@@ -153,7 +153,7 @@ class Scaler:
         if not path.exists():
             # path may be already created when running distributed
             try: 
-                path.mkdir()
+                path.mkdir(parents=True)
             except FileExistsError:
                 pass
 
