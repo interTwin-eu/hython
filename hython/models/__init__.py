@@ -6,10 +6,11 @@ from .cudnnLSTM import CudaLSTM
 from .convLSTM import ConvLSTM
 from .hybrid import Hybrid
 from .transferNN import TransferNN
+from .modularLSTM import ModularLSTM
 
 try:
     # it fails if torch < 2.4
-    torch.serialization.add_safe_globals([CudaLSTM, Hybrid, ConvLSTM, TransferNN])
+    torch.serialization.add_safe_globals([CudaLSTM, Hybrid, ConvLSTM, TransferNN, ModularLSTM])
 except:
     print(f"{torch.__version__}")
 
@@ -97,3 +98,11 @@ class ModelLogAPI():
         return self.model_load_names
     def get_model_logger(self, model_component):
         return self.model_loggers[model_component]
+
+    def get_submodule(self, model, model_component):
+        try:
+            sub = model.get_submodule(model_component)
+        except:
+            # data parallel case
+            sub = model.module.get_submodule(model_component)
+        return sub

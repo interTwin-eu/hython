@@ -22,16 +22,7 @@ class AbstractTrainer(ABC):
 
         self.run_dir = generate_run_folder(self.cfg)
 
-        # model file
-
-        # if self.cfg.model_file_name is not None:
-        #     self.model_path = f"{self.run_dir}/{self.cfg.model_file_name}"
-        # else:
-        #     self.model_path = f"{self.run_dir}/model.pt"
-
-        LOGGER.info(f"Run directory: {self.run_dir}") 
-        #LOGGER.info(f"Model path: {self.model_path}") 
-        
+        LOGGER.info(f"Run directory: {self.run_dir}")         
 
     def _set_dynamic_temporal_downsampling(self, data_loaders=None, opt=None):
         """Return the temporal indices of the timeseries, it may be a subset"""
@@ -47,14 +38,23 @@ class AbstractTrainer(ABC):
                 if opt is None:
                     # validation
                     time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
-                    temporal_subset = self.cfg.temporal_subset[-1]
+                    temporal_subset_size = self.cfg.temporal_subset[-1]
+
+                    avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
+                    if avail_time > 0:
+                        choice = np.arange(0, time_range - self.cfg.seq_length, 1)
+                        self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
+                    else:
+                        self.time_index = np.arange(0, time_range - self.cfg.seq_length)
                 else:
                     time_range = next(iter(data_loaders[0]))["xd"].shape[1]
-                    temporal_subset = self.cfg.temporal_subset[0]
-
-                self.time_index = np.random.randint(
-                    0, time_range - self.cfg.seq_length, temporal_subset
-                )
+                    temporal_subset_size = self.cfg.temporal_subset[0]
+                    avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
+                    if avail_time > 0:
+                        choice = np.arange(0, time_range - self.cfg.seq_length, 1)
+                        self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
+                    else:
+                        self.time_index = np.arange(0, time_range - self.cfg.seq_length)
             else:
                 # use same time indices for training and validation, time indices are from train_loader
                 time_range = next(iter(data_loaders[0]))["xd"].shape[1]
@@ -79,64 +79,59 @@ class AbstractTrainer(ABC):
         else:
             raise NotImplementedError
 
-    def _set_regularization(self):
-        self.add_regularization = {}
-
-        # return a dictionary of { reg_func1: weight1, reg_func2: weight2, ...   }
-
-        # actually regularization should access any data in the trainig loop not only pred, target
+    def _compute_regularization(self):
+        """Overloaded by the specific trainer"""
+        raise NotImplementedError
 
     def _compute_batch_loss(
-        self, prediction, target, valid_mask, target_weight, add_losses={}
+        self, prediction, target, valid_mask, target_weight, calibration_var: List = None
     ) -> torch.Tensor:
 
-        
+        # if calibration training: remove non-calibration variables from target_weight
+        # so loss is not computed for them
+        # TODO: solve the fact that if a key is popped from the dict, 
+        # then the iteration indices over the dict will not be consistent 
+        # with the position of the variables in the tensors, like valid_mask, etc.
+        if calibration_var:
+            for t in target_weight:
+                if t not in calibration_var:
+                    target_weight.pop(t)    
         # Compute targets weighted loss. In case only one target, weight is 1
         # pred and target can be (N, C) or (N, T, C) depending on how the model is trained. 
         loss = 0
         for i, target_name in enumerate(target_weight):
             
             iypred = {}
-
+            # If valid_mask then imask is a boolean mask (N, T). Indexing
+            # the target or prediction tensors (N, T) will flatten the resulting tensor
+            # to 1-D shape (N*T)[valid_mask]
             if valid_mask is not None:
                 imask = valid_mask[..., i]
             else:
                 imask = Ellipsis
-            
-            # target
             iytrue = target[..., i][imask] 
 
             if self.cfg.model_head_layer == "regression":
                 iypred["y_pred"] = prediction["y_hat"][..., i][imask]
-                n = torch.ones_like(iypred["y_pred"])
             elif self.cfg.model_head_layer == "distr_normal":
                 iypred["mu"] = prediction["mu"][..., i][imask]
                 iypred["sigma"] = prediction["sigma"][..., i][imask]
-                n = torch.ones_like(iypred["mu"])
-
-            #iypred = pred[..., i]
-            #iytrue = target[..., i]
-            # if valid_mask is not None:
-            #     n = torch.ones_like(iypred)
-            #     imask = valid_mask[..., i]
-            #     iypred = iypred[imask]
-            #     iytrue = iytrue[imask]
 
             w = target_weight[target_name]
-            # if isinstance(self.model.head, RegressionHead):
-            #     loss_tmp = self.cfg.loss_fn(iytrue, iypred)
-            # else:
-            loss_tmp = self.cfg.loss_fn(iytrue, **iypred)
 
-            # in case there are missing observations in the batch
-            # the loss should be weighted to reduce the importance
-            # of the loss on the update of the NN weights
-            if valid_mask is not None:
-                scaling_factor = torch.sum(imask) / torch.sum(n) # fraction valid samples per batch
-                # scale by number of valid samples in a mini-batch
-                loss_tmp =  loss_tmp * scaling_factor
+            # By default it computes the average loss per sample
+            loss_tmp = self.cfg.loss_fn(iytrue, **iypred)
             
-            loss =+ loss_tmp * w
+            # If missing data in observation, each batch can have different number of valid samples.
+            # The average loss loose the information about the size of the valid sample
+            # Therefore, the loss is scaled by the fraction of valid samples in the batch
+            # As the greater the size of valid samples the greater the importance in updating
+            # the model parameters.
+            if valid_mask is not None:
+                scaling_factor = torch.sum(imask) / imask.flatten().shape[0] # fraction valid samples per batch
+                loss_tmp = loss_tmp * scaling_factor
+
+            loss = loss + loss_tmp * w
 
         # TODO: this is another version that should be tested! 
         # for i, target_name in enumerate(target_weight):
@@ -176,9 +171,6 @@ class AbstractTrainer(ABC):
         #     w = target_weight[target_name]
         #     #loss += w * loss_sum.mean()
         #     loss += w * loss_avg
-
-
-        self._set_regularization()
 
         # compound more losses, in case dict is not empty
         #for i, (reg_func, reg_weight) in enumerate(self.add_regularization):
@@ -273,11 +265,9 @@ class AbstractTrainer(ABC):
         
         
         model.train()
-
         # set time indices for training
         # TODO: This has effect only if the trainer overload the method (i.e. for RNN)
-        self._set_dynamic_temporal_downsampling([train_loader, val_loader])
-
+        self._set_dynamic_temporal_downsampling([train_loader, val_loader], opt=self.optimizer)
         train_loss, train_metric = self.epoch_step(
             model, train_loader, device, opt=self.optimizer
         )
@@ -285,8 +275,7 @@ class AbstractTrainer(ABC):
         model.eval()
         with torch.no_grad():
             # set time indices for validation
-            # This has effect only if the trainer overload the method (i.e. for RNN)
-            self._set_dynamic_temporal_downsampling([train_loader, val_loader])
+            self._set_dynamic_temporal_downsampling([train_loader, val_loader],opt=None)
 
             val_loss, val_metric = self.epoch_step(model, val_loader, device, opt=None)
 
@@ -299,6 +288,7 @@ class AbstractTrainer(ABC):
         pass
 
     def epoch_step(self):
+        """Overloaded by the specific trainer"""
         pass
 
     def target_step(self, target, steps=1) -> torch.Tensor:
@@ -306,17 +296,22 @@ class AbstractTrainer(ABC):
 
         return target[:, selection]
 
-    def predict_step(self, prediction, steps=-1) -> Dict[str, torch.Tensor]:
+    def predict_step(self, prediction, steps=-1, **kwargs) -> Dict[str, torch.Tensor]:
         """Return the n steps that should be predicted"""
         selection = get_temporal_steps(steps)
 
+        subset_index = kwargs.get("subset_index")
 
         output = {}
         if self.cfg.model_head_layer == "regression":
             output["y_hat"] = prediction["y_hat"][:, selection]
+            if subset_index:
+                output["y_hat"] = output["y_hat"][..., subset_index]
         elif self.cfg.model_head_layer == "distr_normal":
             for k in prediction:
                 output[k] = prediction[k][:, selection]
+                if subset_index:
+                    output[k] = output[k][..., subset_index]
         return output
 
     def save_weights(self, model, fp=None, onnx=False):

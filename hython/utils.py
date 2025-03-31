@@ -5,6 +5,7 @@ import torch
 
 from xarray.core.coordinates import DataArrayCoordinates, DatasetCoordinates
 
+import datetime
 from typing import Any
 from numpy.typing import NDArray
 from dask.array.core import Array as DaskArray
@@ -15,12 +16,21 @@ from torch.optim import Adam
 
 
 def generate_run_folder(cfg):
-    return f"{cfg.work_dir}/{generate_experiment_id(cfg)}"
+    return f"{cfg.work_dir}/{generate_experiment_id(cfg)}/" # /{generate_timestamp()}
 
 
 def generate_experiment_id(cfg):
     return "_".join([cfg.experiment_name, cfg.experiment_run])
 
+def generate_timestamp():
+    now = datetime.datetime.now()
+    day = f"{now.day}".zfill(2)
+    month = f"{now.month}".zfill(2)
+    hour = f"{now.hour}".zfill(2)
+    minute = f"{now.minute}".zfill(2)
+    second = f"{now.second}".zfill(2)
+    timestamp = f'{day}{month}_{hour}{minute}{second}'
+    return timestamp
 
 def generate_model_name(surr_model_prefix, experiment, target_names, hidden_size, seed):
     TARGET_INITIALS = "".join([i[0].capitalize() for i in target_names])
@@ -271,11 +281,11 @@ def compute_cubelet_spatial_idxs(
                 # keep or not cubelets that are all nans
                 mask_cubelet = masks[yslice, xslice]
                 if missing_policy == "all":
-                    if mask_cubelet.all().item(0):
+                    if bool(mask_cubelet.all()):
                         cbs_indexes_missing.append(idx)
                         continue
                 elif missing_policy == "any":
-                    if mask_cubelet.any().item(0):
+                    if bool(mask_cubelet.any()):
                         cbs_indexes_missing.append(idx)
                         continue
                 else:
@@ -473,3 +483,43 @@ def get_source_url(cfg):
     else:
         raise AttributeError
     return urls
+
+
+
+def create_xarray_data(
+    target,
+    coords,
+    output_shape,
+    to_dataset_dim = "variable",
+    crs = 4326,
+) -> xr.Dataset | xr.DataArray:
+    """
+    output_shape and coords should have same dimensions (i.e. lat,lon,time,...)
+    output_shape # (lat,lon,time)
+    """
+
+    if output_shape.get("variable") is None:
+        output_shape["variable"] = target.shape[-1]
+        
+    reordered_out_shape = {}
+    for v in ["lat", "lon", "time", "variable"]:
+        if output_shape.get(v):
+            reordered_out_shape[v] = output_shape[v]
+        
+    size = list(reordered_out_shape.values())
+    print(reordered_out_shape)
+    print(coords)
+    print(size)
+    print(target)
+    print(target.shape)
+    y = target.reshape(*size)
+
+    ds = xr.DataArray(y, dims=reordered_out_shape.keys(), coords=coords)
+    
+    if crs:
+        ds = ds.rio.write_crs(crs)
+        
+    if to_dataset_dim:
+        ds = ds.to_dataset(dim=to_dataset_dim)
+
+    return ds

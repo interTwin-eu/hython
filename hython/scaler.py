@@ -66,12 +66,18 @@ class Scaler:
         stats_dist = self.archive.get(type)
 
         if stats_dist is not None:
+            if self.cfg.scaling_variant == "minmax_11":
+                return 2*( (data - stats_dist["center"]) / stats_dist["scale"]) -1
             return (data - stats_dist["center"]) / stats_dist["scale"]
 
     def transform_custom_range(self, data, scale, center):
+        if self.cfg.scaling_variant == "minmax_11":
+            return 2*( (data - center) / scale) -1
         return (data - center) / scale
 
     def transform_inverse_custom_range(self, data, scale, center):
+        if self.cfg.scaling_variant == "minmax_11":
+            return ( (data + 1)/2 * scale) + center
         return (data * scale) + center
     
     def transform_inverse(self, data, type, **kwargs):
@@ -82,11 +88,17 @@ class Scaler:
                 stats_dist_arr = {}
                 stats_dist_arr["center"] = stats_dist["center"].values
                 stats_dist_arr["scale"] = stats_dist["scale"].values
+                if self.cfg.scaling_variant == "minmax_11":
+                    return ( (data + 1)/2 * stats_dist_arr["scale"]) + stats_dist_arr["center"]
                 return (data * stats_dist_arr["scale"]) + stats_dist_arr["center"]
             elif isinstance(data, xr.Dataset):
+                if self.cfg.scaling_variant == "minmax_11":
+                    return ( (data + 1)/2 * stats_dist["scale"]) + stats_dist["center"]
                 return (data * stats_dist["scale"]) + stats_dist["center"]
             else:
                 pos = kwargs.get("var_order")
+                if self.cfg.scaling_variant == "minmax_11":
+                    return ( (data + 1)/2 * stats_dist["scale"][pos].to_array().values) + stats_dist["center"][pos].to_array().values
                 return (data * stats_dist["scale"][pos].to_array().values) + stats_dist["center"][pos].to_array().values
 
     def compute(self, data, type, axes=(0, 1)):
@@ -96,7 +108,7 @@ class Scaler:
             # workaraound for handling missing values in numpy arrays
             data = np.ma.array(data, mask=np.isnan(data))
 
-        if self.cfg.scaling_variant == "minmax":
+        if "minmax" in self.cfg.scaling_variant:
             center = data.min(axes)
             scale = data.max(axes) - center
         elif self.cfg.scaling_variant == "standard":
@@ -141,7 +153,7 @@ class Scaler:
         if not path.exists():
             # path may be already created when running distributed
             try: 
-                path.mkdir()
+                path.mkdir(parents=True)
             except FileExistsError:
                 pass
 
