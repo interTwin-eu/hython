@@ -10,9 +10,9 @@ def show_train_val_curve(
 ):
     lepochs = list(range(1, epochs + 1))
 
-    rows = len(target_variables) + len(
+    rows = len(target_variables) * len(
         metric_history[f"train_{target_variables[0]}"][0]
-    )
+    ) + 1
     figsize = (12, rows * 3)
 
     fig, axs = plt.subplots(rows, 1, figsize=figsize, sharex=True)
@@ -39,22 +39,25 @@ def show_train_val_curve(
     axs[0].legend(bbox_to_anchor=(1, 1))
 
     # metrics
+    ii = 0
     for variable in target_variables:
         metrics = metric_history[f"train_{variable}"][0].keys()
         for i, m in enumerate(metrics):
             m_train = [im[m] for im in metric_history[f"train_{variable}"]]
             m_val = [im[m] for im in metric_history[f"val_{variable}"]]
 
-            axs[i + 1].plot(
+            axs[ii + 1].plot(
                 lepochs, m_train, marker=".", linestyle="-", color="b", label="Training"
             )
-            axs[i + 1].plot(
+            axs[ii + 1].plot(
                 lepochs, m_val, marker=".", linestyle="-", color="r", label="Validation"
             )
-            axs[i + 1].set_title(variable)
-            axs[i + 1].set_ylabel(m)
-            axs[i + 1].grid(True)
-            axs[i + 1].legend(bbox_to_anchor=(1, 1))
+            axs[ii + 1].set_title(variable)
+            axs[ii + 1].set_ylabel(m)
+            axs[ii + 1].grid(True)
+            axs[ii + 1].legend(bbox_to_anchor=(1, 1))
+
+            ii += 1
 
     return fig, axs
 
@@ -324,9 +327,11 @@ def ts_compare(
             y.mean("time").plot(ax=ax_dict["C"], add_colorbar=False)
         df.plot(ax=ax_dict["C"], markersize=20, color="red")
         plt.title(f"lat, lon:  ({ ilat}, {ilon})")
+        plt.show()
         if save:
             fig = plt.gcf()
             fig.savefig(save)
+    return ax_dict
 
 
 def show_cubelet_tile(
@@ -403,3 +408,15 @@ def show_cubelet_tile(
             axs[2].set_title(title)
             plt.colorbar(p3, fraction=0.046, pad=0.04)
             axs[2].axis("off")
+
+
+
+
+def plot_distr(true: xr.DataArray, pred: xr.DataArray, bins:int=100, title = "ssm", xlabel="ssm [mm/mm]"):
+    f, ax = plt.subplots(figsize=(8,5))
+    true.plot(bins=bins, color="blue", ax=ax, label="true")
+    pred.plot(bins=bins, alpha=0.5, color="orange", ax=ax, label="pred")   
+    plt.legend()
+    plt.title(title)
+    plt.xlabel(xlabel)
+    return f, ax
