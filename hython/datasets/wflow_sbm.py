@@ -19,6 +19,8 @@ class WflowSBM(BaseDataset):
         self.period = period
         self.period_range = slice(*cfg[f"{period}_temporal_range"])
 
+        self.target_has_missing_dates = self.cfg.get("target_has_missing_dates", False)
+
         urls = get_source_url(cfg)
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
@@ -30,7 +32,10 @@ class WflowSBM(BaseDataset):
         self.xs = data_static[self.to_list(cfg.static_inputs)]
         self.y = data_dynamic[self.to_list(cfg.target_variables)]
 
-        
+        # subset dynamic inputs to the target timestep available
+        if self.target_has_missing_dates:
+            self.xd = self.xd.sel(time=self.y.time)
+
         if not self.cfg.data_lazy_load: # loading in memory
             self.xd = self.xd.load()
             self.xs = self.xs.load()
@@ -221,6 +226,8 @@ class WflowSBMCal(BaseDataset):
         self.period_range = slice(*cfg[f"{period}_temporal_range"])
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
+
+        self.target_has_missing_dates = self.cfg.get("target_has_missing_dates", False)
         
         urls = get_source_url(cfg)
 
@@ -230,11 +237,15 @@ class WflowSBMCal(BaseDataset):
         data_target = read_from_zarr(url=urls["target_variables"], chunks="auto").sel(time=self.period_range)
         
         # select 
-        
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
         self.xs = data_static[self.to_list(cfg.static_inputs)]
         self.y = data_target[self.to_list(cfg.target_variables)]
 
+        # subset dynamic inputs to the target timestep available
+        if self.target_has_missing_dates:
+            self.xd = self.xd.sel(time=self.y.time)
+
+            
         # TODO: ensure they are all float32
         # head_layer mask
         head_mask = read_from_zarr(url=urls["mask_variables"], chunks="auto")
