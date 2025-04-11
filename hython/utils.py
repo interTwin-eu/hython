@@ -518,3 +518,7 @@ def create_xarray_data(
         ds = ds.to_dataset(dim=to_dataset_dim)
 
     return ds
+
+def rescale_target(ds, r, s):
+    dsmin = ds.min("time")
+    return ((ds - dsmin)/ (ds.max("time")- dsmin)) *(s-r) + r

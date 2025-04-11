@@ -66,7 +66,7 @@ class MetricCollection(Metric):
     def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
         ret = {}
         for metric in self.metrics:
-            ret[metric.__class__.__name__] = metric(y_true, y_pred, target_names)
+            ret[metric.__class__.__name__] = metric(y_true, y_pred, target_names, valid_mask)
 
         ret2 = {}
         for itarget in target_names:
@@ -111,7 +111,7 @@ class RMSEMetric(Metric):
 class KGEMetric(Metric):
     def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
         return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(
-            compute_kge
+            compute_kge2
         )()
 
 
@@ -184,7 +184,7 @@ def compute_csi():
 
 
 def compute_nse(
-    y_true: xr.DataArray,
+    y_true,
     y_pred,
     dim="time",
     axis=0,
@@ -192,6 +192,9 @@ def compute_nse(
     sample_weight=None,
     valid_mask=None,
 ):
+    
+    y_true, y_pred = keep_valid(y_true, y_pred)
+
     den = ((y_true - y_pred.mean()) ** 2).sum()
     num = ((y_pred - y_true) ** 2).sum()
 
@@ -208,6 +211,7 @@ def compute_nse2(
     sample_weight=None,
     valid_mask=None,
 ):
+    y_true, y_pred = keep_valid(y_true, y_pred)
     den = np.sum(((y_true - np.mean(y_pred)) ** 2))
     num = np.sum(((y_pred - y_true) ** 2))
 
@@ -372,7 +376,7 @@ def compute_kge(y_true, y_pred, sample_weight=None, valid_mask=None, return_all=
     return ret
 
 def compute_kge2(true, pred, sample_weight=None, valid_mask=None, return_all=False):
-
+    true, pred = keep_valid(true, pred)
     r = np.corrcoef(true, pred)[1, 0]
     alpha = np.std(pred, ddof=1) / np.std(true, ddof=1)
     beta = np.mean(pred) / np.mean(true)

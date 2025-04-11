@@ -7,6 +7,7 @@ from omegaconf import OmegaConf
 from hython.io import read_from_zarr
 from hython.preprocessor import reshape
 from hython.config import Config
+from hython.utils import rescale_target
 
 from hython.utils import (
     compute_cubelet_spatial_idxs,
@@ -57,7 +58,9 @@ class BaseDataset(Dataset):
         #if len(x) > 1:
         return [i for i in x]
 
-
+    def rescale_target(self, ds, l, u):
+        return rescale_target(ds, l, u)
+    
     def validate_config(self, cfg):
         if isinstance(cfg, Config):
             c = cfg
