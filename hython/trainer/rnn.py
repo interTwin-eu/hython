@@ -38,7 +38,8 @@ class RNNTrainer(AbstractTrainer):
 
                 output = self.predict_step(pred, steps=self.cfg.predict_steps)
                 target = self.target_step(targets_bt, steps=self.cfg.predict_steps)
-                
+
+
                 self._concatenate_result(output, target) 
 
                 # Compute loss: default returns average loss per sample

@@ -3,6 +3,7 @@ from . import *
 import itertools
 import logging
 
+
 LOGGER = logging.getLogger(__name__)
     
 class WflowSBM(BaseDataset):
@@ -215,7 +216,6 @@ class WflowSBMCal(BaseDataset):
 
     def __init__(self, cfg, scaler, is_train=True, period="train", scale_ontraining=False):
         super().__init__()
-
         self.cfg = self.validate_config(cfg)
         self.scale_ontraining = scale_ontraining
         self.scaler = scaler
@@ -224,10 +224,9 @@ class WflowSBMCal(BaseDataset):
 
         self.period = period
         self.period_range = slice(*cfg[f"{period}_temporal_range"])
-
         self.scaling_static_range = self.cfg.get("scaling_static_range")
 
-        self.target_has_missing_dates = self.cfg.get("target_has_missing_dates", False)
+        self.target_has_missing_dates = self.cfg.get("target_has_missing_dates")
         
         urls = get_source_url(cfg)
 
@@ -242,17 +241,23 @@ class WflowSBMCal(BaseDataset):
         self.y = data_target[self.to_list(cfg.target_variables)]
 
         # subset dynamic inputs to the target timestep available
-        if self.target_has_missing_dates:
+        
+        if self.target_has_missing_dates is not None:
             self.xd = self.xd.sel(time=self.y.time)
-
             
+            
+        if cfg.scaling_rescale_target is not None:
+            lower = cfg.scaling_rescale_target["lower"]
+            upper = cfg.scaling_rescale_target["upper"]
+            par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto")[[lower,upper]]
+            self.y = self.rescale_target(self.y, par[lower], par[upper])
+
         # TODO: ensure they are all float32
         # head_layer mask
         head_mask = read_from_zarr(url=urls["mask_variables"], chunks="auto")
         self.head_mask = head_mask[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
 
         # == DATASET INDICES AND MASKING
-        
         # target mask, observation
         if urls.get("target_variables_mask", None):
             target_mask = read_from_zarr(url=urls["target_variables_mask"], chunks="auto").sel(time=self.period_range)
@@ -361,6 +366,7 @@ class WflowSBMCal(BaseDataset):
         xd  = torch.tensor(ds_pixel_dynamic.values).float()
         xs = torch.tensor(ds_pixel_static.values).float()
         y = torch.tensor(ds_pixel_target.values).float()
+
         # else:
         #     idx_cell, idx_time = self.coord_samples[index]
 

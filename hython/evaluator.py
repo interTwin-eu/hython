@@ -278,7 +278,6 @@ class Evaluator:
                     ind[metric] = compute_rmse(target[variable], pred[variable]).mean().compute().item(0)
                     ind_std[metric] = compute_rmse(target[variable], pred[variable]).std().compute().item(0)
                 elif metric == "nse":
-                    ind[metric] = compute_nse(target[variable], pred[variable]).mean().compute().item(0)
                     ind_std[metric] = compute_nse(target[variable], pred[variable]).std().compute().item(0)
                 elif metric == "pearson":
                     ind[metric] = compute_pearson(target[variable], pred[variable]).mean().compute().item(0)
