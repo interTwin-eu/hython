@@ -36,44 +36,36 @@ class WflowSBM(BaseDataset):
             self.xs = self.xs.load()
             self.y = self.y.load()
 
-        # == DATASET INDICES AND MASKING
-
         if self.cfg.mask_variables is not None and self.period != "test":
-            # During training and validation remove cells marked as mask.
-            self.mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
-            self.coords = np.argwhere(~self.mask.values)
-        elif self.period == "test": 
-            # No masking during testing, however computing mask is still useful.
-            self.mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
+            # apply mask 
+            mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
+            self.mask = mask
+            self.coords = np.argwhere(~mask.values)
+        elif self.period == "test": # no masking when period is test 
             shape = list(self.xs.dims.values())
             self.coords =  np.argwhere(np.ones(shape).astype(bool))
 
-        # Compute cell (spatial) index 
+        # compute cell index 
         self.cell_index = np.arange(0, len(self.coords), 1)
         
-        # Compute sequence (temporal) index
-        # Each cell has a time series of equal length, so the sequence index is the same for every cell
+        # compute time index
         if self.cfg.downsampling_temporal_dynamic or self.period == "test":
             self.time_index = np.arange(0, len(self.xd.time.values), 1)
         else:
             self.time_index = np.arange(self.seq_len, len(self.xd.time.values), 1)
         
-        # == DOWNSAMPLING
-
-        # Downsample spatial and temporal indices based on rule
+        # downsample indices based on rule
         if self.downsampler is not None:
             self.cell_index, self.time_index = self.downsampler.sampling_idx([self.cell_index, self.time_index])
 
-        # Generate dataset samples
+        # generate dataset indices 
         if self.cfg.downsampling_temporal_dynamic:
-            # Only downsample the spatial index, the time index to downsample the sequences, is generated at runtime.
-            # Therefore the dataset samples are sequences of max time series length. 
+            # This assumes that the time index for sampling the sequences are generated at runtime.
+            # In this way it is possible to generate new random time indices every epoch to dynamically subsample the time domain. 
             self.coord_samples = self.coords[self.cell_index]
         else:
-            # The dataset samples are the combination of cell and time indices
+            # Combined cell and time indices
             self.coord_samples = list(itertools.product(*(self.coords[self.cell_index].tolist(), self.time_index.tolist() )))  
-        
-        # == SCALING 
 
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("lat","lon", "time")
@@ -93,7 +85,6 @@ class WflowSBM(BaseDataset):
             self.y = self.scaler.transform(self.y, "target_variables")
 
             if self.scaling_static_range is not None:
-                LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
                 scaling_static_reordered = {
                     k: self.cfg.scaling_static_range[k]
                     for k in self.cfg.static_inputs
@@ -119,8 +110,6 @@ class WflowSBM(BaseDataset):
             self.static_scale, self.static_center = self.get_scaling_parameter(
                 scaling_static_reordered, self.cfg.static_inputs
             )
-        
-        # == WRITE SCALING STATS
 
         if is_train: # write if train
             if not self.scaler.use_cached: # write if not reading from cache
@@ -132,6 +121,41 @@ class WflowSBM(BaseDataset):
                     self.scaler.write("dynamic_inputs")
                     self.scaler.write("static_inputs")
                     self.scaler.write("target_variables")
+
+        # Pre-compute static data once
+        self.static_tensor = torch.tensor(self.xs.to_array().values).float()
+        
+        # Pre-compute dynamic data shapes once
+        self.dynamic_shape = self.xd[self.cfg.dynamic_inputs[0]].shape
+        self.target_shape = self.y[self.cfg.target_variables[0]].shape
+    
+
+        # Convert to tensors once during initialization
+        self.xd = self.xd.to_stacked_array(
+            new_dim="feat", sample_dims=["time", "lat", "lon"]
+        ).transpose("time", "feat", "lat", "lon").astype("float32")
+        self.y = self.y.to_stacked_array(
+            new_dim="feat", sample_dims=["time", "lat", "lon"]
+        ).transpose("time", "feat", "lat", "lon").astype("float32")
+        self.xs = self.xs.to_stacked_array(
+            new_dim="feat", sample_dims=["lat", "lon"]
+        ).transpose("feat", "lat", "lon").astype("float32")
+
+        # Pre-process once
+        if not self.cfg.data_lazy_load:  # Only if we're not doing lazy loading
+            # Convert xarray to pre-processed tensors
+            self.xd = torch.from_numpy(
+                self.xd.transpose("time", "feat", "lat", "lon").values
+            )
+            self.y = torch.from_numpy(
+                self.y.transpose("time", "feat", "lat", "lon").values
+            )
+            self.xs = torch.from_numpy(
+                self.xs.transpose("feat", "lat", "lon").values
+            )
+
+        self.time_dim = self.xd.shape[0]
+        self.seq_len = self.cfg.seq_length
 
     def __len__(self):
         return len((range(len(self.coord_samples))))
@@ -166,41 +190,21 @@ class WflowSBM(BaseDataset):
         else:
             if self.cfg.downsampling_temporal_dynamic:
                 lat, lon = self.coord_samples[index]
-
-                ds_pixel_dynamic = self.xd.isel(lat=lat, lon=lon) # lat, lon, time -> time
-                ds_pixel_target = self.y.isel(lat=lat, lon=lon)
-                ds_pixel_static = self.xs.isel(lat=lat, lon=lon)
-
-                ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-                ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
-
-                ds_pixel_static = ds_pixel_static.to_array()
                 
-                xd  = torch.tensor(ds_pixel_dynamic.values).float()
-                xs = torch.tensor(ds_pixel_static.values).float()
-                y = torch.tensor(ds_pixel_target.values).float()
+                # Index tensor directly
+                xd = self.xd[:, :, lat, lon]  # time, feat
+                y = self.y[:, :, lat, lon]    # time, feat
+                xs = self.xs[:, lat, lon]     # feat
+                
             else:
                 idx_cell, idx_time = self.coord_samples[index]
-
                 idx_lat, idx_lon = idx_cell
-                # TODO: check
-                ds_pixel_dynamic = self.xd.isel(lat=idx_lat, 
-                                                        lon=idx_lon, 
-                                                        time=slice(idx_time - self.seq_len + 1, idx_time + 1)) # lat, lon, time -> time
-
-                ds_pixel_target = self.y.isel(lat=idx_lat, 
-                                                        lon=idx_lon, 
-                                                        time=slice(idx_time - self.seq_len + 1, idx_time + 1)) 
                 
-                ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
-        
-                ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-                ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
-                ds_pixel_static = ds_pixel_static.to_array()
-                
-                xd  = torch.tensor(ds_pixel_dynamic.values).float()
-                xs = torch.tensor(ds_pixel_static.values).float()
-                y = torch.tensor(ds_pixel_target.values).float()
+                # Select time slice for non-dynamic downsampling
+                time_slice = slice(idx_time - self.seq_len + 1, idx_time + 1)
+                xd = self.xd[time_slice, :, idx_lat, idx_lon]
+                y = self.y[time_slice, :, idx_lat, idx_lon]
+                xs = self.xs[:, idx_lat, idx_lon]
 
         return {"xd": xd, "xs": xs, "y": y}
 
