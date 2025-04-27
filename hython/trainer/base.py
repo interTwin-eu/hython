@@ -243,7 +243,7 @@ class AbstractTrainer(ABC):
                 metric[itarget] = {
                     self.cfg.metric_fn.__class__.__name__: metric_or[itarget]
                 }
-        # reset epoch results
+        # # reset epoch results
         self.epoch_preds = None
         self.epoch_targets = None
         self.epoch_valid_masks = None
