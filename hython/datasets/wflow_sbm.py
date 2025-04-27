@@ -251,6 +251,7 @@ class WflowSBMCal(BaseDataset):
             upper = cfg.scaling_rescale_target["upper"]
             par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto")[[lower,upper]]
             self.y = self.rescale_target(self.y, par[lower], par[upper])
+            print("Rescaling target variables with: ", par[lower], par[upper])
 
         # TODO: ensure they are all float32
         # head_layer mask
@@ -331,7 +332,11 @@ class WflowSBMCal(BaseDataset):
 
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")
-        self.y = self.scaler.transform(self.y, "target_variables")
+        if cfg.scaling_rescale_target is not None:
+            # no need to normalize if already scaled 
+            pass
+        else:
+            self.y = self.scaler.transform(self.y, "target_variables")
 
         if is_train: # write if train
             if not self.scaler.use_cached: # write if not reading from cache
