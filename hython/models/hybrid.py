@@ -25,6 +25,11 @@ class Hybrid(BaseModel):
         if freeze_head:
             for weight in self.head_layer.parameters():
                 weight.requires_grad = False
+            self.head_layer.eval()
+        else:
+            for weight in self.head_layer.parameters():
+                weight.requires_grad = True
+            self.head_layer.train()
 
         if self.scale_head_output:        
             # initialize parameters for scaling output, TODO: move it into BaseModel

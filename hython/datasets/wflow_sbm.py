@@ -273,7 +273,7 @@ class WflowSBMCal(BaseDataset):
         if urls.get("static_inputs_mask", None):
             self.static_mask = read_from_zarr(url=urls["static_inputs_mask"], chunks="auto")[self.to_list(self.cfg.static_inputs_mask)[0]]
         else:
-            self.static_mask = self.xs[self.to_list(self.cfg.static_inputs)].to_array().any("variable")
+            self.static_mask = self.xs.isnull()[self.to_list(self.cfg.static_inputs)].to_array().any("variable")
         
         # combine masks
         self.mask = self.target_mask | self.head_mask | self.static_mask
