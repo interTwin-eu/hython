@@ -6,13 +6,8 @@ import logging
 
 LOGGER = logging.getLogger(__name__)
 
-def unnest(l):
-    out = []
-    for i in l:
-        out.append([*i[0],i[1]])
-    return np.array(out)
 
-class WflowSBM2(BaseDataset):
+class WflowSBM_HPC(BaseDataset):
     def __init__(
         self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
     ):
@@ -87,8 +82,10 @@ class WflowSBM2(BaseDataset):
         if self.period == "test":
             self.spacetime_index = self.cell_linear_index
         else:
-            self.spacetime_index = list(itertools.product(*[self.cell_coords [self.cell_linear_index ].tolist(), 
-                                                        self.time_index.tolist() ]))  
+            self.spacetime_index = list(itertools.product(*[
+                                                        self.cell_coords[self.cell_linear_index ].tolist(), 
+                                                        self.time_index.tolist() 
+                                                        ]))  
 
             self.spacetime_index = unnest(self.spacetime_index)
 
@@ -224,7 +221,6 @@ class WflowSBM2(BaseDataset):
         # y = torch.from_numpy(ds_pixel_target.values).float()
 
         return {"xd": xd, "xs": xs, "y": y}
-
 
 class WflowSBM(BaseDataset):
     def __init__(

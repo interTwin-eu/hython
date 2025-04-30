@@ -15,6 +15,17 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.optim import Adam
 
 
+def generate_time_idx(time_idx, time_size, seq_len, cell_size):
+    """Generate temporal indices to subset the temporal dimension of the spacetime_index.
+       It is supposed to be used at runtime, to randomly subset the spacetime_index."""
+    o = []
+    for c in range(cell_size):
+        for i in time_idx:
+            index = i + c*time_size
+            o.append(index)
+    return o
+
+
 def generate_run_folder(cfg):
     return f"{cfg.work_dir}/{generate_experiment_id(cfg)}/" # /{generate_timestamp()}
 
@@ -522,3 +533,11 @@ def create_xarray_data(
 def rescale_target(ds, r, s):
     dsmin = ds.min("time")
     return ((ds - dsmin)/ (ds.max("time")- dsmin)) *(s-r) + r
+
+
+
+def unnest(l):
+    out = []
+    for i in l:
+        out.append([*i[0],i[1]])
+    return np.array(out)

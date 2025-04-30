@@ -32,44 +32,44 @@ class AbstractTrainer(ABC):
         except:
             temporal_downsampling = False
             
-        # if temporal_downsampling:
-        #     if len(self.cfg.temporal_subset) > 1:
-        #         # use different time indices for training and validation
-        #         if opt is None:
-        #             # validation
-        #             time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
-        #             temporal_subset_size = self.cfg.temporal_subset[-1]
+        if temporal_downsampling:
+            if len(self.cfg.temporal_subset) > 1:
+                # use different time indices for training and validation
+                if opt is None:
+                    # validation
+                    time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
+                    temporal_subset_size = self.cfg.temporal_subset[-1]
 
-        #             avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
-        #             if avail_time > 0:
-        #                 choice = np.arange(0, time_range - self.cfg.seq_length, 1)
-        #                 self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
-        #             else:
-        #                 self.time_index = np.arange(0, time_range - self.cfg.seq_length)
-        #         else:
-        #             time_range = next(iter(data_loaders[0]))["xd"].shape[1]
-        #             temporal_subset_size = self.cfg.temporal_subset[0]
-        #             avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
-        #             if avail_time > 0:
-        #                 choice = np.arange(0, time_range - self.cfg.seq_length, 1)
-        #                 self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
-        #             else:
-        #                 self.time_index = np.arange(0, time_range - self.cfg.seq_length)
-        #     else:
-        #         # use same time indices for training and validation, time indices are from train_loader
-        #         time_range = next(iter(data_loaders[0]))["xd"].shape[1]
-        #         self.time_index = np.random.randint(
-        #             0, time_range - self.cfg.seq_length, self.cfg.temporal_subset[-1]
-        #         )
+                    avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
+                    if avail_time > 0:
+                        choice = np.arange(0, time_range - self.cfg.seq_length, 1)
+                        self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
+                    else:
+                        self.time_index = np.arange(0, time_range - self.cfg.seq_length)
+                else:
+                    time_range = next(iter(data_loaders[0]))["xd"].shape[1]
+                    temporal_subset_size = self.cfg.temporal_subset[0]
+                    avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
+                    if avail_time > 0:
+                        choice = np.arange(0, time_range - self.cfg.seq_length, 1)
+                        self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
+                    else:
+                        self.time_index = np.arange(0, time_range - self.cfg.seq_length)
+            else:
+                # use same time indices for training and validation, time indices are from train_loader
+                time_range = next(iter(data_loaders[0]))["xd"].shape[1]
+                self.time_index = np.random.randint(
+                    0, time_range - self.cfg.seq_length, self.cfg.temporal_subset[-1]
+                )
 
-        # else:
-        #     if opt is None:
-        #         # validation
-        #         time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
-        #     else:
-        #         time_range = next(iter(data_loaders[0]))["xd"].shape[1]
+        else:
+            if opt is None:
+                # validation
+                time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
+            else:
+                time_range = next(iter(data_loaders[0]))["xd"].shape[1]
 
-        #     self.time_index = np.arange(0, time_range)
+            self.time_index = np.arange(0, time_range)
 
     def _set_target_weights(self):
         if self.cfg.target_weights is None or self.cfg.target_weights == "even":
@@ -273,7 +273,7 @@ class AbstractTrainer(ABC):
         model.train()
         # set time indices for training
         # TODO: This has effect only if the trainer overload the method (i.e. for RNN)
-        #self._set_dynamic_temporal_downsampling([train_loader, val_loader], opt=self.optimizer)
+        self._set_dynamic_temporal_downsampling([train_loader, val_loader], opt=self.optimizer)
         train_loss, train_metric = self.epoch_step(
             model, train_loader, device, opt=self.optimizer
         )
@@ -281,7 +281,7 @@ class AbstractTrainer(ABC):
         model.eval()
         with torch.no_grad():
             # set time indices for validation
-            #self._set_dynamic_temporal_downsampling([train_loader, val_loader],opt=None)
+            self._set_dynamic_temporal_downsampling([train_loader, val_loader],opt=None)
 
             val_loss, val_metric = self.epoch_step(model, val_loader, device, opt=None)
 
