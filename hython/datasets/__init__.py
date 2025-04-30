@@ -18,7 +18,8 @@ from hython.utils import (
     compute_grid_indices,
     generate_run_folder,
     get_source_url,
-    get_source_url_old
+    get_source_url_old,
+    unnest
 )
 
 try:
@@ -79,7 +80,7 @@ from .wflow_sbm import *
 
 DATASETS = {
     "WflowSBM": WflowSBM,
-    "WflowSBM2": WflowSBM2,
+    "WflowSBM_HPC": WflowSBM_HPC,
     "WflowSBMCal":WflowSBMCal,
     "WflowSBMCube": WflowSBMCube,
     "Wflow2dCal": Wflow2dCal,

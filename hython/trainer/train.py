@@ -17,6 +17,8 @@ def train_val(
 
     model_api = ModelLogAPI(cfg)
 
+    logger_type = model_api.model_loggers.get("model")
+
     best_loss = float("inf")
 
     epoch_iterator = tqdm(range(cfg.epochs)) if tqdm_support else range(cfg.epochs)
@@ -40,6 +42,11 @@ def train_val(
         if val_loss < best_loss:
             best_loss = val_loss
             best_model_weights = copy.deepcopy(model.state_dict())
+            if logger_type == "local":
+                main_model = model_api.get_model_component_class("model")
+                torch.save(best_model_weights, model_api.cfg[main_model]["model_uri"])
+
+
 
         if not tqdm_support:
             print(f"Epoch: {epoch}")
