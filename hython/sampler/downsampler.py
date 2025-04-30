@@ -136,3 +136,5 @@ class RegularIntervalDownsampler(AbstractDownSampler):
         idxs_sampled = indexes[irange[:, None], jrange].flatten()  # broadcasting
 
         return idxs_sampled
+
+
