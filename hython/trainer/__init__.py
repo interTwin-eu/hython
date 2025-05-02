@@ -16,7 +16,7 @@ class BaseTrainParams:
 from .base import *
 
 from .train import train_val
-from .rnn import RNNTrainer
+from .rnn import RNNTrainer, RNNTrainerHPC
 from .conv import ConvTrainer
 from .cal import CalTrainer
 
@@ -24,6 +24,7 @@ from .cal import CalTrainer
 TRAINERS = {
     "ConvTrainer":ConvTrainer,
     "RNNTrainer":RNNTrainer,
+    "RNNTrainerHPC":RNNTrainerHPC,
     "CalTrainer":CalTrainer,
 }
 

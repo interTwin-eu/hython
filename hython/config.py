@@ -1,6 +1,6 @@
+from collections import UserDict
 
 
-
-class Config(dict):
+class Config(UserDict):
     def __getitem__(self, i):
         return vars(self)[i]

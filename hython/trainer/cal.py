@@ -29,18 +29,16 @@ class CalTrainer(AbstractTrainer):
             predictor_b = data["xs"].to(device)
             target_b = data["y"].to(device)
             forcing_b = data["xd"].to(device)
-
             pred = model(predictor_b, forcing_b) # surrogate prediction
-            
+
             output = self.predict_step(pred, steps=self.cfg.predict_steps, subset_index=index_tensor_pred)
             target = self.target_step(target_b, steps=self.cfg.predict_steps)
 
             # subset model output
-            
-            
+
             # TODO: consider moving missing values loss handling in the compute loss method
             valid_mask = ~target.isnan()  # non null values
-            
+           
             self._concatenate_result(output, target, valid_mask)
             
             # Compute loss: default returns average loss per sample
