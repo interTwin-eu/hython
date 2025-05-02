@@ -62,7 +62,7 @@ class SequentialTemporalDynamicDownsampler(RandomSampler):
         self.time_size = self.data_source.time_size
 
         frac_time = dynamic_downsampler.get("frac_time")
-        self.temporal_subset_size = int( (self.time_size -self.seq_len)*frac_time)
+        self.temporal_subset_size = int( (self.time_size - self.seq_len)*frac_time)
 
         # the total samples
         self.total_subset_size = self.temporal_subset_size*self.cell_size
@@ -75,7 +75,7 @@ class SequentialTemporalDynamicDownsampler(RandomSampler):
             time_indices = random.sample(range(self.time_size - self.seq_len), self.temporal_subset_size)
             
         indeces = generate_time_idx(time_indices, self.time_size - self.seq_len,self.seq_len, self.cell_size )
-
+        indeces = np.sort(indeces)
         return iter(indeces)
 
     def __len__(self):
