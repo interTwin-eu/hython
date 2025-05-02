@@ -5,6 +5,7 @@ from torch.nn.modules.loss import _Loss
 import torch.nn.functional as F
 from omegaconf import DictConfig, OmegaConf
 from torch.distributions import Normal
+from functorch import vmap
 
 class BaseLoss(torch.nn.Module):
     def __init__(self, cfg={}):
@@ -12,6 +13,85 @@ class BaseLoss(torch.nn.Module):
             OmegaConf.create(cfg) if isinstance(cfg, dict) else OmegaConf.load(cfg)
         )
 
+def compute_spaef(observed: torch.Tensor, simulated: torch.Tensor) -> torch.Tensor:
+    """
+    Compute the Spatial Efficiency (SPAEF) between an observed and simulated feature set.
+    :param observed: 1D torch tensor (true feature vector)
+    :param simulated: 1D torch tensor (simulated feature vector)
+    :return: SPAEF score (tensor)
+    """
+    r = torch.corrcoef(torch.stack([observed, simulated]))[0, 1]
+    alpha = torch.std(simulated) / torch.std(observed)
+    
+    hist_obs = torch.histc(observed, bins=100, min=0, max=1) #min=observed.min(), max=observed.max())
+    hist_sim = torch.histc(simulated, bins=100, min=0, max=1) #min=simulated.min(), max=simulated.max())
+    hist_obs /= hist_obs.sum()
+    hist_sim /= hist_sim.sum()
+    beta = torch.min(hist_obs, hist_sim).sum()
+    
+    return 1 - torch.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
+
+def spaef_temporal(obs_series: torch.Tensor, sim_series: torch.Tensor, method: str = 'mean') -> torch.Tensor:
+    """
+    Compute the aggregated SPAEF score over a time series of feature vectors.
+    :param obs_series: 3D torch tensor (B, T, F) - observed feature vectors over time
+    :param sim_series: 3D torch tensor (B, T, F) - simulated feature vectors over time
+    :param method: Aggregation method ('mean', 'median', or 'percentile_X')
+    :return: Aggregated SPAEF score (tensor)
+    """
+    
+    spaef_fn = vmap(vmap(compute_spaef, in_dims=(1, 1)), in_dims=(0, 0))  # Apply across time and batch
+    spaef_values = spaef_fn(obs_series, sim_series)
+    
+    if method == 'mean':
+        return torch.mean(spaef_values) # dim=1 # Aggregate over time for each batch
+    elif method == 'median':
+        return torch.median(spaef_values, dim=1).values
+    elif method.startswith('percentile_'):
+        percentile = float(method.split('_')[1])
+        return torch.quantile(spaef_values, percentile / 100, dim=1)
+    else:
+        raise ValueError("Invalid aggregation method. Choose 'mean', 'median', or 'percentile_X'")
+
+def compute_kge_torch(true, pred, eps=1e-8):
+    # Remove invalid (NaN) entries
+    mask = (~torch.isnan(true)) & (~torch.isnan(pred))
+    true = true[mask]
+    pred = pred[mask]
+
+    # Pearson correlation
+    true_mean = torch.mean(true)
+    pred_mean = torch.mean(pred)
+    r_num = torch.sum((true - true_mean) * (pred - pred_mean))
+    r_den = torch.sqrt(torch.sum((true - true_mean) ** 2) * torch.sum((pred - pred_mean) ** 2) + eps)
+    r = r_num / r_den
+
+    # Standard deviation ratio (α)
+    alpha = torch.std(pred, unbiased=True) / (torch.std(true, unbiased=True) + eps)
+
+    # Mean ratio (β)
+    beta = pred_mean / (true_mean + eps)
+
+    # Kling-Gupta Efficiency
+    kge = 1 - torch.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
+
+    return kge
+
+class SPAEFLoss(_Loss):
+    def __init__(self, method: str = 'mean'):
+        super(SPAEFLoss, self).__init__()
+        self.method = method
+    def forward(self, target, y_pred):
+        return spaef_temporal(target, y_pred, method=self.method)
+
+class KGELoss(_Loss):
+    def __init__(self):
+
+        super(KGELoss, self).__init__()
+
+    def forward(self, target, y_pred):
+        #  kge best is 1, reverse the sign to make it a loss
+        return -1*compute_kge_torch(target, y_pred)
 
 class RMSELoss(_Loss):
     def __init__(self):
@@ -44,7 +124,6 @@ class RMSELoss(_Loss):
         torch.Tensor: The RMSE loss.
         """
         return torch.sqrt(self.mseloss(target, y_pred))
-
 
 class MSELoss(_Loss):
     def __init__(self):
@@ -138,7 +217,6 @@ class NegLLLoss(_Loss):
         total_nll_loss = -dist.log_prob(target).mean()
         return total_nll_loss
     
-
 class PinballLoss(nn.Module):
     def __init__(
         self,
@@ -179,13 +257,5 @@ class PinballLoss(nn.Module):
 
 
 
-# class SPAEFLoss(_Loss):
-#     def __init__(self, return_all=False):
-#         super(SPAEFLoss, self).__init__()
-#         self.return_all = return_all
-
-#     def forward(self, target, y_pred):
-
-#         return spaeff_torch(y_pred, target, self.return_all)
 
 

@@ -3,7 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 from .base import BaseModel
 from .head import get_head_layer
-
+from .utils import make_mlp
 
 class LSTMModule(nn.Module):
     def __init__(
@@ -52,6 +52,7 @@ class ModularLSTM(nn.Module):
         self.dynamic_input_size = len(cfg.dynamic_inputs)
         self.static_input_size = len(cfg.static_inputs)
         self.modules = cfg.modules
+        self.len_mod = len(self.modules)
 
         for k,v in self.modules.items():
             self.modules[k]["input_size"] = self.dynamic_input_size + self.static_input_size
@@ -60,7 +61,7 @@ class ModularLSTM(nn.Module):
             {k: LSTMModule(**v) for k, v in self.modules.items()}
         )
 
-        if len(self.freeze_module) > 0:
+        if self.freeze_module:
             for module in self.freeze_module:
                 for weight in self.model_modules[module].parameters():
                     weight.requires_grad = False
@@ -68,9 +69,21 @@ class ModularLSTM(nn.Module):
             
         total_hidden_size = sum([v["hidden_size"] for v in self.modules.values()])
 
-        self.fc0 = nn.Linear(total_hidden_size, self.output_size)
+        self.interaction_layer = make_mlp(
+            total_hidden_size, 
+            int(total_hidden_size/3),
+            int(total_hidden_size/self.len_mod), 
+            3, 
+            False, 
+            "linear"
+        )
 
-        self.relu = nn.ReLU()
+        self.head = get_head_layer(cfg.model_head_layer, 
+                                   input_dim= int(total_hidden_size/3), 
+                                   output_dim= self.output_size, 
+                                   head_activation= cfg.model_head_activation,
+                                       **cfg.model_head_kwargs)
+
 
     def forward(self, x):
         distr_out = []
@@ -82,6 +95,8 @@ class ModularLSTM(nn.Module):
         out = torch.cat(distr_out, dim=-1)
 
         # Interaction
-        out = self.fc0(out)
+        out = self.interaction_layer(out)
+
+        out = self.head(out)
 
         return out

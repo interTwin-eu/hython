@@ -73,7 +73,8 @@ class ModelLogAPI():
         self.model_log_names = {config["model_component"]:config["model_name"] for model, config in self.cfg.items() if config["log"] is True}
         self.model_load_names = {config["model_component"]:config["model_name"] for model, config in self.cfg.items() if config["load"] is True}
         self.model_loggers = {config["model_component"]:config["logger"] for model, config in self.cfg.items()}
-        
+
+
     def load_model(self, model_component, model_instantiated = None):
         model_class_name = self.model_components[model_component]
         return load_model(self.cfg, model_class_name, model = model_instantiated)

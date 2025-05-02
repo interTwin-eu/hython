@@ -210,9 +210,11 @@ class AbstractTrainer(ABC):
             self.epoch_targets = target_cpu
             self.epoch_valid_masks = mask_cpu
         else:
+            #print(self.epoch_preds.shape, pred_cpu.shape)
             self.epoch_preds = np.concatenate(
                 (self.epoch_preds, pred_cpu), axis=0
             )
+            #print("target: ", self.epoch_targets.shape, target_cpu.shape)
             self.epoch_targets = np.concatenate(
                 (self.epoch_targets, target_cpu), axis=0
             )
@@ -241,6 +243,10 @@ class AbstractTrainer(ABC):
                 metric[itarget] = {
                     self.cfg.metric_fn.__class__.__name__: metric_or[itarget]
                 }
+        # # reset epoch results
+        self.epoch_preds = None
+        self.epoch_targets = None
+        self.epoch_valid_masks = None
 
         return metric
 
