@@ -33,8 +33,10 @@ class CalTrainer(AbstractTrainer):
 
             output = self.predict_step(pred, steps=self.cfg.predict_steps, subset_index=index_tensor_pred)
             target = self.target_step(target_b, steps=self.cfg.predict_steps)
-
-            # subset model output
+            # 
+            #import pdb; pdb.set_trace()
+            # rescale surrogate output to same simulation as target was rescaled
+            #output["y_hat"] = dataloader.dataset.sim_std.to(device)/output["y_hat"].std() * (output["y_hat"] - output["y_hat"].mean()) + dataloader.dataset.sim_mean.to(device)
 
             # TODO: consider moving missing values loss handling in the compute loss method
             valid_mask = ~target.isnan()  # non null values
