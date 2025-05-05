@@ -461,13 +461,10 @@ class WflowSBMCal(BaseDataset):
         if self.target_has_missing_dates is not None:
             self.xd = self.xd.sel(time=self.y.time)
             
-            
+
         if cfg.scaling_rescale_target is not None:
-            lower = cfg.scaling_rescale_target["lower"]
-            upper = cfg.scaling_rescale_target["upper"]
-            par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto")[[lower,upper]]
-            self.y = self.rescale_target(self.y, par[lower], par[upper])
-            print("Rescaling target variables with: ", par[lower], par[upper])
+            # updates self.y
+            self.rescale_target(urls, data_dynamic)
 
         # TODO: ensure they are all float32
         # head_layer mask
@@ -549,9 +546,12 @@ class WflowSBMCal(BaseDataset):
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")
         if cfg.scaling_rescale_target is not None:
-            # no need to normalize if already scaled 
+        # #     # no need to normalize if already scaled 
             pass
-        else:
+        else: 
+            #center = 0.07695
+            #scale = 0.4913
+            #self.y = self.scaler.transform_custom_range(self.y, center=center, scale=scale )
             self.y = self.scaler.transform(self.y, "target_variables")
 
         if is_train: # write if train
@@ -564,6 +564,26 @@ class WflowSBMCal(BaseDataset):
                     self.scaler.write("dynamic_inputs")
                     self.scaler.write("static_inputs")
                     self.scaler.write("target_variables")
+
+    def rescale_target(self, urls, data_dynamic):
+        if config := self.cfg.scaling_rescale_target.get("soil-property", False):
+            lower = self.cfg.scaling_rescale_target["lower"]
+            upper = self.cfg.scaling_rescale_target["upper"]
+            par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto")[[lower,upper]]
+            self.y = self.rescale_target(self.y, par[lower], par[upper])
+        elif config := self.cfg.scaling_rescale_target.get("model-statistics", False):
+            
+            vs = data_dynamic[config.get("variable")].sel(time=self.period_range)
+            # self.sim_std = vs.std("time")
+            # self.sim_mean = vs.mean("time")
+            self.sim_std = vs.std()
+            self.sim_mean = vs.mean()
+            obs_std = self.y.std()#"time")
+            obs_mean = self.y.mean()#"time")
+            self.y = self.sim_std/obs_std * (self.y - obs_mean) + self.sim_mean
+
+            self.sim_std = torch.from_numpy(self.sim_std.values).float()
+            self.sim_mean = torch.from_numpy(self.sim_mean.values).float()
 
     def __len__(self):
         return len((range(len(self.coord_samples))))
