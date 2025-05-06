@@ -84,7 +84,7 @@ class SequentialTemporalDynamicDownsampler(RandomSampler):
 class DistributedTemporalDynamicDownsampler(DistributedSampler):
     """Every epoch generate a random subset of temporal indices.
     The generated indices (idx) are used by the dataloader to sample the dataset getitem[idx] """
-    def __init__(self, data_source, dynamic_downsampler, shuffle = True, replacement=False, sampling_kwargs={}):
+    def __init__(self, data_source, dynamic_downsampler, shuffle = True, replacement=False, **sampling_kwargs):
         super(DistributedTemporalDynamicDownsampler, self).__init__(
             dataset=data_source, 
             shuffle= shuffle,
