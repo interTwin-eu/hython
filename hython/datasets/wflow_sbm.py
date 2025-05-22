@@ -23,17 +23,17 @@ class WflowSBM_HPC(BaseDataset):
 
         self.target_has_missing_dates = self.cfg.get("target_has_missing_dates", False)
 
-        urls = get_source_url(cfg)
+        urls, xarray_kwargs = get_source_url(cfg)
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
-
-        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range)
-        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
         
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs).sel(time=self.period_range)
+        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto", **xarray_kwargs)
+
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
         self.xs = data_static[self.to_list(cfg.static_inputs)]
         self.y = data_dynamic[self.to_list(cfg.target_variables)]
-
+        
         # subset dynamic inputs to the target timestep available
         if self.target_has_missing_dates:
             self.xd = self.xd.sel(time=self.y.time)
@@ -238,12 +238,12 @@ class WflowSBM(BaseDataset):
 
         self.target_has_missing_dates = self.cfg.get("target_has_missing_dates", False)
 
-        urls = get_source_url(cfg)
+        urls, xarray_kwargs = get_source_url(cfg)
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
 
-        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range)
-        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs).sel(time=self.period_range)
+        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto", **xarray_kwargs)
         
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
         self.xs = data_static[self.to_list(cfg.static_inputs)]
@@ -444,17 +444,17 @@ class WflowSBMCal(BaseDataset):
 
         self.target_has_missing_dates = self.cfg.get("target_has_missing_dates")
         
-        urls = get_source_url(cfg)
+        urls, xarray_kwargs = get_source_url(cfg)
 
         # load datasets
-        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range)
-        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
-        data_target = read_from_zarr(url=urls["target_variables"], chunks="auto").sel(time=self.period_range)
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs)
+        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto", **xarray_kwargs)
+        data_target = read_from_zarr(url=urls["target_variables"], chunks="auto", **xarray_kwargs)
         
         # select 
-        self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
+        self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)].sel(time=self.period_range) # list comprehension handle omegaconf lists
         self.xs = data_static[self.to_list(cfg.static_inputs)]
-        self.y = data_target[self.to_list(cfg.target_variables)]
+        self.y = data_target[self.to_list(cfg.target_variables)].sel(time=self.period_range)
 
         # subset dynamic inputs to the target timestep available
         
@@ -463,18 +463,19 @@ class WflowSBMCal(BaseDataset):
             
 
         if cfg.scaling_rescale_target is not None:
-            # updates self.y
-            self.rescale_target(urls, data_dynamic)
+            print("Rescaling target")
+            # updates target to statistics of vwc
+            self.rescale_target(urls, data_dynamic, data_target, xarray_kwargs)
 
         # TODO: ensure they are all float32
         # head_layer mask
-        head_mask = read_from_zarr(url=urls["mask_variables"], chunks="auto")
+        head_mask = read_from_zarr(url=urls["mask_variables"], chunks="auto", **xarray_kwargs)
         self.head_mask = head_mask[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
 
         # == DATASET INDICES AND MASKING
         # target mask, observation
         if urls.get("target_variables_mask", None):
-            target_mask = read_from_zarr(url=urls["target_variables_mask"], chunks="auto").sel(time=self.period_range)
+            target_mask = read_from_zarr(url=urls["target_variables_mask"], chunks="auto",**xarray_kwargs).sel(time=self.period_range)
             sel_target_mask = self.to_list(self.cfg.target_variables_mask)[0] if isinstance(self.to_list(self.cfg.target_variables_mask), list) else self.to_list(self.cfg.target_variables_mask)
             self.target_mask = target_mask[sel_target_mask]
             self.target_mask = self.target_mask.resample({"time":"1D"}).max().astype(bool)
@@ -484,7 +485,7 @@ class WflowSBMCal(BaseDataset):
 
         # static mask, predictors
         if urls.get("static_inputs_mask", None):
-            self.static_mask = read_from_zarr(url=urls["static_inputs_mask"], chunks="auto")[self.to_list(self.cfg.static_inputs_mask)[0]]
+            self.static_mask = read_from_zarr(url=urls["static_inputs_mask"], chunks="auto", **xarray_kwargs)[self.to_list(self.cfg.static_inputs_mask)[0]]
         else:
             self.static_mask = self.xs.isnull()[self.to_list(self.cfg.static_inputs)].to_array().any("variable")
         
@@ -539,20 +540,29 @@ class WflowSBMCal(BaseDataset):
             self.xs, "static_inputs", is_train, axes=("lat","lon")
         )
 
-        self.scaler.load_or_compute(
-            self.y, "target_variables", is_train, axes=("lat", "lon", "time")
-        )
+
 
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")
+        #
         if cfg.scaling_rescale_target is not None:
-        # #     # no need to normalize if already scaled 
-            pass
-        else: 
-            #center = 0.07695
-            #scale = 0.4913
-            #self.y = self.scaler.transform_custom_range(self.y, center=center, scale=scale )
-            self.y = self.scaler.transform(self.y, "target_variables")
+            # target has been transformed to vwc training statistics
+            # now it needs to be scaled to minmax or whatever
+            self.scaler.load_or_compute(
+                self.y, 
+                "target_variables", 
+                is_train=True, # force comput stats
+                axes=("lat", "lon", "time") # pixel by pixel
+            )
+            #self.y = self.scaler.transform(self.y, "target_variables")
+
+        else:
+            #pass
+            self.scaler.load_or_compute(
+                self.y, "target_variables", is_train, axes=("lat", "lon", "time")
+            )
+            #self.y = self.scaler.transform(self.y, "target_variables")
+            
 
         if is_train: # write if train
             if not self.scaler.use_cached: # write if not reading from cache
@@ -565,25 +575,38 @@ class WflowSBMCal(BaseDataset):
                     self.scaler.write("static_inputs")
                     self.scaler.write("target_variables")
 
-    def rescale_target(self, urls, data_dynamic):
+    def rescale_target(self, urls, data_dynamic, data_target, xarray_kwargs = {}):
         if config := self.cfg.scaling_rescale_target.get("soil-property", False):
             lower = self.cfg.scaling_rescale_target["lower"]
             upper = self.cfg.scaling_rescale_target["upper"]
-            par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto")[[lower,upper]]
+            par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto", **xarray_kwargs)[[lower,upper]]
             self.y = self.rescale_target(self.y, par[lower], par[upper])
         elif config := self.cfg.scaling_rescale_target.get("model-statistics", False):
-            
-            vs = data_dynamic[config.get("variable")].sel(time=self.period_range)
-            # self.sim_std = vs.std("time")
-            # self.sim_mean = vs.mean("time")
-            self.sim_std = vs.std()
-            self.sim_mean = vs.mean()
-            obs_std = self.y.std()#"time")
-            obs_mean = self.y.mean()#"time")
-            self.y = self.sim_std/obs_std * (self.y - obs_mean) + self.sim_mean
+            # In inference calibration, rescale output surrogate to training target statistics
+            # For the same period of training the surrogate
+            # TODO: the period should be passed dynamically
+            vs = data_dynamic[config.get("variable")].sel(time=slice("2017-01-01","2019-12-31"))
+            if config.get("method") == "zscore":
+                self.sim_std = vs.std("time")
+                self.sim_mean = vs.mean("time")
+                self.obs_std = self.y.ssm.std("time")
+                self.obs_mean = self.y.ssm.mean("time")
+                
+                self.y = (self.sim_std / self.obs_std) * (self.y - self.obs_mean) + self.sim_mean
 
-            self.sim_std = torch.from_numpy(self.sim_std.values).float()
-            self.sim_mean = torch.from_numpy(self.sim_mean.values).float()
+                self.obs_std = torch.from_numpy(self.obs_std.values).float()
+                self.obs_mean = torch.from_numpy(self.obs_mean.values).float()
+                self.sim_std = torch.from_numpy(self.sim_std.values).float()
+                self.sim_mean = torch.from_numpy(self.sim_mean.values).float()
+            elif config.get("method") == "minmax":
+                self.sim_min = vs.min("time")
+                self.sim_max = vs.max("time")
+                self.obs_min = self.y.ssm.min("time")
+                self.obs_max = self.y.ssm.max("time")
+
+                self.y = (self.sim_max - self.sim_min) / (self.obs_max - self.obs_min) * (self.y - self.obs_min) + self.sim_min
+
+
 
     def __len__(self):
         return len((range(len(self.coord_samples))))
@@ -651,12 +674,12 @@ class WflowSBMCube(BaseDataset):
         self.period = period
         self.period_range = slice(*cfg[f"{period}_temporal_range"])
 
-        urls = get_source_url(cfg)
+        urls, xarray_kwargs = get_source_url(cfg)
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
 
-        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto").sel(time=self.period_range).isel(lat=slice(None, None, -1))
-        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto")
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs).sel(time=self.period_range).isel(lat=slice(None, None, -1))
+        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto",**xarray_kwargs)
 
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)]
         self.xs = data_static[self.to_list(cfg.static_inputs)]
