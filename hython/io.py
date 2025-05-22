@@ -81,15 +81,15 @@ def write_to_zarr(
                 )               
 
 
-def read_from_zarr(url, group=None, multi_index=None, engine=None, chunks=None, **xarray_kwargs):
+def read_from_zarr(url, group=None, multi_index=None, chunks=None, **xarray_kwargs):
     
-    if 'zar' in Path(url).suffix:
-        engine = 'zarr' 
-
+    if 'zar' in Path(url).suffix and xarray_kwargs.get('engine') is None:
+        xarray_kwargs["engine"] = 'zarr' 
+        
     if group is not None:
-        ds = xr.open_dataset(url, group=group, engine=engine, chunks=chunks, **xarray_kwargs)
+        ds = xr.open_dataset(url, group=group, chunks=chunks, **xarray_kwargs)
     else:
-        ds = xr.open_dataset(url, engine=engine, chunks=chunks, **xarray_kwargs)
+        ds = xr.open_dataset(url, chunks=chunks, **xarray_kwargs)
     if multi_index:
         ds = cfxr.decode_compress_to_multi_index(ds, multi_index)
 

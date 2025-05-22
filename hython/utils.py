@@ -484,7 +484,11 @@ def get_source_url_old(cfg):
 
 def get_source_url(cfg):
     
-    for k in cfg.data_source:
+    xarray_kwargs = cfg.data_source.get("xarray_kwargs", {})
+    
+    data_sources = [k for k in cfg.data_source if k != "xarray_kwargs"]
+    
+    for k in data_sources:
         if cfg.data_source.get(k, None) is not None:
             source = k
     if source == "file":
@@ -493,7 +497,7 @@ def get_source_url(cfg):
         urls = {k:v for k,v in cfg.data_source['s3'].items()}
     else:
         raise AttributeError
-    return urls
+    return urls, xarray_kwargs
 
 
 
