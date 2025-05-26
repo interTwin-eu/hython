@@ -96,6 +96,10 @@ class WflowSBM_HPC(BaseDataset):
         self.dynamic_coords = self.xd.coords
         self.static_coords = self.xs.coords
 
+
+        # !!!  TODO: TEMPORARY TEST !!!
+        self.xd["precip"] = np.log1p(self.xd["precip"])
+        
         # == SCALING 
 
         self.scaler.load_or_compute(
@@ -110,38 +114,45 @@ class WflowSBM_HPC(BaseDataset):
             self.y, "target_variables", is_train, axes=("lat", "lon", "time")
         )
 
-        if not self.scale_ontraining:
-            self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
 
-            self.y = self.scaler.transform(self.y, "target_variables")
 
-            if self.scaling_static_range is not None:
-                LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
-                scaling_static_reordered = {
-                    k: self.cfg.scaling_static_range[k]
-                    for k in self.cfg.static_inputs
-                    if k in self.cfg.scaling_static_range
-                }
 
-                self.static_scale, self.static_center = self.get_scaling_parameter(
-                    scaling_static_reordered, self.cfg.static_inputs, output_type="xarray"
-                )
-                self.xs = self.scaler.transform_custom_range(
-                    self.xs, self.static_scale, self.static_center
-                )
-            else:
-                self.xs = self.scaler.transform(self.xs, "static_inputs")
-        else:
-            # these will be used in the getitem by the scaler.transform_custom_range
-            scaling_static_reordered = {
-                k: self.cfg.scaling_static_range[k]
-                for k in self.cfg.static_inputs
-                if k in self.cfg.scaling_static_range
-            }
+        self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
 
-            self.static_scale, self.static_center = self.get_scaling_parameter(
-                scaling_static_reordered, self.cfg.static_inputs
-            )
+        self.y = self.scaler.transform(self.y, "target_variables")
+
+        self.xs = self.scaler.transform(self.xs, "static_inputs")
+        
+        # if not self.scale_ontraining:
+
+
+        #     if self.scaling_static_range is not None:
+        #         LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
+        #         scaling_static_reordered = {
+        #             k: self.cfg.scaling_static_range[k]
+        #             for k in self.cfg.static_inputs
+        #             if k in self.cfg.scaling_static_range
+        #         }
+
+        #         self.static_scale, self.static_center = self.get_scaling_parameter(
+        #             scaling_static_reordered, self.cfg.static_inputs, output_type="xarray"
+        #         )
+        #         self.xs = self.scaler.transform_custom_range(
+        #             self.xs, self.static_scale, self.static_center
+        #         )
+        #     else:
+        #         self.xs = self.scaler.transform(self.xs, "static_inputs")
+        # else:
+        #     # these will be used in the getitem by the scaler.transform_custom_range
+        #     scaling_static_reordered = {
+        #         k: self.cfg.scaling_static_range[k]
+        #         for k in self.cfg.static_inputs
+        #         if k in self.cfg.scaling_static_range
+        #     }
+
+        #     self.static_scale, self.static_center = self.get_scaling_parameter(
+        #         scaling_static_reordered, self.cfg.static_inputs
+        #     )
         
         # == WRITE SCALING STATS
 
