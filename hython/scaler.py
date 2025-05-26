@@ -13,13 +13,36 @@ from hython.config import Config
 
 LOGGER = logging.getLogger(__name__)
 
+def get_scaling_parameter(var_toscale, output_type = "numpy"):
+    """Project inputs to custom range. Inputs are expected to be normalized, either
+    by minmax or standard scaling"""
+
+    # var_noscale = np.setdiff1d(var_all, list( var_toscale.keys()) )
+
+    center = []
+    scale = []
+
+    #for var in var_all:
+    for var in var_toscale.keys():
+        scale.append(var_toscale[var][1] - var_toscale[var][0])
+        center.append(var_toscale[var][0])
+
+    
+    if output_type == "xarray":
+        #FIXME: temporary fix, need to refactor
+        scale = {k:([], scale[i]) for i, k in enumerate(var_toscale.keys()) }
+        center = {k:([], center[i]) for i, k in enumerate(var_toscale.keys()) }
+        return xr.Dataset(scale), xr.Dataset(center)
+    else:
+        return np.array(scale), np.array(center)
+    
 class BaseScaler:
     def __init__(self, variable):
         self.variable = variable
         if OmegaConf.is_list(variable):
             self.variable = OmegaConf.to_container(self.variable, resolve=True)
     
-    def compute(self, data=None, axes=None):
+    def compute(self, data, type, axes):
         """Compute the center and scale for the given data."""
         return
 
@@ -33,13 +56,13 @@ class BaseScaler:
 
 
 class BoundedScaler(BaseScaler):
-    """Class for performing bounds scaling of input features."""
-
     def __init__(self, variable):
-        super().__init__(variable=list(variable.keys()))
-        self.bounds = variable
-        
-    
+        super().__init__(variable=variable)
+
+    def compute(self, data, type, axes):
+        center, scale = get_scaling_parameter(self.variable, output_type="xarray")
+        return center, scale
+            
     def transform(self, data, v, i ):
         return (data[v] - self.bounds[0][v]) / self.bounds[1][v]
     
@@ -47,7 +70,7 @@ class MinMaxScaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable)
 
-    def compute(self, data, axes=(0, 1)):
+    def compute(self, data, type, axes):
         center = data[self.variable].min(axes)
         scale = data[self.variable].max(axes) - center
         return center, scale
@@ -56,7 +79,7 @@ class StandardScaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable)
 
-    def compute(self, data, axes=(0, 1)):
+    def compute(self, data, type, axes):
         center = data[self.variable].mean(axes)
         scale = data[self.variable].std(axes)
         return center, scale
@@ -79,6 +102,8 @@ class Scaler2:
         else:
             self.cfg = cfg
 
+        self.cfg_scaler = cfg.scaler
+
         self.is_train = is_train
         self.use_cached = use_cached
         self.flag_stats_computed = False
@@ -95,17 +120,34 @@ class Scaler2:
     def set_run_dir(self, run_dir):
         self.run_dir = Path(run_dir)
 
+    def compute2(self, data, type, axes=(0, 1)):
+        scaler_list = self.cfg_scaler[type]["scaling_variant"]  
+        centers, scales = [], []
+        for sca in scaler_list:
+            center, scale = sca.compute(data, type, axes)
+            centers.append(center)
+            scales.append(scale)
+        # Ensure that stats has same ordering of variables listed in cfg
+        center = self.ensure_var_order(xr.merge(centers), type)
+        scale = self.ensure_var_order(xr.merge(scales), type)
+
+        self.archive.update({type: {"center": center, "scale": scale}})
+
+    def ensure_var_order(self, data, type):
+        return data[list(self.cfg[type])] 
+
     def load_or_compute(self, data, type="dynamic_input", is_train=True, axes=(0, 1)):
+
         if is_train:
             if self.use_cached:
                 try:
                     self.load(type)
                 except FileNotFoundError:
-                    LOGGER.info(f"Statistics not found in {str(self.run_dir)} for {type}, computing statistics..")
-                    self.compute(data, type, axes)
+                    LOGGER.info(f"Statistics not found in {str(self.run_dir)} for {type}, computing statistics..")            
+                    self.compute2(data, type, axes)
                     self.flag_stats_computed = True
             else:
-                self.compute(data, type, axes)
+                self.compute2(data, type, axes)
                 self.flag_stats_computed = True
         else:
             self.load(type)
