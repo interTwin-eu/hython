@@ -32,9 +32,9 @@ def get_scaling_parameter(var_toscale, output_type = "numpy"):
         #FIXME: temporary fix, need to refactor
         scale = {k:([], scale[i]) for i, k in enumerate(var_toscale.keys()) }
         center = {k:([], center[i]) for i, k in enumerate(var_toscale.keys()) }
-        return xr.Dataset(scale), xr.Dataset(center)
+        return  xr.Dataset(center), xr.Dataset(scale)
     else:
-        return np.array(scale), np.array(center)
+        return  np.array(center), np.array(scale)
     
 class BaseScaler:
     def __init__(self, variable):
@@ -47,8 +47,8 @@ class BaseScaler:
         return
 
     @classmethod#@staticmethod
-    def transform(self, data, stats_dist):
-        return (data - stats_dist["center"]) / stats_dist["scale"]
+    def transform(self, data, center, scale):
+        return (data - center) / scale
 
     def transform_inverse(self, data, type, **kwargs):
         raise NotImplementedError("This method should be overridden by subclasses.")
@@ -153,13 +153,12 @@ class Scaler2:
             self.load(type)
 
     def transform(self, data, type):
-        stats_dist = self.archive.get(type)
-
+        stats_dist = self.archive.get(type)  
         if stats_dist is not None:
-            if self.cfg.scaling_variant == "minmax_11":
-                return 2*( (data - stats_dist["center"]) / stats_dist["scale"]) -1
+            #if self.cfg.scaling_variant == "minmax_11":
+            #    return 2*( (data - stats_dist["center"]) / stats_dist["scale"]) -1
             return (data - stats_dist["center"]) / stats_dist["scale"]
-
+            
     def transform_custom_range(self, data, scale, center):
         if self.cfg.scaling_variant == "minmax_11":
             return 2*( (data - center) / scale) -1
