@@ -50,8 +50,8 @@ class BaseScaler:
     def transform(self, data, center, scale):
         return (data - center) / scale
 
-    def transform_inverse(self, data, type, **kwargs):
-        raise NotImplementedError("This method should be overridden by subclasses.")
+    def transform_inverse(self, data, center, scale):
+        return (data * scale) + center
     
 
 
@@ -62,11 +62,8 @@ class BoundedScaler(BaseScaler):
     def compute(self, data, type, axes):
         center, scale = get_scaling_parameter(self.variable, output_type="xarray")
         return center, scale
-            
-    def transform(self, data, v, i ):
-        return (data[v] - self.bounds[0][v]) / self.bounds[1][v]
     
-class MinMaxScaler(BaseScaler):
+class MinMax01Scaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable)
 
@@ -74,6 +71,25 @@ class MinMaxScaler(BaseScaler):
         center = data[self.variable].min(axes)
         scale = data[self.variable].max(axes) - center
         return center, scale
+    
+
+class MinMax11Scaler(BaseScaler):
+    def __init__(self, variable):
+        super().__init__(variable)
+
+    def compute(self, data, type, axes):
+        center = data[self.variable].min(axes)
+        scale = data[self.variable].max(axes) - center
+        return center, scale
+    
+    def transform(self, data, center, scale):
+        """Transform data to the range [-1, 1]"""
+        return 2 * ((data - center) / scale) - 1
+    
+    def transform_inverse(self, data, center, scale):
+        """Inverse transform from the range [-1, 1] to the original range"""
+        return ((data + 1) / 2 * scale) + center
+    
 
 class StandardScaler(BaseScaler):
     def __init__(self, variable):
@@ -154,6 +170,9 @@ class Scaler2:
 
     def transform(self, data, type):
         stats_dist = self.archive.get(type)  
+        # Use subclass transform or not
+        #sca = self.cfg.get(type) 
+        
         if stats_dist is not None:
             #if self.cfg.scaling_variant == "minmax_11":
             #    return 2*( (data - stats_dist["center"]) / stats_dist["scale"]) -1
@@ -171,24 +190,42 @@ class Scaler2:
     
     def transform_inverse(self, data, type, **kwargs):
         stats_dist = self.archive.get(type)
+        scaler_list = self.cfg_scaler[type]["scaling_variant"]
+        for sca in scaler_list:
+            
+            try: #FIXME
+                # Try if dict
+                var = OmegaConf.to_container(sca.variable)
+            except:
+                # list
+                var = sca.variable
 
-        if stats_dist is not None:
-            if isinstance(data, xr.DataArray):
-                stats_dist_arr = {}
-                stats_dist_arr["center"] = stats_dist["center"].values
-                stats_dist_arr["scale"] = stats_dist["scale"].values
-                if self.cfg.scaling_variant == "minmax_11":
-                    return ( (data + 1)/2 * stats_dist_arr["scale"]) + stats_dist_arr["center"]
-                return (data * stats_dist_arr["scale"]) + stats_dist_arr["center"]
-            elif isinstance(data, xr.Dataset):
-                if self.cfg.scaling_variant == "minmax_11":
-                    return ( (data + 1)/2 * stats_dist["scale"]) + stats_dist["center"]
-                return (data * stats_dist["scale"]) + stats_dist["center"]
-            else:
-                pos = kwargs.get("var_order")
-                if self.cfg.scaling_variant == "minmax_11":
-                    return ( (data + 1)/2 * stats_dist["scale"][pos].to_array().values) + stats_dist["center"][pos].to_array().values
-                return (data * stats_dist["scale"][pos].to_array().values) + stats_dist["center"][pos].to_array().values
+            if isinstance(var, dict):
+                var = list(var.keys())
+
+            scaled_data = sca.transform_inverse(data[var], 
+                                                stats_dist["scale"][var], 
+                                                stats_dist["center"][var])
+            data = data.assign({v:scaled_data[v] for v in var})
+
+        return data
+        # if stats_dist is not None:
+        #     if isinstance(data, xr.DataArray):
+        #         stats_dist_arr = {}
+        #         stats_dist_arr["center"] = stats_dist["center"].values
+        #         stats_dist_arr["scale"] = stats_dist["scale"].values
+        #         if self.cfg.scaling_variant == "minmax_11":
+        #             return ( (data + 1)/2 * stats_dist_arr["scale"]) + stats_dist_arr["center"]
+        #         return (data * stats_dist_arr["scale"]) + stats_dist_arr["center"]
+        #     elif isinstance(data, xr.Dataset):
+        #         if self.cfg.scaling_variant == "minmax_11":
+        #             return ( (data + 1)/2 * stats_dist["scale"]) + stats_dist["center"]
+        #         return (data * stats_dist["scale"]) + stats_dist["center"]
+        #     else:
+        #         pos = kwargs.get("var_order")
+        #         if self.cfg.scaling_variant == "minmax_11":
+        #             return ( (data + 1)/2 * stats_dist["scale"][pos].to_array().values) + stats_dist["center"][pos].to_array().values
+        #         return (data * stats_dist["scale"][pos].to_array().values) + stats_dist["center"][pos].to_array().values
 
     def compute(self, data, type, axes=(0, 1)):
         "Compute assumes the features are the last dimension of the array."
