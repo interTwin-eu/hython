@@ -1,9 +1,49 @@
 import xarray as xr
 import numpy as np
 from typing import List
+from omegaconf import DictConfig, OmegaConf
 from dask.array.core import Array as DaskArray
 
 
+class BasePreprocessor:
+    def __init__(self, variable):
+        self.variable = variable
+        if OmegaConf.is_list(variable):
+            self.variable = OmegaConf.to_container(self.variable, resolve=True)
+
+
+class Log(BasePreprocessor):
+    def __init__(self, variable: list[str]):
+        self.variable = variable
+
+    def __call__(self, data: xr.Dataset) -> xr.Dataset:
+        return data.assign({v:np.log1p(data[v]) for v in self.variable})
+
+
+class Preprocessor:
+    def __init__(self, cfg):
+        self.cfg = cfg.preprocessor 
+
+    def preprocess(self, data, type):
+        if self.cfg.get(type) is None:
+            return data
+        prepr_list = self.cfg[type]["variant"]
+        for pre in prepr_list:
+            try: #FIXME
+                # Try if dict
+                var = OmegaConf.to_container(pre.variable)
+            except:
+                # list
+                var = pre.variable
+
+            if isinstance(var, dict):
+                var = list(var.keys())
+
+            prepr_data = pre(data[var])
+
+            return data.assign({v:prepr_data[v] for v in var})
+
+        
 def reshape(data, type="dynamic", return_type="xarray"):
     if type == "dynamic":
         D = (
@@ -34,3 +74,5 @@ def reshape(data, type="dynamic", return_type="xarray"):
         return D.data
     if return_type == "numpy":
         return D.compute().values
+
+
