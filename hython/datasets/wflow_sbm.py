@@ -2,7 +2,7 @@
 from . import *
 import itertools
 import logging
-
+from hython.preprocessor import Preprocessor
 
 LOGGER = logging.getLogger(__name__)
 
@@ -15,6 +15,8 @@ class WflowSBM_HPC(BaseDataset):
         self.scaler = scaler
         self.seq_len = cfg.seq_length
         self.cfg = self.validate_config(cfg)
+
+        self.preprocessor = Preprocessor(cfg)
 
         self.downsampler = self.cfg[f"{period}_downsampler"]
 
@@ -97,8 +99,12 @@ class WflowSBM_HPC(BaseDataset):
         self.static_coords = self.xs.coords
 
 
-        # !!!  TODO: TEMPORARY TEST !!!
-        self.xd["precip"] = np.log1p(self.xd["precip"])
+        #  PREPROCESSING BEFORE SCALING
+        # TODO: improve
+        if self.cfg.get("preprocessor") is not None:
+            self.xs = self.preprocessor.preprocess(self.xs, "static_inputs")
+            self.xd = self.preprocessor.preprocess(self.xd, "dynamic_inputs")
+            self.y = self.preprocessor.preprocess(self.y, "target_variables")
         
         # == SCALING 
 

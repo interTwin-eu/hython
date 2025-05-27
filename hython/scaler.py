@@ -44,17 +44,15 @@ class BaseScaler:
     
     def compute(self, data, type, axes):
         """Compute the center and scale for the given data."""
-        return
+        raise NotImplementedError()
 
-    @classmethod#@staticmethod
+    @classmethod
     def transform(self, data, center, scale):
         return (data - center) / scale
 
     def transform_inverse(self, data, center, scale):
         return (data * scale) + center
     
-
-
 class BoundedScaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable=variable)
@@ -72,7 +70,6 @@ class MinMax01Scaler(BaseScaler):
         scale = data[self.variable].max(axes) - center
         return center, scale
     
-
 class MinMax11Scaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable)
@@ -90,7 +87,6 @@ class MinMax11Scaler(BaseScaler):
         """Inverse transform from the range [-1, 1] to the original range"""
         return ((data + 1) / 2 * scale) + center
     
-
 class StandardScaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable)
@@ -170,13 +166,30 @@ class Scaler2:
 
     def transform(self, data, type):
         stats_dist = self.archive.get(type)  
-        # Use subclass transform or not
-        #sca = self.cfg.get(type) 
+        scaler_list = self.cfg_scaler[type]["scaling_variant"]
+        for sca in scaler_list:
+            
+            try: #FIXME
+                # Try if dict
+                var = OmegaConf.to_container(sca.variable)
+            except:
+                # list
+                var = sca.variable
+
+            if isinstance(var, dict):
+                var = list(var.keys())
+
+            scaled_data = sca.transform(data[var], 
+                                        stats_dist["center"][var],
+                                        stats_dist["scale"][var])
+            data = data.assign({v:scaled_data[v] for v in var})
+
+        return data
         
-        if stats_dist is not None:
-            #if self.cfg.scaling_variant == "minmax_11":
-            #    return 2*( (data - stats_dist["center"]) / stats_dist["scale"]) -1
-            return (data - stats_dist["center"]) / stats_dist["scale"]
+        # if stats_dist is not None:
+        #     #if self.cfg.scaling_variant == "minmax_11":
+        #     #    return 2*( (data - stats_dist["center"]) / stats_dist["scale"]) -1
+        #     return (data - stats_dist["center"]) / stats_dist["scale"]
             
     def transform_custom_range(self, data, scale, center):
         if self.cfg.scaling_variant == "minmax_11":
@@ -203,10 +216,10 @@ class Scaler2:
             if isinstance(var, dict):
                 var = list(var.keys())
 
-            scaled_data = sca.transform_inverse(data[var], 
-                                                stats_dist["scale"][var], 
-                                                stats_dist["center"][var])
-            data = data.assign({v:scaled_data[v] for v in var})
+            unscaled_data = sca.transform_inverse(data[var], 
+                                                stats_dist["center"][var],
+                                                stats_dist["scale"][var])
+            data = data.assign({v:unscaled_data[v] for v in var})
 
         return data
         # if stats_dist is not None:
