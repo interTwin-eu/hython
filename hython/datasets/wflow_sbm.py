@@ -592,11 +592,24 @@ class WflowSBMCal(BaseDataset):
             # TODO: the period should be passed dynamically
             vs = data_dynamic[config.get("variable")].sel(time=slice("2017-01-01","2019-12-31"))
             if config.get("method") == "zscore":
-                self.sim_std = vs.std("time")
-                self.sim_mean = vs.mean("time")
-                self.obs_std = self.y.ssm.std("time")
-                self.obs_mean = self.y.ssm.mean("time")
-
+                how = config.get("how")
+                print(how)
+                if how == "local":
+                    self.sim_std = vs.std("time")
+                    self.sim_mean = vs.mean("time")
+                    self.obs_std = self.y.ssm.std("time")
+                    self.obs_mean = self.y.ssm.mean("time")
+                if how == "global":
+                    self.sim_std = vs.std()
+                    self.sim_mean = vs.mean()
+                    self.obs_std = self.y.ssm.std()
+                    self.obs_mean = self.y.ssm.mean()
+                if how == "glocal":   
+                    # global from simulation, local from observation
+                    self.sim_std = vs.std()
+                    self.sim_mean = vs.mean()
+                    self.obs_std = self.y.ssm.std("time")
+                    self.obs_mean = self.y.ssm.mean("time")
                 #import pdb;pdb.set_trace()
                 
                 self.y = (self.sim_std / self.obs_std) * (self.y - self.obs_mean) + self.sim_mean
