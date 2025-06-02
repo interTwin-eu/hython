@@ -69,7 +69,6 @@ class Hybrid(BaseModel):
 
         # run head layer
         head_output = self.head_layer(x_head_concat)
-        
         output = {}
         if isinstance(self.head_layer.head, RegressionHead):
             output["y_hat"] = head_output["y_hat"]

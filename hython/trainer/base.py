@@ -130,7 +130,7 @@ class AbstractTrainer(ABC):
             if valid_mask is not None:
                 scaling_factor = torch.sum(imask) / imask.flatten().shape[0] # fraction valid samples per batch
                 loss_tmp = loss_tmp * scaling_factor
-
+            
             loss = loss + loss_tmp * w
 
         # TODO: this is another version that should be tested! 

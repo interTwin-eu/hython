@@ -30,10 +30,11 @@ class CalTrainer(AbstractTrainer):
             target_b = data["y"].to(device)
             forcing_b = data["xd"].to(device)
             pred = model(predictor_b, forcing_b) # surrogate prediction
-
+           
             output = self.predict_step(pred, steps=self.cfg.predict_steps, subset_index=index_tensor_pred)
             target = self.target_step(target_b, steps=self.cfg.predict_steps)
             # 
+            
             #import pdb; pdb.set_trace()
             # rescale surrogate output to same simulation as target was rescaled
             #output["y_hat"] = dataloader.dataset.sim_std.to(device)/output["y_hat"].std() * (output["y_hat"] - output["y_hat"].mean()) + dataloader.dataset.sim_mean.to(device)
