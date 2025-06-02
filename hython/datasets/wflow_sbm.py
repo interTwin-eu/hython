@@ -481,7 +481,11 @@ class WflowSBMCal(BaseDataset):
             self.target_mask = self.target_mask.resample({"time":"1D"}).max().astype(bool)
             self.target_mask = self.target_mask.isnull().sum("time") > self.cfg.min_sample_target     
         else:
-            self.target_mask = self.y.isnull().all("time")[self.to_list(cfg.target_variables)[0]] #> self.cfg.min_sample_target   
+            #
+            #mask_min = self.y.isnull().sum("time")[self.to_list(cfg.target_variables)[0]] < self.cfg.min_sample_target   
+            #mask_max = self.y.isnull().sum("time")[self.to_list(cfg.target_variables)[0]] > 200
+            #import pdb;pdb.set_trace()
+            self.target_mask = self.y.isnull().all("time")[self.to_list(cfg.target_variables)[0]] #| mask_min | mask_max
 
         # static mask, predictors
         if urls.get("static_inputs_mask", None):
@@ -544,16 +548,17 @@ class WflowSBMCal(BaseDataset):
 
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")
-        #
+   
         if cfg.scaling_rescale_target is not None:
             # target has been transformed to vwc training statistics
             # now it needs to be scaled to minmax or whatever
-            self.scaler.load_or_compute(
-                self.y, 
-                "target_variables", 
-                is_train=True, # force comput stats
-                axes=("lat", "lon", "time") # pixel by pixel
-            )
+            pass
+            # self.scaler.load_or_compute(
+            #     self.y, 
+            #     "target_variables", 
+            #     is_train=True, # force comput stats
+            #     axes=("lat", "lon", "time") # pixel by pixel
+            # )
             #self.y = self.scaler.transform(self.y, "target_variables")
 
         else:
@@ -561,7 +566,7 @@ class WflowSBMCal(BaseDataset):
             self.scaler.load_or_compute(
                 self.y, "target_variables", is_train, axes=("lat", "lon", "time")
             )
-            #self.y = self.scaler.transform(self.y, "target_variables")
+            self.y = self.scaler.transform(self.y, "target_variables")
             
 
         if is_train: # write if train
@@ -591,13 +596,15 @@ class WflowSBMCal(BaseDataset):
                 self.sim_mean = vs.mean("time")
                 self.obs_std = self.y.ssm.std("time")
                 self.obs_mean = self.y.ssm.mean("time")
+
+                #import pdb;pdb.set_trace()
                 
                 self.y = (self.sim_std / self.obs_std) * (self.y - self.obs_mean) + self.sim_mean
 
-                self.obs_std = torch.from_numpy(self.obs_std.values).float()
-                self.obs_mean = torch.from_numpy(self.obs_mean.values).float()
-                self.sim_std = torch.from_numpy(self.sim_std.values).float()
-                self.sim_mean = torch.from_numpy(self.sim_mean.values).float()
+                #self.obs_std = torch.from_numpy(self.obs_std.values).float()
+                #self.obs_mean = torch.from_numpy(self.obs_mean.values).float()
+                #self.sim_std = torch.from_numpy(self.sim_std.values).float()
+                #self.sim_mean = torch.from_numpy(self.sim_mean.values).float()
             elif config.get("method") == "minmax":
                 self.sim_min = vs.min("time")
                 self.sim_max = vs.max("time")
