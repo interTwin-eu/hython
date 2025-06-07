@@ -113,7 +113,7 @@ class WflowSBM_HPC(BaseDataset):
         if not self.scale_ontraining:
             self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
 
-            self.y = self.scaler.transform(self.y, "target_variables")
+            #self.y = self.scaler.transform(self.y, "target_variables")
 
             if self.scaling_static_range is not None:
                 LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
@@ -312,7 +312,7 @@ class WflowSBM(BaseDataset):
         if not self.scale_ontraining:
             self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
 
-            self.y = self.scaler.transform(self.y, "target_variables")
+            #self.y = self.scaler.transform(self.y, "target_variables")
 
             if self.scaling_static_range is not None:
                 LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
@@ -475,17 +475,24 @@ class WflowSBMCal(BaseDataset):
         # == DATASET INDICES AND MASKING
         # target mask, observation
         if urls.get("target_variables_mask", None):
-            target_mask = read_from_zarr(url=urls["target_variables_mask"], chunks="auto",**xarray_kwargs).sel(time=self.period_range)
-            sel_target_mask = self.to_list(self.cfg.target_variables_mask)[0] if isinstance(self.to_list(self.cfg.target_variables_mask), list) else self.to_list(self.cfg.target_variables_mask)
-            self.target_mask = target_mask[sel_target_mask]
-            self.target_mask = self.target_mask.resample({"time":"1D"}).max().astype(bool)
-            self.target_mask = self.target_mask.isnull().sum("time") > self.cfg.min_sample_target     
+        #    target_mask = read_from_zarr(url=urls["target_variables_mask"], chunks="auto",**xarray_kwargs).sel(time=self.period_range)
+        #    sel_target_mask = self.to_list(self.cfg.target_variables_mask)[0] if isinstance(self.to_list(self.cfg.target_variables_mask), list) else self.to_list(self.cfg.target_variables_mask)
+        #    self.target_mask = target_mask[sel_target_mask]
+        #    self.target_mask = self.target_mask.resample({"time":"1D"}).max().astype(bool)
+        #    self.target_mask = self.target_mask.isnull().sum("time") > self.cfg.min_sample_target   
+            self.target_mask = xr.open_dataset(urls["target_variables_mask"]).mask
+  
         else:
             #
             #mask_min = self.y.isnull().sum("time")[self.to_list(cfg.target_variables)[0]] < self.cfg.min_sample_target   
             #mask_max = self.y.isnull().sum("time")[self.to_list(cfg.target_variables)[0]] > 200
             #import pdb;pdb.set_trace()
-            self.target_mask = self.y.isnull().all("time")[self.to_list(cfg.target_variables)[0]] #| mask_min | mask_max
+            self.target_mask = self.y.isnull().all("time")[self.to_list(cfg.target_variables)[0]]
+        
+
+        
+        
+        
 
         # static mask, predictors
         if urls.get("static_inputs_mask", None):
@@ -552,13 +559,13 @@ class WflowSBMCal(BaseDataset):
         if cfg.scaling_rescale_target is not None:
             # target has been transformed to vwc training statistics
             # now it needs to be scaled to minmax or whatever
-            pass
-            # self.scaler.load_or_compute(
-            #     self.y, 
-            #     "target_variables", 
-            #     is_train=True, # force comput stats
-            #     axes=("lat", "lon", "time") # pixel by pixel
-            # )
+            
+            self.scaler.load_or_compute(
+                self.y, 
+                "target_variables", 
+                is_train=True, # force comput stats
+                axes=("lat", "lon", "time") # pixel by pixel
+            )
             #self.y = self.scaler.transform(self.y, "target_variables")
 
         else:
@@ -584,13 +591,15 @@ class WflowSBMCal(BaseDataset):
         if config := self.cfg.scaling_rescale_target.get("soil-property", False):
             lower = self.cfg.scaling_rescale_target["lower"]
             upper = self.cfg.scaling_rescale_target["upper"]
-            par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto", **xarray_kwargs)[[lower,upper]]
+            par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto", **xarray_kwargs)[[lower, upper]]
             self.y = self.rescale_target(self.y, par[lower], par[upper])
         elif config := self.cfg.scaling_rescale_target.get("model-statistics", False):
             # In inference calibration, rescale output surrogate to training target statistics
             # For the same period of training the surrogate
             # TODO: the period should be passed dynamically
-            vs = data_dynamic[config.get("variable")].sel(time=slice("2017-01-01","2019-12-31"))
+            print(self.period_range)
+            vs = data_dynamic[config.get("variable")].sel(time=self.period_range)
+            
             if config.get("method") == "zscore":
                 how = config.get("how")
                 print(how)
@@ -604,20 +613,21 @@ class WflowSBMCal(BaseDataset):
                     self.sim_mean = vs.mean()
                     self.obs_std = self.y.ssm.std()
                     self.obs_mean = self.y.ssm.mean()
-                if how == "glocal":   
+                if how == "local_obs":   
                     # global from simulation, local from observation
                     self.sim_std = vs.std()
                     self.sim_mean = vs.mean()
                     self.obs_std = self.y.ssm.std("time")
                     self.obs_mean = self.y.ssm.mean("time")
-                #import pdb;pdb.set_trace()
+                if how == "local_sim":   
+                    # global from simulation, local from observation
+                    self.sim_std = vs.std("time")
+                    self.sim_mean = vs.mean("time")
+                    self.obs_std = self.y.ssm.std()
+                    self.obs_mean = self.y.ssm.mean()
                 
                 self.y = (self.sim_std / self.obs_std) * (self.y - self.obs_mean) + self.sim_mean
 
-                #self.obs_std = torch.from_numpy(self.obs_std.values).float()
-                #self.obs_mean = torch.from_numpy(self.obs_mean.values).float()
-                #self.sim_std = torch.from_numpy(self.sim_std.values).float()
-                #self.sim_mean = torch.from_numpy(self.sim_mean.values).float()
             elif config.get("method") == "minmax":
                 self.sim_min = vs.min("time")
                 self.sim_max = vs.max("time")

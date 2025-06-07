@@ -56,6 +56,7 @@ def spaef_temporal(obs_series: torch.Tensor, sim_series: torch.Tensor, method: s
 def compute_kge_torch(true, pred, eps=1e-8):
     # Remove invalid (NaN) entries
     mask = (~torch.isnan(true)) & (~torch.isnan(pred))
+    import pdb;pdb.set_trace()
     true = true[mask]
     pred = pred[mask]
 

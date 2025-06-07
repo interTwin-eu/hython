@@ -133,6 +133,7 @@ class AbstractTrainer(ABC):
             
             loss = loss + loss_tmp * w
 
+
         # TODO: this is another version that should be tested! 
         # for i, target_name in enumerate(target_weight):
         #     iypred = prediction[..., i]
