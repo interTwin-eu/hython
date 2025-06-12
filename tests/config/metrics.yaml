@@ -1,7 +1,21 @@
 metric_fn:
   _target_: hython.metrics.MetricCollection
   metrics:
-    - _target_: hython.metrics.MSEMetric
-    - _target_: hython.metrics.NSEMetric
-    - _target_: hython.metrics.PearsonMetric
-    - _target_: hython.metrics.KGEMetric
+    - _target_: hython.metrics.MSEMetric # custom
+    - _target_: hython.metrics.NSEMetric # custom
+    - _target_: hython.metrics.PearsonMetric # custom
+    - _target_: hython.metrics.KGEMetric # custom
+    - _target_: hython.metrics.MeanSquaredError  # torchmetrics
+
+
+
+torch_metric_mse:
+  _target_: hython.metrics.MeanSquaredError
+
+
+torch_metric_collection:
+  _target_: hython.metrics.MetricCollection
+  metrics:
+    - _target_: hython.metrics.PearsonCorrCoef
+    - _target_: hython.metrics.SpearmanCorrCoef
+    - _target_: hython.metrics.MeanSquaredError  # torchmetrics

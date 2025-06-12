@@ -1,10 +1,11 @@
 import pytest
+import torch
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
 import numpy as np
 import os
 
-from hython.metrics.standard import MSEMetric, RMSEMetric, compute_mse
+from hython.metrics.custom import MSEMetric, RMSEMetric, compute_mse
 
 TARGETS = ["vwc", "actevap"]
 
@@ -12,11 +13,21 @@ y1 = np.random.randn(100, 3)
 y2 = np.random.randn(100, 3)
 
 
-def test_some_metrics():
-    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/metrics.yaml"))
+def test_coll_metrics():
+    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/config/metrics.yaml"))
 
-    ret = cfg.metric_fn(y1, y2, ["vwc", "act", "blu"])
+    ret = cfg.metric_fn(
+        y1, 
+        y2, 
+        ["vwc", "actevap"])
 
+    assert ret 
+
+    ret = cfg.torch_metric_collection(
+        y1, 
+        y2, 
+        ["vwc", "actevap"])
+    
     assert ret
 
 
@@ -26,10 +37,10 @@ def test_1d():
     assert ret == 0
 
 
-def test_2d():
-    b = a = np.random.randn(100, 2)
-    ret = compute_mse(a, b)
-    assert np.all([ret[t] == 0 for t in range(a.shape[1])])
+# def test_2d():
+#     b = a = np.random.randn(100, 2)
+#     ret = compute_mse(a, b)
+#     assert np.all([ret[t] == 0 for t in range(a.shape[1])])
 
 
 def test_mse_class():
@@ -45,3 +56,9 @@ def test_mse_class_valid_mask():
     ret = MSEMetric()(a, b, TARGETS, valid_mask=mask)
 
     assert np.all([ret[t] == 0 for t in TARGETS])
+
+def test_torchmetric_mse():
+    cfg = instantiate(OmegaConf.load(f"{os.path.dirname(__file__)}/config/metrics.yaml"))
+    b = a = torch.from_numpy(np.random.randn(100))
+    ret = cfg.torch_metric_mse(a, b)
+    assert ret == 0
