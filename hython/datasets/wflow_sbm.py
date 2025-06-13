@@ -9,9 +9,8 @@ LOGGER = logging.getLogger(__name__)
 
 class WflowSBM_HPC(BaseDataset):
     def __init__(
-        self, cfg, scaler, is_train=True, period="train", scale_ontraining=False
+        self, cfg, scaler, is_train=True, period="train"
     ):
-        self.scale_ontraining = scale_ontraining
         self.scaler = scaler
         self.seq_len = cfg.seq_length
         self.cfg = self.validate_config(cfg)
@@ -73,14 +72,6 @@ class WflowSBM_HPC(BaseDataset):
         if self.downsampler is not None:
             self.cell_linear_index , self.time_index = self.downsampler.sampling_idx([self.cell_linear_index , self.time_index])
 
-        # Generate dataset samples
-        # !! REMOVED AS THERE IS A NEW TECNIQUE FOR DYNAMIC SAMPLING
-        #if self.cfg.downsampling_temporal_dynamic:
-            # Only downsample the spatial index, the time index to downsample the sequences, is generated at runtime.
-            # Therefore the dataset samples are sequences of max time series length. 
-        #    self.spacetime_index = self.cell_coords[self.cell_linear_index ]
-        #else:
-            # The dataset samples are the combination of cell and time indices
         if self.period == "test":
             self.spacetime_index = self.cell_linear_index
         else:
@@ -99,12 +90,12 @@ class WflowSBM_HPC(BaseDataset):
         self.static_coords = self.xs.coords
 
 
-        #  PREPROCESSING BEFORE SCALING
-        # TODO: improve
+        #  === PREPROCESS/TRANSFORM VARIABLES
+
         if self.cfg.get("preprocessor") is not None:
-            self.xs = self.preprocessor.preprocess(self.xs, "static_inputs")
-            self.xd = self.preprocessor.preprocess(self.xd, "dynamic_inputs")
-            self.y = self.preprocessor.preprocess(self.y, "target_variables")
+            self.xs = self.preprocessor.process(self.xs, "static_inputs")
+            self.xd = self.preprocessor.process(self.xd, "dynamic_inputs")
+            self.y = self.preprocessor.process(self.y, "target_variables")
         
         # == SCALING 
 
@@ -120,45 +111,11 @@ class WflowSBM_HPC(BaseDataset):
             self.y, "target_variables", is_train, axes=("lat", "lon", "time")
         )
 
-
-
-
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
 
         self.y = self.scaler.transform(self.y, "target_variables")
 
         self.xs = self.scaler.transform(self.xs, "static_inputs")
-        
-        # if not self.scale_ontraining:
-
-
-        #     if self.scaling_static_range is not None:
-        #         LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
-        #         scaling_static_reordered = {
-        #             k: self.cfg.scaling_static_range[k]
-        #             for k in self.cfg.static_inputs
-        #             if k in self.cfg.scaling_static_range
-        #         }
-
-        #         self.static_scale, self.static_center = self.get_scaling_parameter(
-        #             scaling_static_reordered, self.cfg.static_inputs, output_type="xarray"
-        #         )
-        #         self.xs = self.scaler.transform_custom_range(
-        #             self.xs, self.static_scale, self.static_center
-        #         )
-        #     else:
-        #         self.xs = self.scaler.transform(self.xs, "static_inputs")
-        # else:
-        #     # these will be used in the getitem by the scaler.transform_custom_range
-        #     scaling_static_reordered = {
-        #         k: self.cfg.scaling_static_range[k]
-        #         for k in self.cfg.static_inputs
-        #         if k in self.cfg.scaling_static_range
-        #     }
-
-        #     self.static_scale, self.static_center = self.get_scaling_parameter(
-        #         scaling_static_reordered, self.cfg.static_inputs
-        #     )
         
         # == WRITE SCALING STATS
 
@@ -172,6 +129,8 @@ class WflowSBM_HPC(BaseDataset):
                     self.scaler.write("dynamic_inputs")
                     self.scaler.write("static_inputs")
                     self.scaler.write("target_variables")
+
+
         # Pre-compute static data once
         self.static_tensor = torch.tensor(self.xs.to_array().values).float()
         
@@ -225,17 +184,6 @@ class WflowSBM_HPC(BaseDataset):
             y = self.y[idx_time:idx_time + self.seq_len,:,idx_lat, idx_lon]
             
             xs = self.xs[:, idx_lat, idx_lon]
-
-        # ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-        # ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
-        # ds_pixel_static = ds_pixel_static.to_array()
-        
-        # ds_pixel_dynamic = ds_pixel_dynamic[idx_time:idx_time + self.seq_len]
-        # ds_pixel_target = ds_pixel_target[idx_time:idx_time + self.seq_len]
-
-        # xd  = torch.from_numpy(ds_pixel_dynamic.values).float()
-        # xs = torch.from_numpy(ds_pixel_static.values).float()
-        # y = torch.from_numpy(ds_pixel_target.values).float()
 
         return {"xd": xd, "xs": xs, "y": y}
 

@@ -53,12 +53,19 @@ class BaseScaler:
     def transform_inverse(self, data, center, scale):
         return (data * scale) + center
     
+    def update_attribute(self, data):
+        up = {"variant":self.__class__.__name__}
+        for v in self.variable:
+            data[v].attrs.update(up)
+    
 class BoundedScaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable=variable)
 
     def compute(self, data, type, axes):
         center, scale = get_scaling_parameter(self.variable, output_type="xarray")
+        self.update_attribute(center)
+        self.update_attribute(scale)
         return center, scale
     
 class MinMax01Scaler(BaseScaler):
@@ -68,6 +75,8 @@ class MinMax01Scaler(BaseScaler):
     def compute(self, data, type, axes):
         center = data[self.variable].min(axes)
         scale = data[self.variable].max(axes) - center
+        self.update_attribute(center)
+        self.update_attribute(scale)
         return center, scale
     
 class MinMax11Scaler(BaseScaler):
@@ -77,6 +86,8 @@ class MinMax11Scaler(BaseScaler):
     def compute(self, data, type, axes):
         center = data[self.variable].min(axes)
         scale = data[self.variable].max(axes) - center
+        self.update_attribute(center)
+        self.update_attribute(scale)
         return center, scale
     
     def transform(self, data, center, scale):
@@ -94,6 +105,8 @@ class StandardScaler(BaseScaler):
     def compute(self, data, type, axes):
         center = data[self.variable].mean(axes)
         scale = data[self.variable].std(axes)
+        self.update_attribute(center)
+        self.update_attribute(scale)
         return center, scale
 
 class Scaler2:
@@ -133,7 +146,7 @@ class Scaler2:
         self.run_dir = Path(run_dir)
 
     def compute2(self, data, type, axes=(0, 1)):
-        scaler_list = self.cfg_scaler[type]["scaling_variant"]  
+        scaler_list = self.cfg_scaler[type]["variant"]  
         centers, scales = [], []
         for sca in scaler_list:
             center, scale = sca.compute(data, type, axes)
@@ -149,7 +162,6 @@ class Scaler2:
         return data[list(self.cfg[type])] 
 
     def load_or_compute(self, data, type="dynamic_input", is_train=True, axes=(0, 1)):
-
         if is_train:
             if self.use_cached:
                 try:
@@ -166,7 +178,7 @@ class Scaler2:
 
     def transform(self, data, type):
         stats_dist = self.archive.get(type)  
-        scaler_list = self.cfg_scaler[type]["scaling_variant"]
+        scaler_list = self.cfg_scaler[type]["variant"]
         for sca in scaler_list:
             
             try: #FIXME
@@ -203,7 +215,7 @@ class Scaler2:
     
     def transform_inverse(self, data, type, **kwargs):
         stats_dist = self.archive.get(type)
-        scaler_list = self.cfg_scaler[type]["scaling_variant"]
+        scaler_list = self.cfg_scaler[type]["variant"]
         for sca in scaler_list:
             
             try: #FIXME
