@@ -1,8 +1,7 @@
 import xarray as xr
 import numpy as np
-from typing import List
-from omegaconf import DictConfig, OmegaConf
-from dask.array.core import Array as DaskArray
+from omegaconf import OmegaConf
+import dask.array as dk
 
 
 class BasePreprocessor:
@@ -11,35 +10,88 @@ class BasePreprocessor:
         if OmegaConf.is_list(variable):
             self.variable = OmegaConf.to_container(self.variable, resolve=True)
 
+    def process(self, data: xr.Dataset) -> xr.Dataset:
+        return NotImplementedError()
+    
+    def process_inverse(self, data: xr.Dataset) -> xr.Dataset:
+        return NotImplementedError()
 
-class Log(BasePreprocessor):
+
+class Log1p(BasePreprocessor):
     def __init__(self, variable: list[str]):
         self.variable = variable
 
-    def __call__(self, data: xr.Dataset) -> xr.Dataset:
-        return data.assign({v:np.log1p(data[v]) for v in self.variable})
+    def process(self, data: xr.Dataset, lazy = False) -> xr.Dataset:
+        func = dk.log1p if lazy else np.log1p 
+        return data.assign({v: func(data[v]) for v in self.variable})
+    
+    def process_inverse(self, data: xr.Dataset, lazy=False) -> xr.Dataset:
+        func = dk.exp if lazy else np.exp 
+        return func(data) - 1 
+    
+
+class Log10p(BasePreprocessor):
+    def __init__(self, variable: list[str]):
+        self.variable = variable
+
+    def process(self, data: xr.Dataset, lazy = False) -> xr.Dataset:
+
+        func = dk.log10 if lazy else np.log10 
+
+        func2 = lambda x: func(x + 1)
+
+        return data.assign({v:func2(data[v]) for v in self.variable})
+    
+    def process_inverse(self, data: xr.Dataset, lazy = False) -> xr.Dataset:
+        #func = dk.exp if lazy else np.exp 
+        return (10**data) - 1 
 
 
 class Preprocessor:
     def __init__(self, cfg):
         self.cfg = cfg.preprocessor 
 
-    def preprocess(self, data, type):
+    def process(self, data, type):
         if self.cfg.get(type) is None:
+            print("Type not defined, returning data unchanged.")
             return data
         prepr_list = self.cfg[type]["variant"]
-        for pre in prepr_list:
+        lazy = False if self.cfg[type].get("lazy") is None else self.cfg[type].get("lazy")
+
+        for preprocessor in prepr_list:
             try: #FIXME
                 # Try if dict
-                var = OmegaConf.to_container(pre.variable)
+                var = OmegaConf.to_container(preprocessor.variable)
             except:
                 # list
-                var = pre.variable
-
+                var = preprocessor.variable
+            
             if isinstance(var, dict):
                 var = list(var.keys())
 
-            prepr_data = pre(data[var])
+            prepr_data = preprocessor.process(data[var], lazy = lazy)
+
+            return data.assign({v:prepr_data[v] for v in var})
+
+
+    def process_inverse(self, data, type):
+        if self.cfg.get(type) is None:
+            return data
+        prepr_list = self.cfg[type]["variant"]
+        lazy = False if self.cfg[type].get("lazy") is None else self.cfg[type].get("lazy")
+
+        for preprocessor in prepr_list:
+            try: #FIXME
+                # Try if dict
+                var = OmegaConf.to_container(preprocessor.variable)
+            except:
+                # list
+                var = preprocessor.variable
+            
+            if isinstance(var, dict):
+                var = list(var.keys())
+
+            prepr_data = preprocessor.process_inverse(data[var], lazy = lazy)
 
             return data.assign({v:prepr_data[v] for v in var})
 
