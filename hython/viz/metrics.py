@@ -8,7 +8,7 @@ from matplotlib.ticker import MaxNLocator
 import cartopy.crs as ccrs
 from cartopy.io.img_tiles import QuadtreeTiles
 
-from hython.metrics.standard import (
+from hython.metrics.custom import (
     compute_bias,
     compute_rmse,
     compute_pbias,

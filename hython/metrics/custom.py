@@ -2,83 +2,12 @@ import numpy as np
 import torch
 from torch import vmap
 import xarray as xr
-from hython.utils import keep_valid
 from typing import Dict, List
+from hython.utils import keep_valid
+from .base import *
 
 
-def metric_decorator(y_true, y_pred, target_names, valid_mask=None, sample_weight=None):
-    def target(wrapped):
-        def wrapper():
-            metrics = {}
-            for idx, target in enumerate(target_names):
-                iypred = y_pred[:, idx]
-                iytrue = y_true[:, idx]
-                if valid_mask is not None:
-                    imask = valid_mask[:, idx]
-                    iypred = iypred[imask]
-                    iytrue = iytrue[imask]
-                metrics[target] = wrapped(iytrue, iypred, sample_weight=sample_weight)
-            return metrics
-
-        return wrapper
-
-    return target
-
-
-def get_metrics():
-    return
-
-
-class Metric:
-    """
-    Hython is currently supporting sequence-to-one training (predicting the last time step of the sequence). Therefore it assumes that
-    the shape of y_true and y_pred is (N, C).
-
-    In the future it will also support sequence-to-sequence training for forecasting applications.
-
-    TODO: In forecasting, the shape of y_true and y_pred is going to be (N,T,C), where T is the n of future time steps.
-
-    """
-
-    def __init__(self):
-        pass
-
-    def __call__(self) -> Dict:
-        pass
-
-
-class MetricCollection(Metric):
-    """Compute a collection of metrics
-
-    Parameters
-    ----------
-    metrics: list of instantiated metrics. ex: metrics=[MSEMetric(), KGEMetric()]
-
-    Returns
-    -------
-    Nested dictionary containing metrics and target variables, ex: {"MSEMetric": {"target_variable_1": value, "target_variable_2": value, ...}, "KGEMetric": { ... }, ...}
-
-    """
-
-    def __init__(self, metrics: List[Metric] = []):
-        self.metrics = metrics
-
-    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
-        ret = {}
-        for metric in self.metrics:
-            ret[metric.__class__.__name__] = metric(y_true, y_pred, target_names, valid_mask)
-
-        ret2 = {}
-        for itarget in target_names:
-            metrics = {}
-            for imetric in ret:
-                metrics[imetric] = ret[imetric][itarget]
-            ret2[itarget] = metrics
-
-        return ret2
-
-
-class MSEMetric(Metric):
+class MSEMetric(CustomMetric):
     """
     Mean Squared Error (MSE)
 
@@ -95,43 +24,43 @@ class MSEMetric(Metric):
 
     """
 
-    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
-        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(
+    def __call__(self, y_true, y_pred, target_names: list[str] | None = None, valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names = target_names, valid_mask=valid_mask)(
             compute_mse
         )()
 
 
-class RMSEMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
-        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(
+class RMSEMetric(CustomMetric):
+    def __call__(self, y_true, y_pred, target_names: list[str] | None = None, valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names = target_names, valid_mask=valid_mask)(
             compute_rmse
         )()
 
 
-class KGEMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
-        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(
+class KGEMetric(CustomMetric):
+    def __call__(self, y_true, y_pred, target_names: list[str] | None = None, valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names = target_names, valid_mask=valid_mask)(
             compute_kge2
         )()
 
 
-class PearsonMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
-        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(
+class PearsonMetric(CustomMetric):
+    def __call__(self, y_true, y_pred, target_names: list[str] | None = None, valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names = target_names, valid_mask=valid_mask)(
             compute_pearson
         )()
 
 
-class PBIASMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
-        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(
+class PBIASMetric(CustomMetric):
+    def __call__(self, y_true, y_pred, target_names: list[str] | None = None, valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names = target_names, valid_mask=valid_mask)(
             compute_pbias
         )()
 
 
-class NSEMetric(Metric):
-    def __call__(self, y_true, y_pred, target_names: list[str], valid_mask=None):
-        return metric_decorator(y_true, y_pred, target_names, valid_mask=valid_mask)(
+class NSEMetric(CustomMetric):
+    def __call__(self, y_true, y_pred, target_names: list[str] | None = None, valid_mask=None):
+        return metric_decorator(y_true, y_pred, target_names = target_names, valid_mask=valid_mask)(
             compute_nse
         )()
 
