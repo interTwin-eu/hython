@@ -65,7 +65,7 @@ class CalTrainer(AbstractTrainer):
 
             # Accumulate mini-batch loss, only valid samples
             running_batch_loss += mini_batch_loss.detach()
-            print(loss)
+            #print(loss)
         epoch_loss = running_batch_loss / len(dataloader)
 
         metric = self._compute_metric()
