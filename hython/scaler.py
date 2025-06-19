@@ -161,7 +161,7 @@ class Scaler:
     def ensure_var_order(self, data, type):
         return data[list(self.cfg[type])] 
 
-    def load_or_compute(self, data, type="dynamic_input", is_train=True, axes=(0, 1)):
+    def load_or_compute(self, data, type="dynamic_inputs", is_train=True, axes=(0, 1)):
         if is_train:
             if self.use_cached:
                 try:
@@ -219,6 +219,10 @@ class Scaler:
             data = data.assign({v:unscaled_data[v] for v in var})
 
         return data
+
+    def transform_inverse_custom_range(self, data, scale, center):
+        return (data * scale) + center
+    
 
     def load(self, type):
         path = self.run_dir / f"{type}.yaml"

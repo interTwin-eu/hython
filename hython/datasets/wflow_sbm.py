@@ -267,7 +267,7 @@ class WflowSBM(BaseDataset):
         self.scaler.load_or_compute(
             self.xd, "dynamic_inputs", is_train, axes=("lat","lon", "time")
         )
-
+        
         self.scaler.load_or_compute(
             self.xs, "static_inputs", is_train, axes=("lat","lon")
         )
@@ -276,38 +276,28 @@ class WflowSBM(BaseDataset):
             self.y, "target_variables", is_train, axes=("lat", "lon", "time")
         )
 
-        if not self.scale_ontraining:
-            self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
 
-            #self.y = self.scaler.transform(self.y, "target_variables")
+        self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
 
-            if self.scaling_static_range is not None:
-                LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
-                scaling_static_reordered = {
-                    k: self.cfg.scaling_static_range[k]
-                    for k in self.cfg.static_inputs
-                    if k in self.cfg.scaling_static_range
-                }
+        #self.y = self.scaler.transform(self.y, "target_variables")
 
-                self.static_scale, self.static_center = self.get_scaling_parameter(
-                    scaling_static_reordered, self.cfg.static_inputs, output_type="xarray"
-                )
-                self.xs = self.scaler.transform_custom_range(
-                    self.xs, self.static_scale, self.static_center
-                )
-            else:
-                self.xs = self.scaler.transform(self.xs, "static_inputs")
-        else:
-            # these will be used in the getitem by the scaler.transform_custom_range
-            scaling_static_reordered = {
-                k: self.cfg.scaling_static_range[k]
-                for k in self.cfg.static_inputs
-                if k in self.cfg.scaling_static_range
-            }
+        # if self.scaling_static_range is not None:
+        #     LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
+        #     scaling_static_reordered = {
+        #         k: self.cfg.scaling_static_range[k]
+        #         for k in self.cfg.static_inputs
+        #         if k in self.cfg.scaling_static_range
+        #     }
 
-            self.static_scale, self.static_center = self.get_scaling_parameter(
-                scaling_static_reordered, self.cfg.static_inputs
-            )
+        #     self.static_scale, self.static_center = self.get_scaling_parameter(
+        #         scaling_static_reordered, self.cfg.static_inputs, output_type="xarray"
+        #     )
+        #     self.xs = self.scaler.transform_custom_range(
+        #         self.xs, self.static_scale, self.static_center
+        #     )
+        # else:
+        self.xs = self.scaler.transform(self.xs, "static_inputs")
+
         
         # == WRITE SCALING STATS
 
@@ -327,69 +317,44 @@ class WflowSBM(BaseDataset):
 
     def __getitem__(self, index):
         
-        if self.scale_ontraining:
-            pass
-            #TODO: implement 
-            # xd = torch.tensor(
-            #     self.scaler.transform(self.xd[item_index], "dynamic_inputs").values
-            # ).float()
 
-            # y = torch.tensor(
-            #     self.scaler.transform(self.y[item_index], "target_variables").values
-            # ).float()
+        if self.cfg.downsampling_temporal_dynamic:
+            lat, lon = self.coord_samples[index]
 
-            # if self.scaling_static_range is not None:
-            #     xs = torch.tensor(
-            #         self.scaler.transform_custom_range(
-            #             self.xs[item_index],
-            #             "static_inputs",
-            #             self.static_scale,
-            #             self.static_center,
-            #         ).values
-            #     ).float()
-            # else:
-            #     xs = torch.tensor(
-            #         self.scaler.transform(self.xs[item_index], "static_inputs").values
-            #     ).float()
+            ds_pixel_dynamic = self.xd.isel(lat=lat, lon=lon) # lat, lon, time -> time
+            ds_pixel_target = self.y.isel(lat=lat, lon=lon)
+            ds_pixel_static = self.xs.isel(lat=lat, lon=lon)
 
+            ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+            ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+
+            ds_pixel_static = ds_pixel_static.to_array()
+            
+            xd  = torch.tensor(ds_pixel_dynamic.values).float()
+            xs = torch.tensor(ds_pixel_static.values).float()
+            y = torch.tensor(ds_pixel_target.values).float()
         else:
-            if self.cfg.downsampling_temporal_dynamic:
-                lat, lon = self.coord_samples[index]
+            idx_cell, idx_time = self.coord_samples[index]
 
-                ds_pixel_dynamic = self.xd.isel(lat=lat, lon=lon) # lat, lon, time -> time
-                ds_pixel_target = self.y.isel(lat=lat, lon=lon)
-                ds_pixel_static = self.xs.isel(lat=lat, lon=lon)
+            idx_lat, idx_lon = idx_cell
+            # TODO: check
+            ds_pixel_dynamic = self.xd.isel(lat=idx_lat, 
+                                                    lon=idx_lon, 
+                                                    time=slice(idx_time - self.seq_len + 1, idx_time + 1)) # lat, lon, time -> time
 
-                ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-                ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
-
-                ds_pixel_static = ds_pixel_static.to_array()
-                
-                xd  = torch.tensor(ds_pixel_dynamic.values).float()
-                xs = torch.tensor(ds_pixel_static.values).float()
-                y = torch.tensor(ds_pixel_target.values).float()
-            else:
-                idx_cell, idx_time = self.coord_samples[index]
-
-                idx_lat, idx_lon = idx_cell
-                # TODO: check
-                ds_pixel_dynamic = self.xd.isel(lat=idx_lat, 
-                                                        lon=idx_lon, 
-                                                        time=slice(idx_time - self.seq_len + 1, idx_time + 1)) # lat, lon, time -> time
-
-                ds_pixel_target = self.y.isel(lat=idx_lat, 
-                                                        lon=idx_lon, 
-                                                        time=slice(idx_time - self.seq_len + 1, idx_time + 1)) 
-                
-                ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
-        
-                ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-                ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
-                ds_pixel_static = ds_pixel_static.to_array()
-                
-                xd  = torch.tensor(ds_pixel_dynamic.values).float()
-                xs = torch.tensor(ds_pixel_static.values).float()
-                y = torch.tensor(ds_pixel_target.values).float()
+            ds_pixel_target = self.y.isel(lat=idx_lat, 
+                                                    lon=idx_lon, 
+                                                    time=slice(idx_time - self.seq_len + 1, idx_time + 1)) 
+            
+            ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
+    
+            ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+            ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+            ds_pixel_static = ds_pixel_static.to_array()
+            
+            xd  = torch.tensor(ds_pixel_dynamic.values).float()
+            xs = torch.tensor(ds_pixel_static.values).float()
+            y = torch.tensor(ds_pixel_target.values).float()
 
         return {"xd": xd, "xs": xs, "y": y}
 
