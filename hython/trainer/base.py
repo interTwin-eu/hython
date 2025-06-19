@@ -30,7 +30,8 @@ class AbstractTrainer(ABC):
         try:
             temporal_downsampling = self.cfg.temporal_downsampling
         except:
-            temporal_downsampling = False
+            return 
+            #temporal_downsampling = False
             
         if temporal_downsampling:
             if len(self.cfg.temporal_subset) > 1:

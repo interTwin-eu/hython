@@ -233,3 +233,44 @@ class ConvLSTM(BaseModel):
         if not isinstance(param, list) or not isinstance(param, tuple):
             param = [param] * num_layers
         return param
+
+
+
+class CNNLSTM(BaseModel):
+    def __init__(self, cnn_out_dim, hidden_dim, output_shape):
+        super().__init__()
+        self.output_shape = output_shape  # (C, H, W)
+
+        self.cnn = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+
+        self.flatten = nn.Flatten()
+        self.fc_cnn = nn.Linear(32, cnn_out_dim)
+
+        self.lstm = nn.LSTM(input_size=cnn_out_dim, hidden_size=hidden_dim, batch_first=True)
+
+        self.fc_out = nn.Linear(hidden_dim, output_shape[0] * output_shape[1] * output_shape[2])
+
+    def forward(self, x):
+        b, t, c, h, w = x.shape
+        x = x.view(b * t, c, h, w)
+        x = self.cnn(x)
+
+        x = self.flatten(x)
+
+        x = self.fc_cnn(x)
+
+        x = x.view(b, t, -1)
+
+        
+        lstm_out, _ = self.lstm(x)
+        out = self.fc_out(lstm_out)
+        out = out.view(b, t, *self.output_shape)
+
+        return out
