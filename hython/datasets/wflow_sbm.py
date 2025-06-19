@@ -634,6 +634,8 @@ class WflowSBMCube(BaseDataset):
         self.scaler = scaler
         self.cfg = cfg
 
+        self.preprocessor = Preprocessor(cfg)
+
         self.downsampler = self.cfg[f"{period}_downsampler"]
 
         self.period = period
@@ -643,7 +645,7 @@ class WflowSBMCube(BaseDataset):
 
         self.scaling_static_range = self.cfg.get("scaling_static_range")
 
-        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs).sel(time=self.period_range).isel(lat=slice(None, None, -1))
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs).sel(time=self.period_range)
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto",**xarray_kwargs)
 
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)]
@@ -706,7 +708,17 @@ class WflowSBMCube(BaseDataset):
             # TODO: also self.cbs_time_idxs and self.cbs_spatial_idxs should be updated
             self.cbs_mapping_idxs = self.downsampler.sampling_idx(self.cbs_mapping_idxs)
 
-            # Scaling
+        if self.cfg.get("preprocessor") is not None:
+            self.xs = self.preprocessor.process(self.xs, "static_inputs")
+            self.xd = self.preprocessor.process(self.xd, "dynamic_inputs")
+            self.y = self.preprocessor.process(self.y, "target_variables")
+
+        # == SOME USEFUL PARAMETERS
+        self.lat_size = len(self.xd.lat)
+        self.lon_size = len(self.xd.lon)
+        self.time_size = len(self.xd.time)
+        self.dynamic_coords = self.xd.coords
+        self.static_coords = self.xs.coords
 
 
         self.scaler.load_or_compute(
@@ -721,40 +733,11 @@ class WflowSBMCube(BaseDataset):
             self.y, "target_variables", is_train, axes=("time", "lat", "lon")
         )
 
-        if not self.scale_ontraining:
-            self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
+        self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
 
-            self.y = self.scaler.transform(self.y, "target_variables")
+        self.y = self.scaler.transform(self.y, "target_variables")
 
-            if self.scaling_static_range is not None:
-                LOGGER.info(f"Scaling static inputs with {self.scaling_static_range}")   
-                scaling_static_reordered = {
-                    k: self.cfg.scaling_static_range[k]
-                    for k in self.cfg.static_inputs
-                    if k in self.cfg.scaling_static_range
-                }
-
-                self.static_scale, self.static_center = self.get_scaling_parameter(
-                    scaling_static_reordered, self.cfg.static_inputs
-                )
-                
-                self.xs = self.scaler.transform_custom_range(
-                    self.xs, self.static_scale, self.static_center
-                )
-            else:
-                self.xs = self.scaler.transform(self.xs, "static_inputs")
-        else:
-            # these will be used in the getitem by the scaler.transform_custom_range
-            scaling_static_reordered = {
-                k: self.cfg.scaling_static_range[k]
-                for k in self.cfg.static_inputs
-                if k in self.cfg.scaling_static_range
-            }
-
-            self.static_scale, self.static_center = self.get_scaling_parameter(
-                scaling_static_reordered, self.cfg.static_inputs
-            )
-
+        self.xs = self.scaler.transform(self.xs, "static_inputs")
 
         if is_train: # write if train
             if not self.scaler.use_cached: # write if not reading from cache
@@ -767,7 +750,6 @@ class WflowSBMCube(BaseDataset):
                     self.scaler.write("static_inputs")
                     self.scaler.write("target_variables")
 
-        #import pdb;pdb.set_trace()
         xd_data_vars = list(self.xd.data_vars)
         self.xd = self.xd.to_stacked_array(
             new_dim="feat", sample_dims=["time", "lat", "lon"]
@@ -803,7 +785,7 @@ class WflowSBMCube(BaseDataset):
             self.xs = self.xs.load()
             self.y = self.y.load()
 
-        # TODO: fix this
+        # TODO: improve this
         self.xd = self.xd.fillna(self.cfg.fill_missing)
         self.y = self.y.fillna(self.cfg.fill_missing)
         self.xs = self.xs.fillna(self.cfg.fill_missing)
