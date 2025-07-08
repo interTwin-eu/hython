@@ -574,9 +574,6 @@ class WflowSBMCal(BaseDataset):
         return len((range(len(self.coord_samples))))
 
     def __getitem__(self, index):
-
-        #if self.cfg.downsampling_temporal_dynamic or self.period != "test":
-
         idx_lat, idx_lon = self.coord_samples[index]
 
         ds_pixel_dynamic = self.xd.isel(lat=idx_lat, lon=idx_lon) # lat, lon, time -> time
@@ -592,34 +589,6 @@ class WflowSBMCal(BaseDataset):
         xd  = torch.tensor(ds_pixel_dynamic.values).float()
         xs = torch.tensor(ds_pixel_static.values).float()
         y = torch.tensor(ds_pixel_target.values).float()
-
-        # else:
-        #     idx_cell, idx_time = self.coord_samples[index]
-
-        #     idx_lat, idx_lon = idx_cell
-        #     # TODO: check
-        #     ds_pixel_dynamic = self.xd.isel(
-        #                                     lat=idx_lat, 
-        #                                     lon=idx_lon, 
-        #                                     time=slice(idx_time - (self.seq_len -1), # size seq_len to index 
-        #                                                idx_time + 1) # not inclusive
-        #                                                ) 
-
-        #     ds_pixel_target = self.y.isel(  
-        #                                     lat=idx_lat, 
-        #                                     lon=idx_lon, 
-        #                                     time=slice(idx_time - (self.seq_len - 1), idx_time + 1)) 
-            
-        #     ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
-    
-        #     ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-        #     ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
-        #     ds_pixel_static = ds_pixel_static.to_array()
-            
-        #     # TODO: remove call to float
-        #     xd  = torch.tensor(ds_pixel_dynamic.values).float()
-        #     xs = torch.tensor(ds_pixel_static.values).float()
-        #     y = torch.tensor(ds_pixel_target.values).float()
 
         return {"xd": xd, "xs": xs, "y": y}
 
