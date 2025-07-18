@@ -50,19 +50,34 @@ def return_dict(*args):
 RULES = {">=": torch.ge, "<=": torch.le, ">": torch.gt, "<": torch.lt, "==": torch.eq}
 
 class ParamConstraintReg(nn.Module):
-    def __init__(self, constraints: List, factor: int = 1):
+    """
+    # regularization:
+    #   _target_: hython.regularizations.ParamConstraintReg
+    #   factor: 1
+    #   constraints:
+    #     - ["thetaS", ">", "thetaR"]
+    """
+    def __init__(self, parameters: List, constraints: List, factor: int = 1):
         super(ParamConstraintReg, self).__init__()
-        self.fact0r = factor
+        self.params = parameters 
+        self.factor = factor
         self.constraints = constraints
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         x: Parameters
         """
-        for i in range(x.size(1)):
-            for c in self.constraints:
-                op = RULES[c[1]]
-                loss = torch.relu(op(x[c[0]], x[c[0]])).mean()
+        loss = 0
+        for c in self.constraints:
+            pname1 = x[c[0]]
+            pname2 = x[c[2]]
+            pidx1 = self.params.index(pname1)
+            pidx2 = self.params.index(pname2)
+            op = RULES[c[1]]
+            # If violated should return 1 per example
+            violated_bool = torch.logical_not(op(x[pidx1], x[pidx2])) 
+            violated_sum = violated_bool.sum()
+            loss += (violated_sum * self.factor)
         return loss
 
 
