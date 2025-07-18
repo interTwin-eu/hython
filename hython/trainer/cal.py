@@ -58,7 +58,7 @@ class CalTrainer(AbstractTrainer):
             if self.cfg.predict_steps != 0: # not necessary as the loss is already averaged
                 mini_batch_loss = mini_batch_loss.mean()
 
-            # Add regularization 
+            # Add regularization acting on parameters
             reg_loss = self._compute_regularization(pred["param"])
             loss = mini_batch_loss + reg_loss
 

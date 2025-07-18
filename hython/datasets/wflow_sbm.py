@@ -413,7 +413,6 @@ class WflowSBMCal(BaseDataset):
         #    self.target_mask = self.target_mask.resample({"time":"1D"}).max().astype(bool)
         #    self.target_mask = self.target_mask.isnull().sum("time") > self.cfg.min_sample_target   
             self.target_mask = xr.open_dataset(urls["target_variables_mask"]).mask
-  
         else:
             #
             #mask_min = self.y.isnull().sum("time")[self.to_list(cfg.target_variables)[0]] < self.cfg.min_sample_target   
@@ -421,20 +420,18 @@ class WflowSBMCal(BaseDataset):
             #import pdb;pdb.set_trace()
             self.target_mask = self.y.isnull().all("time")[self.to_list(cfg.target_variables)[0]]
         
-
-        
-        
-        
-
         # static mask, predictors
         if urls.get("static_inputs_mask", None):
             self.static_mask = read_from_zarr(url=urls["static_inputs_mask"], chunks="auto", **xarray_kwargs)[self.to_list(self.cfg.static_inputs_mask)[0]]
         else:
             self.static_mask = self.xs.isnull()[self.to_list(self.cfg.static_inputs)].to_array().any("variable")
         
-        # combine masks
-        self.mask = self.target_mask | self.head_mask | self.static_mask
+        self.mask_wflow_missing = read_from_zarr(url=urls["mask_variables"])[self.to_list(self.cfg.mask_variables)]["mask_missing"]
 
+        self.mask = self.target_mask | self.head_mask | self.static_mask    
+
+            
+        #import pdb;pdb.set_trace()
         if not self.cfg.data_lazy_load: # loading in memory
             self.xd = self.xd.load()
             self.xs = self.xs.load()
@@ -521,10 +518,10 @@ class WflowSBMCal(BaseDataset):
 
     def rescale_target(self, urls, data_dynamic, data_target, xarray_kwargs = {}):
         if config := self.cfg.scaling_rescale_target.get("soil-property", False):
-            lower = self.cfg.scaling_rescale_target["lower"]
-            upper = self.cfg.scaling_rescale_target["upper"]
+            lower = config["lower"]
+            upper = config["upper"]
             par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto", **xarray_kwargs)[[lower, upper]]
-            self.y = self.rescale_target(self.y, par[lower], par[upper])
+            self.y = super().rescale_target(self.y, par[lower], par[upper])
         elif config := self.cfg.scaling_rescale_target.get("model-statistics", False):
             # In inference calibration, rescale output surrogate to training target statistics
             # For the same period of training the surrogate
@@ -557,7 +554,8 @@ class WflowSBMCal(BaseDataset):
                     self.sim_mean = vs.mean("time")
                     self.obs_std = self.y.ssm.std()
                     self.obs_mean = self.y.ssm.mean()
-                
+                from copy import deepcopy
+                self.y_unscaled = deepcopy(self.y)
                 self.y = (self.sim_std / self.obs_std) * (self.y - self.obs_mean) + self.sim_mean
 
             elif config.get("method") == "minmax":
