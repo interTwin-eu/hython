@@ -3,7 +3,7 @@ from pathlib import Path
 from timeit import default_timer
 from typing import Dict, Literal, Optional, Union, Any, Tuple
 from tqdm.auto import tqdm
-import copy
+
 from torch.utils.data import Dataset
 import torch
 import torch.nn as nn
@@ -12,9 +12,9 @@ from ray import train
 from copy import deepcopy
 
 from hython.sampler import SamplerBuilder
-from hython.trainer import RNNTrainer, CalTrainer
+from hython.trainer import RNNTrainer, CalTrainer, RNNTrainerHPC, ConvTrainer
 from hython.models import get_model_class as get_hython_model
-from hython.models import load_model, ModelLogAPI
+from hython.models import ModelLogAPI
 
 from itwinai.torch.distributed import (
     DeepSpeedStrategy,
@@ -31,9 +31,10 @@ from itwinai.torch.trainer import TorchTrainer
 from itwinai.torch.type import Metric
 from itwinai.torch.profiling.profiler import profile_torch_trainer
 
-from omegaconf import OmegaConf
 from hydra.utils import instantiate
+import torch
 
+torch.autograd.set_detect_anomaly(True)
 
 class RNNDistributedTrainer(TorchTrainer):
     """Trainer class for RNN model using pytorch.
@@ -67,10 +68,8 @@ class RNNDistributedTrainer(TorchTrainer):
         self,
         config: Union[Dict, TrainingConfiguration],
         epochs: int,
-        model: str = None,
-        strategy: Optional[
-            Literal["ddp", "deepspeed", "horovod"]
-        ] = "ddp",
+        model: Optional[Union[str, nn.Module, Dict]] = None,
+        strategy: Optional[Literal["ddp", "deepspeed", "horovod"]] = "ddp",
         validation_every: Optional[int] = 1,
         test_every: Optional[int] = None,
         random_seed: Optional[int] = None,
@@ -111,29 +110,38 @@ class RNNDistributedTrainer(TorchTrainer):
     ) -> Tuple[Dataset, Dataset, Dataset, Any]:
         self.init_hython_trainer()
 
-        return super().execute(train_dataset, validation_dataset, test_dataset)
+        train_dataset, validation_dataset, test_dataset, model = super().execute(train_dataset, validation_dataset, test_dataset)
+
+        return test_dataset, self.test_loader, self.model, self.strategy, self.config
 
     def init_hython_trainer(self) -> None:
-        self.config.loss_fn = instantiate(
-            {"loss_fn": self.config.loss_fn}
-        )["loss_fn"]
+        self.config.loss_fn = instantiate({"loss_fn": self.config.loss_fn})["loss_fn"]
 
-        self.config.metric_fn = instantiate(
-            {"metric_fn": self.config.metric_fn}
-        )["metric_fn"]
+        self.config.metric_fn = instantiate({"metric_fn": self.config.metric_fn})["metric_fn"]
 
         self.model_api = ModelLogAPI(self.config)
 
         if self.config.hython_trainer == "rnntrainer":
-            
             # LOAD MODEL
             self.model_logger = self.model_api.get_model_logger("model")
             self.model = self.model_class(self.config)
 
             self.hython_trainer = RNNTrainer(self.config)
-            
+        elif self.config.hython_trainer == "rnntrainer_hpc":    
+            # LOAD MODEL
+            self.model_logger = self.model_api.get_model_logger("model")
+            self.model = self.model_class(self.config)
+
+            self.hython_trainer = RNNTrainerHPC(self.config)
+
+        elif self.config.hython_trainer == "convtrainer":    
+            # LOAD MODEL
+            self.model_logger = self.model_api.get_model_logger("model")
+            self.model = self.model_class(self.config)
+
+            self.hython_trainer = ConvTrainer(self.config)
+
         elif self.config.hython_trainer == "caltrainer":
-            
             # LOAD MODEL HEAD/SURROGATE
             self.model_logger = self.model_api.get_model_logger("head")
 
@@ -143,16 +151,17 @@ class RNNDistributedTrainer(TorchTrainer):
             else:
                 # FIXME: There is a clash in "static_inputs" semantics between training and calibration
                 # In the training the "static_inputs" are used to train the CudaLSTM model (main model - the surrogate -)
-                # In the calibration the "static_inputs" are other input features that are used to train the TransferNN model. 
+                # In the calibration the "static_inputs" are other input features that are used to train the TransferNN model.
                 # Hence during calibration, when loading the weights of the surrogate,
                 # I need to replace the CudaLSTM (now the head model) "static_inputs" with the correct "head_model_inputs"
                 # in order to avoid clashes with the TransferNN model inputs
+                # I think that if I used more modular config files, thanks to hydra, then I could import a surrogate_model.yaml
+                # into both...
                 config = deepcopy(self.config)
                 config.static_inputs = config.head_model_inputs
-                surrogate = get_hython_model(self.config.model_head)(
-                    config
-                )
-                
+                config.target_variables = config.head_output_variables
+                surrogate = get_hython_model(self.config.model_head)(config)
+
                 surrogate = self.model_api.load_model("head", surrogate)
 
             transfer_nn = get_hython_model(self.config.model_transfer)(
@@ -179,16 +188,12 @@ class RNNDistributedTrainer(TorchTrainer):
         if isinstance(self.strategy, DeepSpeedStrategy):
             # Batch size definition is not optional for DeepSpeedStrategy!
             distribute_kwargs = {
-                "config_params": {
-                    "train_micro_batch_size_per_gpu": self.config.batch_size
-                }
+                "config_params": {"train_micro_batch_size_per_gpu": self.config.batch_size}
             }
         elif isinstance(self.strategy, TorchDDPStrategy):
             if "find_unused_parameters" not in self.config.model_fields:
                 self.config.find_unused_parameters = False
-            distribute_kwargs = {
-                "find_unused_parameters": self.config.find_unused_parameters
-            }
+            distribute_kwargs = {"find_unused_parameters": self.config.find_unused_parameters}
 
         self.model, self.optimizer, _ = self.strategy.distributed(
             model=self.model,
@@ -205,7 +210,7 @@ class RNNDistributedTrainer(TorchTrainer):
             self.train_loader.sampler.set_epoch(epoch)
             self.val_loader.sampler.set_epoch(epoch)
 
-    #@measure_gpu_utilization
+    @measure_gpu_utilization
     def train(self):
         """Override train_val version of hython to support distributed strategy."""
 
@@ -220,17 +225,13 @@ class RNNDistributedTrainer(TorchTrainer):
             epoch_time_tracker = EpochTimeTracker(
                 strategy_name=self.strategy.name,
                 save_path=epoch_time_output_path,
-                num_nodes=num_nodes
+                num_nodes=num_nodes,
             )
 
         device = self.strategy.device()
         loss_history = {"train": [], "val": []}
-        metric_history = {
-            f"train_{target}": [] for target in self.config.target_variables
-        }
-        metric_history.update(
-            {f"val_{target}": [] for target in self.config.target_variables}
-        )
+        metric_history = {f"train_{target}": [] for target in self.config.target_variables}
+        metric_history.update({f"val_{target}": [] for target in self.config.target_variables})
 
         best_loss = float("inf")
         for epoch in tqdm(range(self.epochs)):
@@ -250,17 +251,20 @@ class RNNDistributedTrainer(TorchTrainer):
             # gather losses from each worker and place them on the main worker.
             worker_val_losses = self.strategy.gather(val_loss, dst_rank=0)
 
+            worker_train_losses = self.strategy.gather(train_loss, dst_rank=0)
+
             if not self.strategy.is_main_worker:
                 continue
 
             # Moving them all to the cpu() before performing calculations
             avg_val_loss = torch.mean(torch.stack(worker_val_losses)).detach().cpu()
+            avg_train_loss = torch.mean(torch.stack(worker_train_losses)).detach().cpu()
             self.hython_trainer.lr_scheduler.step(avg_val_loss)
-            loss_history["train"].append(train_loss)
+            loss_history["train"].append(avg_train_loss)
             loss_history["val"].append(avg_val_loss)
 
             self.log(
-                item=train_loss.item(),
+                item=avg_train_loss.item(),
                 identifier="train_loss_per_epoch",
                 kind="metric",
                 step=epoch,
@@ -297,36 +301,58 @@ class RNNDistributedTrainer(TorchTrainer):
             if avg_val_loss < best_loss:
                 best_loss = avg_val_loss
                 best_model = self.model.state_dict()
-                #self.hython_trainer.save_weights(self.model)
+                self.logging(best_model)
 
             epoch_time = default_timer() - epoch_start_time
             epoch_time_tracker.add_epoch_time(epoch + 1, epoch_time)
 
         if self.strategy.is_main_worker:
-            epoch_time_tracker.save()
             self.model.load_state_dict(best_model)
-            
+            #import pdb;pdb.set_trace()
             # MODEL LOGGING
             model_log_names = self.model_api.get_model_log_names()
             for module_name, model_class_name in model_log_names.items():
-                if module_name == "model": # main model
-                    if self.model_logger == "mlflow":
-                        self.log(item=self.model, identifier = model_class_name, kind="model", registered_model_name = model_class_name)
-                    else:
-                        self.model_api.log_model(module_name, self.model)
-                else: # submodule
-                    if self.model_logger == "mlflow":
-                        self.log(item=self.model.get_submodule(module_name), identifier = model_class_name, kind="model", registered_model_name = model_class_name)
-                    else:
-                        self.model_api.log_model(module_name, self.model.get_submodule(module_name))
+                item = (
+                    self.model
+                    if module_name == "model"
+                    else self.model_api.get_submodule(self.model, module_name)
+                )
+
+                if self.model_logger == "mlflow":
+                    self.log(
+                        item=item,
+                        identifier=model_class_name,
+                        kind="model",
+                        registered_model_name=model_class_name,
+                    )
+                else:
+                    self.model_api.log_model(module_name, item)
 
             # Report training metrics of last epoch to Ray
             train.report({"loss": avg_val_loss.item(), "train_loss": train_loss.item()})
 
-
-
         return loss_history, metric_history
 
+    def logging(self, best_model):
+        self.model.load_state_dict(best_model)
+        model_log_names = self.model_api.get_model_log_names()
+        for module_name, model_class_name in model_log_names.items():
+            item = (
+                self.model
+                if module_name == "model"
+                else self.model_api.get_submodule(self.model, module_name)
+            )
+
+            if self.model_logger == "mlflow":
+                self.log(
+                    item=item,
+                    identifier=model_class_name,
+                    kind="model",
+                    registered_model_name=model_class_name,
+                )
+            else:
+                self.model_api.log_model(module_name, item)
+                
     def create_dataloaders(self, train_dataset, validation_dataset, test_dataset):
         sampling_kwargs = {}
         if isinstance(self.strategy, HorovodStrategy):
@@ -339,6 +365,7 @@ class RNNDistributedTrainer(TorchTrainer):
             processing = "multi-gpu"
 
         train_sampler_builder = SamplerBuilder(
+            self.config,
             train_dataset,
             sampling="random",
             processing=processing,
@@ -346,7 +373,16 @@ class RNNDistributedTrainer(TorchTrainer):
         )
 
         val_sampler_builder = SamplerBuilder(
+            self.config,
             validation_dataset,
+            sampling="sequential",
+            processing=processing,
+            sampling_kwargs=sampling_kwargs,
+        )
+
+        test_sampler_builder = SamplerBuilder(
+            self.config,
+            test_dataset,
             sampling="sequential",
             processing=processing,
             sampling_kwargs=sampling_kwargs,
@@ -354,6 +390,7 @@ class RNNDistributedTrainer(TorchTrainer):
 
         train_sampler = train_sampler_builder.get_sampler()
         val_sampler = val_sampler_builder.get_sampler()
+        test_sampler = test_sampler_builder.get_sampler()
 
         self.train_loader = self.strategy.create_dataloader(
             dataset=train_dataset,
@@ -374,4 +411,15 @@ class RNNDistributedTrainer(TorchTrainer):
                 generator=self.torch_rng,
                 sampler=val_sampler,
                 drop_last=True,
+            )
+
+        if test_dataset is not None:
+            self.test_loader = self.strategy.create_dataloader(
+                dataset=test_dataset,
+                batch_size=self.config.batch_size,
+                num_workers=self.config.num_workers_dataloader_eval,
+                pin_memory=self.config.pin_gpu_memory,
+                generator=self.torch_rng,
+                sampler=test_sampler,
+                drop_last=False,
             )

@@ -126,7 +126,7 @@ class Scaler:
             self.cfg = OmegaConf.load(cfg)
         else:
             self.cfg = cfg
-
+        
         self.cfg_scaler = cfg.scaler
 
         self.is_train = is_train

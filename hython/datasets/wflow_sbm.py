@@ -30,11 +30,11 @@ class WflowSBM_HPC(BaseDataset):
         
         data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs).sel(time=self.period_range)
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto", **xarray_kwargs)
-
+        
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
         self.xs = data_static[self.to_list(cfg.static_inputs)]
         self.y = data_dynamic[self.to_list(cfg.target_variables)]
-        
+
         # subset dynamic inputs to the target timestep available
         if self.target_has_missing_dates:
             self.xd = self.xd.sel(time=self.y.time)
@@ -119,6 +119,9 @@ class WflowSBM_HPC(BaseDataset):
 
         self.xs = self.scaler.transform(self.xs, "static_inputs")
         
+
+
+
         # == WRITE SCALING STATS
 
         if is_train: # write if train
@@ -504,6 +507,13 @@ class WflowSBMCal(BaseDataset):
             )
             self.y = self.scaler.transform(self.y, "target_variables")
             
+        # == PREPARE PARAMETERS FOR REG
+        # if self.cfg.regularization is not None:
+        #     miss_param = self.get_missing_regularization_parameter(cfg)
+        #     self.xs_reg = data_static[miss_param]
+        #     if not self.cfg.data_lazy_load:
+        #         self.xs_reg.load()
+        #     #self.scaler.transform_inverse_custom_range
 
         if is_train: # write if train
             if not self.scaler.use_cached: # write if not reading from cache

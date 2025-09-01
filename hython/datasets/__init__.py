@@ -8,7 +8,7 @@ from hython.io import read_from_zarr
 from hython.preprocessor import reshape
 from hython.config import Config
 from hython.utils import rescale_target
-
+from hython.regularizations import *
 from hython.utils import (
     compute_cubelet_spatial_idxs,
     compute_cubelet_time_idxs,
@@ -58,6 +58,18 @@ class BaseDataset(Dataset):
         """Handle omegaconf object"""
         #if len(x) > 1:
         return [i for i in x]
+
+    # def get_missing_regularization_parameter(self, cfg):
+    #     if isinstance(cfg.regularization, ParamRuleReg):
+    #         source = cfg.regularization.data_source
+    #         #params = cfg.regularization.params
+    #         add_par = []
+    #         for r in cfg.regularization.rules:
+    #             if r[0] not in cfg.regularization.params and type(r[0]) is not int:
+    #                 add_par.append(r[0])
+    #             if r[2] not in cfg.regularization.params and type(r[2]) is not int:
+    #                 add_par.append(r[2])
+    #     return source, add_par
 
     def rescale_target(self, ds, l, u):
         return rescale_target(ds, l, u)

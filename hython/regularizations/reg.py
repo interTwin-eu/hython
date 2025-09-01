@@ -4,18 +4,21 @@ from torch import nn
 from torch.nn.modules.loss import _Loss
 import torch.nn.functional as F
 
+__all__ = ["RegCollection", "ParamRuleReg", "RangeBoundReg"]
 
 class RegCollection(nn.Module):
-    def __init__(self, loss: List[nn.Module] = None):
+    def __init__(self, regs: List[nn.Module] = None):
         super(RegCollection, self).__init__()
 
-        if not isinstance(loss, list) and loss is not None:
-            loss = [loss]
+        self.losses = []
+        
+        if not isinstance(regs, list) and regs is not None:
+            regs = [regs]
 
-        if loss is not None:
-            self.losses = nn.ModuleDict({l.__name__: l for l in loss})
+        if regs is not None:
+            self.regs = nn.ModuleDict({l.__name__: l for l in regs})
         else:
-            self.losses = {}
+            self.regs = {}
 
     def __getitem__(self, k):
         if k in self.losses:
@@ -49,7 +52,7 @@ def return_dict(*args):
 
 RULES = {">=": torch.ge, "<=": torch.le, ">": torch.gt, "<": torch.lt, "==": torch.eq}
 
-class ParamConstraintReg(nn.Module):
+class ParamRuleReg(nn.Module):
     """
     # regularization:
     #   _target_: hython.regularizations.ParamConstraintReg
@@ -57,20 +60,21 @@ class ParamConstraintReg(nn.Module):
     #   constraints:
     #     - ["thetaS", ">", "thetaR"]
     """
-    def __init__(self, parameters: List, constraints: List, factor: int = 1):
-        super(ParamConstraintReg, self).__init__()
-        self.params = parameters 
+    def __init__(self, parameters: List, rules: List, data_source = "static_inputs", factor: int = 1):
+        super(ParamRuleReg, self).__init__()
+        self.params = list(parameters) 
         self.factor = factor
-        self.constraints = constraints
+        self.rules = rules
+        self.data_source = data_source
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         x: Parameters
         """
         loss = 0
-        for c in self.constraints:
-            pname1 = x[c[0]]
-            pname2 = x[c[2]]
+        for c in self.rules:
+            pname1 = c[0]
+            pname2 = c[2]
             pidx1 = self.params.index(pname1)
             pidx2 = self.params.index(pname2)
             op = RULES[c[1]]
