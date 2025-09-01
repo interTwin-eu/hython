@@ -88,6 +88,12 @@ class RNNTrainerHPC(AbstractTrainer):
     def __init__(self, cfg):
         super(RNNTrainerHPC, self).__init__(cfg=cfg)
 
+    def _compute_regularization(self, target):
+        if self.cfg.regularization is not None:
+            return self.cfg.regularization(target)
+        else:
+            return 0
+        
     def epoch_step(self, model, dataloader, device, opt=None):
         running_loss = 0
 
@@ -115,6 +121,11 @@ class RNNTrainerHPC(AbstractTrainer):
                 valid_mask=None,
                 target_weight=self.target_weights,
             )
+
+            # Add regularization
+            reg_loss = self._compute_regularization(target)
+
+            batch_loss = batch_loss + reg_loss
 
             self._backprop_loss(batch_loss, opt)
             

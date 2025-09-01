@@ -65,7 +65,7 @@ class CalTrainer(AbstractTrainer):
             self._backprop_loss(loss, opt)
 
             # Accumulate mini-batch loss, only valid samples
-            running_batch_loss += mini_batch_loss.detach()
+            running_batch_loss += loss.detach()
             #print(loss)
         epoch_loss = running_batch_loss / len(dataloader)
 

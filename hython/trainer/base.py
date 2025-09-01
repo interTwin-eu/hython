@@ -4,6 +4,8 @@ import logging
 from abc import ABC
 from typing import Dict, Iterable, List
 
+from functools import cached_property
+
 from hython.utils import get_optimizer, get_lr_scheduler, get_temporal_steps, generate_run_folder
 from hython.metrics import MetricCollection
 from hython.models.head import *
@@ -320,6 +322,27 @@ class AbstractTrainer(ABC):
                 if subset_index:
                     output[k] = output[k][..., subset_index]
         return output
+
+    #@cached_property
+    # def build_named_tensor_index(self):
+    #     # static
+    #     self.NAMED_TENSOR_MAPPING = {}
+
+    #     self.NAMED_TENSOR_MAPPING["static"] = {v:i for i,v in enumerate(self.cfg.static_inputs)}
+    #     # dynamic 
+    #     self.NAMED_TENSOR_MAPPING["dynamic"] = {v:i for i,v in enumerate(self.cfg.dynamic_inputs)}
+        
+    #     # target 
+    #     #self.cfg.target_variables
+
+    # def get_index(self, type, param):
+    #     if mapping := self.NAMED_TENSOR_MAPPING.get(type, False):
+    #         if ret := mapping.get(param, False):
+    #             return ret 
+    #         else:
+    #             raise KeyError(f"Param {param} not found in mapping")
+    #     else:
+    #         raise KeyError(f"Param type {type} not found in mapping")
 
     def save_weights(self, model, fp=None, onnx=False):
         if fp is None:
