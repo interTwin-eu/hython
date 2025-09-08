@@ -163,6 +163,25 @@ class MSEWeightedModeLoss(_Loss):
         loss = torch.mean(weights * (y_pred - target) ** 2)
         return loss
     
+
+class PearsonLoss(_Loss):
+    def __init__(self):
+        super(PearsonLoss, self).__init__()
+
+
+    def forward(self, target, y_pred):  
+        
+        target_centered = target - target.mean() 
+        pred_centered =  y_pred - y_pred.mean()
+
+        num = torch.sum(target_centered*pred_centered)
+        den = torch.sqrt( torch.sum(target_centered**2))*torch.sqrt(torch.sum(pred_centered)**2)
+        
+        loss = num/den
+
+        return loss
+    
+
 class RMSEWeightedModeLoss(_Loss):
     def __init__(self, threshold=0.5, high_weight=1.0, low_weight=0.5):
         """
