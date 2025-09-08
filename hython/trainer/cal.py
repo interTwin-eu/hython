@@ -32,7 +32,6 @@ class CalTrainer(AbstractTrainer):
             #import pdb; pdb.set_trace()
             pred = model(predictor_b, forcing_b) # surrogate prediction
 
-            
             output = self.predict_step(pred, steps=self.cfg.predict_steps, subset_index=index_tensor_pred)
             target = self.target_step(target_b, steps=self.cfg.predict_steps)
             # 
@@ -44,7 +43,7 @@ class CalTrainer(AbstractTrainer):
             # TODO: consider moving missing values loss handling in the compute loss method
             valid_mask = ~target.isnan()  # non null values
            
-            self._concatenate_result(output, target, valid_mask)
+            self._concatenate_result(output, target, valid_mask, param = pred["param"])
             
             # Compute loss: default returns average loss per sample
             mini_batch_loss = self._compute_batch_loss(
@@ -70,5 +69,7 @@ class CalTrainer(AbstractTrainer):
         epoch_loss = running_batch_loss / len(dataloader)
 
         metric = self._compute_metric()
+
+        self._log_calib_parameters(opt)
 
         return epoch_loss, metric

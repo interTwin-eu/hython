@@ -146,7 +146,12 @@ class Scaler:
         self.run_dir = Path(run_dir)
 
     def compute(self, data, type, axes=(0, 1)):
-        scaler_list = self.cfg_scaler[type]["variant"]  
+
+        if self.cfg_scaler[type] is not None:  
+            scaler_list = self.cfg_scaler[type]["variant"]
+        else:
+            return
+        
         centers, scales = [], []
         for sca in scaler_list:
             center, scale = sca.compute(data, type, axes)
@@ -177,8 +182,13 @@ class Scaler:
             self.load(type)
 
     def transform(self, data, type):
-        stats_dist = self.archive.get(type)  
-        scaler_list = self.cfg_scaler[type]["variant"]
+        stats_dist = self.archive.get(type)
+
+        if self.cfg_scaler[type] is not None:  
+            scaler_list = self.cfg_scaler[type]["variant"]
+        else:
+            return data
+        
         for sca in scaler_list:
             
             try: #FIXME
@@ -200,7 +210,12 @@ class Scaler:
     
     def transform_inverse(self, data, type, **kwargs):
         stats_dist = self.archive.get(type)
-        scaler_list = self.cfg_scaler[type]["variant"]
+
+        if self.cfg_scaler[type] is not None:  
+            scaler_list = self.cfg_scaler[type]["variant"]
+        else:
+            return data
+        
         for sca in scaler_list:
             
             try: #FIXME
@@ -237,8 +252,8 @@ class Scaler:
                     stats = {type: {k: xr.DataArray.from_dict(temp[k]) for k in temp}}
 
             self.archive.update(stats)
-        else:
-            raise FileNotFoundError()
+        # else:
+        #     raise FileNotFoundError()
 
     def clean_cache(self, type=None):
         if type:
@@ -250,6 +265,9 @@ class Scaler:
 
     def write(self, type):
         stats_dict = deepcopy(self.archive.get(type))
+
+        if stats_dict is None:
+            return
 
         path = self.run_dir
 

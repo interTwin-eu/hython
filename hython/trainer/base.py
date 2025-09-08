@@ -3,7 +3,7 @@ import torch
 import logging 
 from abc import ABC
 from typing import Dict, Iterable, List
-
+from pathlib import Path
 from functools import cached_property
 
 from hython.utils import get_optimizer, get_lr_scheduler, get_temporal_steps, generate_run_folder
@@ -17,8 +17,10 @@ class AbstractTrainer(ABC):
         self.epoch_preds = None
         self.epoch_targets = None
         self.epoch_valid_masks = None
+        self.epoch_params = None
         self.model = None
         self.device = None
+        self.iepoch = 0
 
         self.cfg = cfg
 
@@ -193,7 +195,7 @@ class AbstractTrainer(ABC):
 
             opt.step()
 
-    def _concatenate_result(self, pred, target, mask=None) -> None:
+    def _concatenate_result(self, pred, target, mask=None, param = None) -> None:
         """Concatenate results for reporting and computing the metrics"""
 
         # prediction can be probabilistic
@@ -226,6 +228,15 @@ class AbstractTrainer(ABC):
                     (self.epoch_valid_masks, mask_cpu), axis=0
                 )
 
+        if self.cfg.log_calib_parameters is not None:
+            if self.epoch_params is None:
+                self.epoch_params = param
+            else: 
+                self.epoch_params = torch.concat(
+                    (self.epoch_params, param), axis=0
+                )
+            
+
     def _compute_metric(self):
         if isinstance(self.cfg.metric_fn, MetricCollection):
             metric = self.cfg.metric_fn(
@@ -246,10 +257,7 @@ class AbstractTrainer(ABC):
                 metric[itarget] = {
                     self.cfg.metric_fn.__class__.__name__: metric_or[itarget]
                 }
-        # # reset epoch results
-        self.epoch_preds = None
-        self.epoch_targets = None
-        self.epoch_valid_masks = None
+        
 
         return metric
 
@@ -272,7 +280,6 @@ class AbstractTrainer(ABC):
 
     def train_valid_epoch(self, model, train_loader, val_loader, device):
         
-        
         model.train()
         # set time indices for training
         # TODO: This has effect only if the trainer overload the method (i.e. for RNN)
@@ -281,12 +288,19 @@ class AbstractTrainer(ABC):
             model, train_loader, device, opt=self.optimizer
         )
 
+        # reset epoch's concatenated results
+        self._reset_epoch_result()
+
         model.eval()
         with torch.no_grad():
             # set time indices for validation
             self._set_dynamic_temporal_downsampling([train_loader, val_loader],opt=None)
 
             val_loss, val_metric = self.epoch_step(model, val_loader, device, opt=None)
+
+        self.iepoch += 1
+        # reset epoch's concatenated results
+        self._reset_epoch_result()
 
         return train_loss, train_metric, val_loss, val_metric
 
@@ -295,6 +309,12 @@ class AbstractTrainer(ABC):
 
     def valid_epoch(self):
         pass
+    
+    def _reset_epoch_result(self):
+        self.epoch_preds = None
+        self.epoch_targets = None
+        self.epoch_valid_masks = None
+        self.epoch_params = None
 
     def epoch_step(self):
         """Overloaded by the specific trainer"""
@@ -343,6 +363,26 @@ class AbstractTrainer(ABC):
     #             raise KeyError(f"Param {param} not found in mapping")
     #     else:
     #         raise KeyError(f"Param type {type} not found in mapping")
+
+    def _log_calib_parameters(self, opt):
+        if self.cfg.log_calib_parameters is not None:
+            _set = self.cfg.log_calib_parameters["set"]
+
+            if self.iepoch == 0 or ((self.iepoch + 1) % self.cfg.log_calib_parameters["n_epochs"] == 0):
+                if _set == "train" and opt is not None: _set = "train"
+                elif _set == "valid" and opt == None: _set = "valid"
+                elif _set == "all":
+                    _set = "valid" if opt is None else "train"
+
+            uri = Path(self.cfg.log_calib_parameters['uri']) / "param_calib"
+            
+            if not (uri).exists():
+                uri.mkdir(parents=True)
+            nepoch = self.iepoch + 1
+            np.save(
+                    uri / f"param_{_set}_epoch{nepoch:04d}.npy",
+                    self.epoch_params.cpu().detach().numpy()
+                    )
 
     def save_weights(self, model, fp=None, onnx=False):
         if fp is None:
