@@ -184,6 +184,8 @@ class Scaler:
 
         try:
             self.run_dir = Path(generate_run_folder(cfg))
+            if not self.run_dir.exists():
+                self.run_dir.mkdir()
         except:
             self.run_dir = Path(".")
             
