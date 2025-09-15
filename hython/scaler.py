@@ -37,12 +37,13 @@ def get_scaling_parameter(var_toscale, output_type = "numpy"):
         return  np.array(center), np.array(scale)
     
 class BaseScaler:
-    def __init__(self, variable):
+    def __init__(self, variable, **kwargs):
         self.variable = variable
+        self.kwargs = kwargs
         if OmegaConf.is_list(variable):
             self.variable = OmegaConf.to_container(self.variable, resolve=True)
     
-    def compute(self, data, type, axes):
+    def compute(self, data, type, axes, **kwargs):
         """Compute the center and scale for the given data."""
         raise NotImplementedError()
 
@@ -62,7 +63,7 @@ class BoundedScaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable=variable)
 
-    def compute(self, data, type, axes):
+    def compute(self, data, type, axes, **kwargs):
         center, scale = get_scaling_parameter(self.variable, output_type="xarray")
         self.update_attribute(center)
         self.update_attribute(scale)
@@ -72,7 +73,7 @@ class MinMax01Scaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable)
 
-    def compute(self, data, type, axes):
+    def compute(self, data, type, axes, **kwargs):
         center = data[self.variable].min(axes)
         scale = data[self.variable].max(axes) - center
         self.update_attribute(center)
@@ -83,7 +84,7 @@ class MinMax11Scaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable)
 
-    def compute(self, data, type, axes):
+    def compute(self, data, type, axes, **kwargs):
         center = data[self.variable].min(axes)
         scale = data[self.variable].max(axes) - center
         self.update_attribute(center)
@@ -102,12 +103,60 @@ class StandardScaler(BaseScaler):
     def __init__(self, variable):
         super().__init__(variable)
 
-    def compute(self, data, type, axes):
+    def compute(self, data, type, axes, **kwargs):
         center = data[self.variable].mean(axes)
         scale = data[self.variable].std(axes)
         self.update_attribute(center)
         self.update_attribute(scale)
         return center, scale
+
+class TargetCalibrationScaler(BaseScaler):
+    def __init__(self, variable, **kwargs):
+        super().__init__(variable, **kwargs.get("kwargs"))
+    
+    def compute(self, data, type, axes, reference, period_range):
+        print(period_range)
+        how = self.kwargs.get("how")
+        ref2target_mapping = self.kwargs.get("ref2target")
+        self.method = self.kwargs.get("method")     
+        ref_var = list(ref2target_mapping.keys())
+        
+        if how == "soil-property":
+            pass
+            #lower = how["lower"]
+            #upper = how["upper"]
+            # par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto")[[lower, upper]]
+            # self.y = super().rescale_target(self.y, par[lower], par[upper])
+        elif how == "model-statistics":
+
+            vs = reference[ref_var].sel(time=period_range)
+            vs = vs.rename_vars(ref2target_mapping)
+            
+            if self.method == "zscore":
+                kind = self.kwargs.get("kind")
+                if kind == "local":
+                    self.reference_scale = vs.std("time").compute()
+                    self.reference_center = vs.mean("time").compute()
+                    self.target_scale = data[self.variable].std("time")
+                    self.target_center = data[self.variable].mean("time")
+                elif kind == "global":
+                    self.reference_scale = vs.std()
+                    self.reference_center = vs.mean()
+                    self.target_scale = data[self.variable].std()
+                    self.target_center = data[self.variable].mean()
+                else:
+                    raise
+            elif self.method == "minmax":
+                self.reference_center = vs.min("time")
+                self.reference_scale = vs.max("time") - self.reference_center
+                self.target_center = data[self.variable].min("time")
+                self.target_scale = data[self.variable].max("time") - self.target_center
+
+        return self.reference_scale, self.reference_center
+
+    def transform(self, data):
+        return (self.reference_scale / self.target_scale) * (data - self.target_center) + self.reference_center
+    
 
 class Scaler:
     """Class for performing scaling of input features. Currently supports minmax and standard scaling."""
@@ -145,7 +194,7 @@ class Scaler:
     def set_run_dir(self, run_dir):
         self.run_dir = Path(run_dir)
 
-    def compute(self, data, type, axes=(0, 1)):
+    def compute(self, data, type, axes=(0, 1), **kwargs):
 
         if self.cfg_scaler[type] is not None:  
             scaler_list = self.cfg_scaler[type]["variant"]
@@ -154,9 +203,15 @@ class Scaler:
         
         centers, scales = [], []
         for sca in scaler_list:
-            center, scale = sca.compute(data, type, axes)
+            center, scale = sca.compute(data, type, axes, **kwargs)
             centers.append(center)
             scales.append(scale)
+
+        if isinstance(sca, TargetCalibrationScaler):
+            # FIXME: the TargetCalibrationScaler class should return both target and reference's center and scale
+            # this requires a refactoring of the compute logic
+            return 
+        
         # Ensure that stats has same ordering of variables listed in cfg
         center = self.ensure_var_order(xr.merge(centers), type)
         scale = self.ensure_var_order(xr.merge(scales), type)
@@ -166,17 +221,17 @@ class Scaler:
     def ensure_var_order(self, data, type):
         return data[list(self.cfg[type])] 
 
-    def load_or_compute(self, data, type="dynamic_inputs", is_train=True, axes=(0, 1)):
+    def load_or_compute(self, data, type="dynamic_inputs", is_train=True, axes=(0, 1), **kwargs):
         if is_train:
             if self.use_cached:
                 try:
                     self.load(type)
                 except FileNotFoundError:
                     LOGGER.info(f"Statistics not found in {str(self.run_dir)} for {type}, computing statistics..")            
-                    self.compute(data, type, axes)
+                    self.compute(data, type, axes, **kwargs)
                     self.flag_stats_computed = True
             else:
-                self.compute(data, type, axes)
+                self.compute(data, type, axes, **kwargs)
                 self.flag_stats_computed = True
         else:
             self.load(type)
@@ -201,10 +256,14 @@ class Scaler:
             if isinstance(var, dict):
                 var = list(var.keys())
 
-            scaled_data = sca.transform(data[var], 
-                                        stats_dist["center"][var],
-                                        stats_dist["scale"][var])
-            data = data.assign({v:scaled_data[v] for v in var})
+            if isinstance(sca, TargetCalibrationScaler):
+                scaled_data = sca.transform(data[var])
+                data = data.assign({v:scaled_data[v] for v in var})
+            else:
+                scaled_data = sca.transform(data[var], 
+                                            stats_dist["center"][var],
+                                            stats_dist["scale"][var])
+                data = data.assign({v:scaled_data[v] for v in var})
 
         return data
     

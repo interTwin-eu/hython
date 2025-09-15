@@ -210,7 +210,7 @@ class RNNDistributedTrainer(TorchTrainer):
             self.train_loader.sampler.set_epoch(epoch)
             self.val_loader.sampler.set_epoch(epoch)
 
-    @measure_gpu_utilization
+    #@measure_gpu_utilization
     def train(self):
         """Override train_val version of hython to support distributed strategy."""
 

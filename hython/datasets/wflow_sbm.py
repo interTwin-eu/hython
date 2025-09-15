@@ -404,12 +404,6 @@ class WflowSBMCal(BaseDataset):
         
         if self.target_has_missing_dates is not None:
             self.xd = self.xd.sel(time=self.y.time)
-            
-
-        if cfg.scaling_rescale_target is not None:
-            print("Rescaling target")
-            # updates target to statistics of vwc
-            self.rescale_target(urls, data_dynamic, data_target, xarray_kwargs)
 
         # TODO: ensure they are all float32
         # head_layer mask
@@ -482,27 +476,17 @@ class WflowSBMCal(BaseDataset):
             self.xs, "static_inputs", is_train, axes=("lat","lon")
         )
 
+        self.scaler.load_or_compute(
+            self.y, "target_variables", 
+            True, # FIXME: This should be False after refactoring scaler's compute to accomodate 
+            axes=("lat", "lon", "time"), 
+            reference = data_dynamic, 
+            period_range=self.period_range
+        )
+
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")
-   
-        if cfg.scaling_rescale_target is not None:
-            # target has been transformed to vwc statistics
-            # now it needs to be scaled to minmax or whatever
-            pass            
-            # self.scaler.load_or_compute(
-            #     self.y, 
-            #     "target_variables", 
-            #     is_train=True, # force comput stats
-            #     axes=("lat", "lon", "time") # pixel by pixel
-            # )
-            #self.y = self.scaler.transform(self.y, "target_variables")
-
-        else:
-            self.scaler.load_or_compute(
-                self.y, "target_variables", is_train, axes=("lat", "lon", "time")
-            )
-
-            #self.y = self.scaler.transform(self.y, "target_variables")
+        self.y = self.scaler.transform(self.y, "target_variables")
             
         # == PREPARE PARAMETERS FOR REG
         # if self.cfg.regularization is not None:
@@ -522,58 +506,6 @@ class WflowSBMCal(BaseDataset):
                     self.scaler.write("dynamic_inputs")
                     self.scaler.write("static_inputs")
                     self.scaler.write("target_variables")
-
-    def rescale_target(self, urls, data_dynamic, data_target, xarray_kwargs = {}):
-        if config := self.cfg.scaling_rescale_target.get("soil-property", False):
-            lower = config["lower"]
-            upper = config["upper"]
-            par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto", **xarray_kwargs)[[lower, upper]]
-            self.y = super().rescale_target(self.y, par[lower], par[upper])
-        elif config := self.cfg.scaling_rescale_target.get("model-statistics", False):
-            # In inference calibration, rescale output surrogate to training target statistics
-            # For the same period of training the surrogate
-            # TODO: the period should be passed dynamically
-            print(self.period_range)
-            vs = data_dynamic[config.get("variable")].sel(time=self.period_range)
-            
-            if config.get("method") == "zscore":
-                how = config.get("how")
-                print(how)
-                if how == "local":
-                    self.sim_std = vs.std("time")
-                    self.sim_mean = vs.mean("time")
-                    self.obs_std = self.y.ssm.std("time")
-                    self.obs_mean = self.y.ssm.mean("time")
-                if how == "global":
-                    self.sim_std = vs.std()
-                    self.sim_mean = vs.mean()
-                    self.obs_std = self.y.ssm.std()
-                    self.obs_mean = self.y.ssm.mean()
-                if how == "local_obs":   
-                    # global from simulation, local from observation
-                    self.sim_std = vs.std()
-                    self.sim_mean = vs.mean()
-                    self.obs_std = self.y.ssm.std("time")
-                    self.obs_mean = self.y.ssm.mean("time")
-                if how == "local_sim":   
-                    # global from simulation, local from observation
-                    self.sim_std = vs.std("time")
-                    self.sim_mean = vs.mean("time")
-                    self.obs_std = self.y.ssm.std()
-                    self.obs_mean = self.y.ssm.mean()
-                from copy import deepcopy
-                self.y_unscaled = deepcopy(self.y)
-                self.y = (self.sim_std / self.obs_std) * (self.y - self.obs_mean) + self.sim_mean
-
-            elif config.get("method") == "minmax":
-                self.sim_min = vs.min("time")
-                self.sim_max = vs.max("time")
-                self.obs_min = self.y.ssm.min("time")
-                self.obs_max = self.y.ssm.max("time")
-
-                self.y = (self.sim_max - self.sim_min) / (self.obs_max - self.obs_min) * (self.y - self.obs_min) + self.sim_min
-
-
 
     def __len__(self):
         return len((range(len(self.coord_samples))))
