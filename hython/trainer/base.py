@@ -227,14 +227,18 @@ class AbstractTrainer(ABC):
                 self.epoch_valid_masks = np.concatenate(
                     (self.epoch_valid_masks, mask_cpu), axis=0
                 )
-
-        if self.cfg.log_calib_parameters is not None:
-            if self.epoch_params is None:
-                self.epoch_params = param
-            else: 
-                self.epoch_params = torch.concat(
-                    (self.epoch_params, param), axis=0
-                )
+        try: #FIXME this works this is a temporary solution. Will be handled 
+            # once a proper validation of parameters keywords will be 
+            # implemented
+            if self.cfg.log_calib_parameters is not None:
+                if self.epoch_params is None:
+                    self.epoch_params = param
+                else: 
+                    self.epoch_params = torch.concat(
+                        (self.epoch_params, param), axis=0
+                    )
+        except:
+            pass
             
 
     def _compute_metric(self):
