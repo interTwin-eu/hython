@@ -59,7 +59,7 @@ def predict(dataset, dataloader, model, device, target="y_hat"):
     return np.vstack(arr)
 
 
-def predict_convlstm(dataset, model, seq_len, device, coords=None, target= "y_hat"):
+def predict_convlstm(dataloader, model, device, target= "y_hat"):
     """_summary_
 
     Parameters
@@ -79,30 +79,25 @@ def predict_convlstm(dataset, model, seq_len, device, coords=None, target= "y_ha
     """
     model = model.to(device)
     model.eval()
-    try:
-        t, c, h, w   = dataset.xd.shape
-    except:
-        t, c, h, w  = list(dataset.xd.dims.values())
 
     arr = []  # loop over seq_lengh
-    for i in range(0, t, seq_len):
+    for data in dataloader:
         
-        xd = torch.FloatTensor(dataset.xd[i : (i + seq_len)].values)
-        
-        xs = (
-            torch.FloatTensor(dataset.xs.values)
-            .unsqueeze(0)
-            .repeat(xd.size(0), 1, 1, 1)
+        d = data["xd"].to(device)
+        s = data["xs"].to(device)
+
+        st = (
+            s.unsqueeze(1)
+            .repeat(1, d.size(1), 1, 1, 1)
         )
-        
-        X = torch.concat([xd, xs], 1).to(device)
-        #import pdb;pdb.set_trace()
-        out = model(X.unsqueeze(0))[target][0]
+
+        X = torch.concat([d, st], 2).to(device)
+
+        out = model(X)[target][0]
 
         arr.append(out.detach().cpu().numpy())
     arr = np.vstack(arr)
-    if coords is not None:
-        arr = xr.DataArray(arr, coords=coords)
+
     return arr
 
 # def predict_convlstm(dataset, model, seq_len, device, coords=None, transpose=False):
