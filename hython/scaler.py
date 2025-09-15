@@ -186,7 +186,10 @@ class Scaler:
             self.run_dir = Path(generate_run_folder(cfg))
         except:
             self.run_dir = Path(".")
-
+            
+        with open(self.run_dir / f"config.yaml", "w") as file:
+            yaml.dump(self.cfg, file)
+        
         LOGGER.info(f"Data statistics saved to: {str(self.run_dir)}") 
 
         self.archive = {}
