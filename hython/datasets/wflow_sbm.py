@@ -395,11 +395,22 @@ class WflowSBMCal(BaseDataset):
         data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs)
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto", **xarray_kwargs)
         data_target = read_from_zarr(url=urls["target_variables"], chunks="auto", **xarray_kwargs)
-        
+
+        data_head_input = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto", **xarray_kwargs)
+   
+        head_model_input_list = []
+        # load only non calibration params
+        for i in self.cfg.head_model_inputs:
+            if i is not None and i != "cal_param":
+                head_model_input_list.extend(self.cfg.head_model_inputs[i])
+        print(head_model_input_list)
         # select 
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)].sel(time=self.period_range)
         self.xs = data_static[self.to_list(cfg.static_inputs)]
         self.y = data_target[self.to_list(cfg.target_variables)].sel(time=self.period_range)
+
+        self.xp =  data_head_input[head_model_input_list]
+        
         # subset dynamic inputs to the target timestep available
         
         if self.target_has_missing_dates is not None:
@@ -483,11 +494,17 @@ class WflowSBMCal(BaseDataset):
             reference = data_dynamic, 
             period_range=self.period_range
         )
-
+        
+        self.scaler.load_or_compute(
+            self.xp, "head_model_inputs", is_train, axes=("lat","lon")
+        )
+        #import pdb;pdb.set_trace()
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")
         self.y = self.scaler.transform(self.y, "target_variables")
-            
+        
+        self.xp = self.scaler.transform(self.xp, "head_model_inputs").compute()
+        
         # == PREPARE PARAMETERS FOR REG
         # if self.cfg.regularization is not None:
         #     miss_param = self.get_missing_regularization_parameter(cfg)
@@ -501,11 +518,13 @@ class WflowSBMCal(BaseDataset):
                 self.scaler.write("dynamic_inputs")
                 self.scaler.write("static_inputs")
                 self.scaler.write("target_variables")
+                self.scaler.write("head_model_inputs")
             else: # if reading from cache
                 if self.scaler.flag_stats_computed: # if stats were not found in cache
                     self.scaler.write("dynamic_inputs")
                     self.scaler.write("static_inputs")
                     self.scaler.write("target_variables")
+                    self.scaler.write("head_model_inputs")
 
     def __len__(self):
         return len((range(len(self.coord_samples))))
@@ -516,18 +535,21 @@ class WflowSBMCal(BaseDataset):
         ds_pixel_dynamic = self.xd.isel(lat=idx_lat, lon=idx_lon) # lat, lon, time -> time
         ds_pixel_target = self.y.isel(lat=idx_lat, lon=idx_lon)
         ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
+        ds_pixel_head_input = self.xp.isel(lat=idx_lat, lon=idx_lon)
 
         ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
         ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
 
         ds_pixel_static = ds_pixel_static.to_array()
+        ds_pixel_head_input = ds_pixel_head_input.to_array()
         
         # TODO: remove call to float
         xd  = torch.tensor(ds_pixel_dynamic.values).float()
         xs = torch.tensor(ds_pixel_static.values).float()
         y = torch.tensor(ds_pixel_target.values).float()
+        xp = torch.tensor(ds_pixel_head_input.values).float()
 
-        return {"xd": xd, "xs": xs, "y": y}
+        return {"xd": xd, "xs": xs, "y": y, "xp":xp}
 
 class WflowSBMCube(BaseDataset):
     def __init__(

@@ -39,18 +39,18 @@ class Hybrid(BaseModel):
             self.scale = 0.49128133058547974
             self.center = 0.07694672048091888
             print("Scale and center for output rescaling: ", self.scale, self.center)
-    def forward(self, x_transf, x_head):
+    def forward(self, x_predictor, x_head_dynamic, x_head_static = None):
         """
         Parameters
         ----------
-        x_transf: torch.Tensor
+        x_predictor: torch.Tensor
             Tensor of size [batch_size, n_predictor] (N, C) or [batch_size, seq_length, n_predictor] (N, T, C)
         x_head: torch.Tensor
             Tensor of size [batch_size, seq_length, n_param] (N, T, C)
         """
         # run trasnferNN
         
-        param = self.transfernn(x_transf)  # output: N T C  or N C
+        param = self.transfernn(x_predictor)  # output: N T C  or N C
         #if torch.isnan(param).any():
         #    import pdb; pdb.set_trace()
         if self.scale_head_input_parameter:
@@ -64,8 +64,9 @@ class Hybrid(BaseModel):
         # concat to x_head, same sequence of inputs of the surrogate model: concat(dynamic, static)
         x_head_concat = torch.concat(
             [
-                x_head,
-                param.unsqueeze(1).repeat(1, x_head.size(1), 1),
+                x_head_dynamic,
+                x_head_static.unsqueeze(1).repeat(1, x_head_dynamic.size(1), 1),
+                param.unsqueeze(1).repeat(1, x_head_dynamic.size(1), 1),
             ],
             dim=2,
         )
