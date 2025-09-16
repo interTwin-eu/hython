@@ -158,16 +158,25 @@ class RNNDistributedTrainer(TorchTrainer):
                 # I think that if I used more modular config files, thanks to hydra, then I could import a surrogate_model.yaml
                 # into both...
                 config = deepcopy(self.config)
-                config.static_inputs = config.head_model_inputs
+                head_model_input_list = []
+                head_model_input_cal = []
+                for i in self.config.head_model_inputs:
+                    if i == "cal_param":
+                        head_model_input_cal.extend(self.config.head_model_inputs[i])
+                    if i is not None:
+                        head_model_input_list.extend(self.config.head_model_inputs[i])
+                
+                config.static_inputs = head_model_input_list
                 config.target_variables = config.head_output_variables
+
                 surrogate = get_hython_model(self.config.model_head)(config)
 
                 surrogate = self.model_api.load_model("head", surrogate)
 
             transfer_nn = get_hython_model(self.config.model_transfer)(
-                self.config.head_model_inputs,
-                len(self.config.static_inputs),
-                self.config.mt_output_dim,
+                head_model_input_cal , #self.config.head_model_inputs,
+                len(self.config.static_inputs), # input predictor
+                self.config.mt_output_dim, # output
                 self.config.mt_hidden_dim,
                 self.config.mt_n_layers,
             )

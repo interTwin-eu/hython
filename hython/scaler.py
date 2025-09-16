@@ -216,7 +216,7 @@ class Scaler:
             # FIXME: the TargetCalibrationScaler class should return both target and reference's center and scale
             # this requires a refactoring of the compute logic
             return 
-        
+
         # Ensure that stats has same ordering of variables listed in cfg
         center = self.ensure_var_order(xr.merge(centers), type)
         scale = self.ensure_var_order(xr.merge(scales), type)
@@ -224,7 +224,14 @@ class Scaler:
         self.archive.update({type: {"center": center, "scale": scale}})
 
     def ensure_var_order(self, data, type):
-        return data[list(self.cfg[type])] 
+        if isinstance(self.cfg[type],dict):
+            head_model_input_list = []
+            for i in self.cfg[type]:
+                if i is not None and i != "cal_param":
+                    head_model_input_list.extend(self.cfg[type][i])
+            return data[head_model_input_list] 
+        else:
+            return data[list(self.cfg[type])] 
 
     def load_or_compute(self, data, type="dynamic_inputs", is_train=True, axes=(0, 1), **kwargs):
         if is_train:
