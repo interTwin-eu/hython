@@ -127,7 +127,7 @@ class TargetCalibrationScaler(BaseScaler):
             #upper = how["upper"]
             # par = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto")[[lower, upper]]
             # self.y = super().rescale_target(self.y, par[lower], par[upper])
-        elif how == "model-statistics":
+        elif how == "reference-statistics":
 
             vs = reference[ref_var].sel(time=period_range)
             vs = vs.rename_vars(ref2target_mapping)
