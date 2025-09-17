@@ -295,9 +295,16 @@ class Scaler:
             except:
                 # list
                 var = sca.variable
-
+ 
             if isinstance(var, dict):
                 var = list(var.keys())
+
+            if subset := kwargs.get("subset", False):
+                # var is a list of variables to be scaled and it is 
+                # defined in the scaler keyword of the config.yaml.
+                # In calibration it can happen that the scaler from the
+                # training config have more input variables.
+                var = subset
 
             unscaled_data = sca.transform_inverse(data[var], 
                                                 stats_dist["center"][var],
