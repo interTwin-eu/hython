@@ -30,7 +30,7 @@ class WflowSBM_HPC(BaseDataset):
         
         data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs).sel(time=self.period_range)
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto", **xarray_kwargs)
-        
+ 
         self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
         self.xs = data_static[self.to_list(cfg.static_inputs)]
         self.y = data_dynamic[self.to_list(cfg.target_variables)]
