@@ -65,8 +65,8 @@ class Hybrid(BaseModel):
         x_head_concat = torch.concat(
             [
                 x_head_dynamic,
-                x_head_static.unsqueeze(1).repeat(1, x_head_dynamic.size(1), 1),
                 param.unsqueeze(1).repeat(1, x_head_dynamic.size(1), 1),
+                x_head_static.unsqueeze(1).repeat(1, x_head_dynamic.size(1), 1),
             ],
             dim=2,
         )
