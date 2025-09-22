@@ -31,7 +31,7 @@ class CalTrainer(AbstractTrainer):
             forcing_b = data["xd"].to(device)
 
             head_b = data["xp"].to(device)
-            #import pdb;pdb.set_trace()
+
             pred = model(predictor_b, forcing_b, head_b) # surrogate prediction
 
             output = self.predict_step(pred, steps=self.cfg.predict_steps, subset_index=index_tensor_pred)
@@ -61,6 +61,7 @@ class CalTrainer(AbstractTrainer):
 
             # Add regularization acting on parameters
             reg_loss = self._compute_regularization(pred["param"])
+
             loss = mini_batch_loss + reg_loss
 
             self._backprop_loss(loss, opt)

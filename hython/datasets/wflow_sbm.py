@@ -483,8 +483,9 @@ class WflowSBMCal(BaseDataset):
             self.xd, "dynamic_inputs", is_train, axes=("lat","lon", "time")
         )
 
+        # IS_TRAIN = True
         self.scaler.load_or_compute(
-            self.xs, "static_inputs", is_train, axes=("lat","lon")
+            self.xs, "static_inputs", True, axes=("lat","lon")
         )
 
         self.scaler.load_or_compute(
@@ -495,10 +496,11 @@ class WflowSBMCal(BaseDataset):
             period_range=self.period_range
         )
         
-        self.scaler.load_or_compute(
+        
+        self.scaler.load_or_compute( 
             self.xp, "head_model_inputs", is_train, axes=("lat","lon")
         )
-        #import pdb;pdb.set_trace()
+        #
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")
         self.y = self.scaler.transform(self.y, "target_variables")

@@ -223,15 +223,17 @@ class Scaler:
 
         self.archive.update({type: {"center": center, "scale": scale}})
 
-    def ensure_var_order(self, data, type):
-        if isinstance(self.cfg[type],dict):
+    def ensure_var_order(self, data, type1):
+        from typing import Mapping
+
+        if isinstance(self.cfg[type1], Mapping):
             head_model_input_list = []
-            for i in self.cfg[type]:
+            for i in self.cfg[type1]:
                 if i is not None and i != "cal_param":
-                    head_model_input_list.extend(self.cfg[type][i])
+                    head_model_input_list.extend(self.cfg[type1][i])
             return data[head_model_input_list] 
         else:
-            return data[list(self.cfg[type])] 
+            return data[list(self.cfg[type1])] 
 
     def load_or_compute(self, data, type="dynamic_inputs", is_train=True, axes=(0, 1), **kwargs):
         if is_train:
@@ -310,6 +312,9 @@ class Scaler:
                                                 stats_dist["center"][var],
                                                 stats_dist["scale"][var])
             data = data.assign({v:unscaled_data[v] for v in var})
+
+            if subset:
+                return data
 
         return data
 
