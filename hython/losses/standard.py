@@ -175,7 +175,7 @@ class PearsonLoss(_Loss):
         pred_centered =  y_pred - y_pred.mean()
 
         num = torch.sum(target_centered*pred_centered)
-        den = torch.sqrt( torch.sum(target_centered**2))*torch.sqrt(torch.sum(pred_centered)**2)
+        den = torch.sqrt( torch.sum(target_centered**2)*torch.sum(pred_centered**2) )
         
         loss = num/den
 
