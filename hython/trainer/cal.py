@@ -13,9 +13,9 @@ class CalTrainer(AbstractTrainer):
     def __init__(self, cfg):
         super(CalTrainer, self).__init__(cfg=cfg)
 
-    def _compute_regularization(self, param):
+    def _compute_regularization(self, param, regularizer):
         if self.cfg.regularization is not None:
-            return self.cfg.regularization(param)
+            return self.cfg.regularization[0][regularizer](param)
         else:
             return 0
     
@@ -60,9 +60,11 @@ class CalTrainer(AbstractTrainer):
                 mini_batch_loss = mini_batch_loss.mean()
 
             # Add regularization acting on parameters
-            reg_loss = self._compute_regularization(pred["param"])
+            reg_loss = self._compute_regularization(pred["param"], "RangeBoundReg")
+            # Add regularization on outputs
+            reg_loss2 = self._compute_regularization(pred["y_hat"], "TargetRuleReg")            
 
-            loss = mini_batch_loss + reg_loss
+            loss = mini_batch_loss + reg_loss + reg_loss2
 
             self._backprop_loss(loss, opt)
 
