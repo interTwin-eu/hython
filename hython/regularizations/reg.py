@@ -1,34 +1,31 @@
 from typing import Optional, List, Dict
 import torch
 from torch import nn
+from torch.nn import Module
 from torch.nn.modules.loss import _Loss
 import torch.nn.functional as F
+from omegaconf.listconfig import ListConfig
 
-__all__ = ["RegCollection", "ParamRuleReg", "RangeBoundReg"]
+__all__ = ["RegCollection", "ParamRuleReg", "RangeBoundReg", "TargetRuleReg"]
 
 class RegCollection(nn.Module):
-    def __init__(self, regs: List[nn.Module] = None):
+    def __init__(self, collection: List[nn.Module] | ListConfig[nn.Module] = None):
         super(RegCollection, self).__init__()
-
+        
         self.losses = []
         
-        if not isinstance(regs, list) and regs is not None:
-            regs = [regs]
+        # if (not isinstance(collection, list) or not isinstance(collection, ListConfig)) and collection is not None:
+        #     collection = [collection]
 
-        if regs is not None:
-            self.regs = nn.ModuleDict({l.__name__: l for l in regs})
+        if collection is not None:
+            self.regs = nn.ModuleDict({str(l)[:-2]: l for l in collection})
         else:
             self.regs = {}
 
     def __getitem__(self, k):
-        if k in self.losses:
-            return self.losses[k]
-        else:
-            return return_dict
+        return self.regs.get_submodule(k)
 
 
-def return_dict(*args):
-    return {}
 
 
 # class Reg1(nn.Module):
@@ -78,14 +75,61 @@ class ParamRuleReg(nn.Module):
             pidx1 = self.params.index(pname1)
             pidx2 = self.params.index(pname2)
             op = RULES[c[1]]
-            # If violated should return 1 per example
-            violated_bool = torch.logical_not(op(x[pidx1], x[pidx2])) 
-            violated_sum = violated_bool.sum()
-            loss += (violated_sum * self.factor)
+            # If violated should return 1
+            violated = torch.logical_not(op(x[pidx1], x[pidx2])) 
+            
+            if violated and (">" in c[1] or "<" in c[1]):
+                total = torch.abs(x[pidx1] - x[pidx2])
+            else:
+                total = violated.sum()
+            
+            loss += (total * self.factor)
         return loss
 
 
+class TargetRuleReg(nn.Module):
+    """
+    # regularization:
+    #   _target_: hython.regularizations.ParamConstraintReg
+    #   factor: 1
+    #   constraints:
+    #     - ["thetaS", ">", "thetaR"]
+    """
+    def __init__(self, parameters: List, rules: List, data_source = "static_inputs", factor: int = 1):
+        super(TargetRuleReg, self).__init__()
+        self.params = list(parameters) 
+        self.factor = factor
+        self.rules = rules
+        self.data_source = data_source
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        x: Parameters
+        """
+        loss = 0
+        for c in self.rules:
+            pname1 = c[0]
+            pname2 = c[2]
+            pidx1 = self.params.index(pname1)
+            try:
+                # array
+                pidx2 = x[..., self.params.index(pname2)]
+            except ValueError:
+                # scalar
+                pidx2 = pname2
+                
+            op = RULES[c[1]]
+ 
+            violated_rule  = torch.logical_not(op(x[...,pidx1], pidx2))
+
+            if violated_rule.any():
+                total = torch.abs(x[..., pidx1].where(~violated_rule, 0)).mean() # (violated_rule*1.0).mean() #1 #torch.abs(x[..., pidx1].where(~violated_rule, 0)).mean()
+            else:
+                total = violated_rule.sum()
+            
+            loss += (total * self.factor)
+        return loss
+    
 class RangeBoundReg(nn.Module):
     def __init__(self, bounds: Dict, factor: int = 1) -> None:
         super(RangeBoundReg, self).__init__()
