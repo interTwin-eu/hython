@@ -179,7 +179,7 @@ class PearsonLoss(_Loss):
         
         loss = num/den
 
-        return loss
+        return -loss
     
 
 class RMSEWeightedModeLoss(_Loss):

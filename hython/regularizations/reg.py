@@ -95,17 +95,18 @@ class TargetRuleReg(nn.Module):
     #   constraints:
     #     - ["thetaS", ">", "thetaR"]
     """
-    def __init__(self, parameters: List, rules: List, data_source = "static_inputs", factor: int = 1):
+    def __init__(self, parameters: List, rules: List, factor: int = 1, output: str = "y_hat"):
         super(TargetRuleReg, self).__init__()
         self.params = list(parameters) 
         self.factor = factor
         self.rules = rules
-        self.data_source = data_source
+        self.output = output
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         x: Parameters
         """
+        #x = x_in[self.output]
         loss = 0
         for c in self.rules:
             pname1 = c[0]
@@ -131,7 +132,7 @@ class TargetRuleReg(nn.Module):
         return loss
     
 class RangeBoundReg(nn.Module):
-    def __init__(self, bounds: Dict, factor: int = 1) -> None:
+    def __init__(self, bounds: Dict, factor: int = 1, output: str = "param") -> None:
         super(RangeBoundReg, self).__init__()
         self.factor = factor
         lbs = []
@@ -142,9 +143,11 @@ class RangeBoundReg(nn.Module):
         self.lbs = torch.tensor(lbs)
         self.ubs = torch.tensor(ubs)
 
+        self.output = output
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-
+        #x = x_in[self.output]
         loss = 0
         for i in range(x.size(1)):
             lb = self.lbs[i]
