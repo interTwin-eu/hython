@@ -115,7 +115,7 @@ class TargetCalibrationScaler(BaseScaler):
         super().__init__(variable, **kwargs.get("kwargs"))
     
     def compute(self, data, type, axes, reference, period_range):
-        print(period_range)
+
         how = self.kwargs.get("how")
         ref2target_mapping = self.kwargs.get("ref2target")
         self.method = self.kwargs.get("method")     
@@ -140,12 +140,12 @@ class TargetCalibrationScaler(BaseScaler):
                     self.target_scale = data[self.variable].std("time")
                     self.target_center = data[self.variable].mean("time")
                 elif kind == "global":
-                    self.reference_scale = vs.std()
-                    self.reference_center = vs.mean()
+                    self.reference_scale = vs.std().compute()
+                    self.reference_center = vs.mean().compute()
                     self.target_scale = data[self.variable].std()
                     self.target_center = data[self.variable].mean()
                 else:
-                    raise
+                    raise NotImplementedError
             elif self.method == "minmax":
                 self.reference_center = vs.min("time")
                 self.reference_scale = vs.max("time") - self.reference_center
