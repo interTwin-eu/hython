@@ -401,17 +401,10 @@ class RNNDistributedTrainer(TorchTrainer):
             sampling_kwargs=sampling_kwargs,
         )
 
-        test_sampler_builder = SamplerBuilder(
-            self.config,
-            test_dataset,
-            sampling=sampler_val,
-            processing=processing,
-            sampling_kwargs=sampling_kwargs,
-        )
 
         train_sampler = train_sampler_builder.get_sampler()
         val_sampler = val_sampler_builder.get_sampler()
-        test_sampler = test_sampler_builder.get_sampler()
+        
 
         self.train_loader = self.strategy.create_dataloader(
             dataset=train_dataset,
@@ -435,6 +428,18 @@ class RNNDistributedTrainer(TorchTrainer):
             )
 
         if test_dataset is not None:
+
+            test_sampler_builder = SamplerBuilder(
+                self.config,
+                test_dataset,
+                sampling=sampler_val,
+                processing=processing,
+                sampling_kwargs=sampling_kwargs,
+            )
+
+            test_sampler = test_sampler_builder.get_sampler()
+
+
             self.test_loader = self.strategy.create_dataloader(
                 dataset=test_dataset,
                 batch_size=self.config.batch_size,

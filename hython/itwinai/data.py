@@ -64,8 +64,10 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         train_dataset = get_dataset(cfg.dataset)(cfg, scaler, True, "train")
 
         val_dataset = get_dataset(cfg.dataset)(cfg, scaler, False, "valid")
-
-        test_dataset = get_dataset(cfg.dataset)(cfg, scaler, False, "test")
         
+        if cfg.test_temporal_range is not None:
+            test_dataset = get_dataset(cfg.dataset)(cfg, scaler, False, "test")
+        else:
+            test_dataset = None
 
         return train_dataset, val_dataset, test_dataset
