@@ -449,3 +449,5 @@ class RNNDistributedTrainer(TorchTrainer):
                 sampler=test_sampler,
                 drop_last=False,
             )
+        else: 
+            self.test_loader = None
