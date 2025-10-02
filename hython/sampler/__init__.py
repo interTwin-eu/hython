@@ -27,6 +27,10 @@ class RandomTemporalDynamicDownsampler(RandomSampler):
         self.cell_size  = len(self.data_source.cell_coords[self.data_source.cell_linear_index ])
         self.seq_len = self.data_source.seq_len
         self.time_size = self.data_source.time_size
+        self.seed = dynamic_downsampler.get("seed") 
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
 
         frac_time = dynamic_downsampler.get("frac_time")
         self.temporal_subset_size = int( (self.time_size -self.seq_len)*frac_time)
@@ -58,7 +62,11 @@ class SequentialTemporalDynamicDownsampler(RandomSampler):
         self.spacetime_index = self.data_source.spacetime_index
         self.cell_size  = len(self.data_source.cell_coords[self.data_source.cell_linear_index ])
         self.seq_len = self.data_source.seq_len
-        
+        self.seed = dynamic_downsampler.get("seed") 
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
+
         self.time_size = self.data_source.time_size
 
         frac_time = dynamic_downsampler.get("frac_time")
@@ -84,7 +92,7 @@ class SequentialTemporalDynamicDownsampler(RandomSampler):
 class DistributedTemporalDynamicDownsampler(DistributedSampler):
     """Every epoch generate a random subset of temporal indices.
     The generated indices (idx) are used by the dataloader to sample the dataset getitem[idx] """
-    def __init__(self, data_source, dynamic_downsampler, shuffle = True, replacement=False, **sampling_kwargs):
+    def __init__(self, data_source, dynamic_downsampler, shuffle = True, replacement=False,**sampling_kwargs):
         super(DistributedTemporalDynamicDownsampler, self).__init__(
             dataset=data_source, 
             shuffle= shuffle,
@@ -95,6 +103,10 @@ class DistributedTemporalDynamicDownsampler(DistributedSampler):
         self.spacetime_index = self.data_source.spacetime_index
         self.cell_size  = len(self.data_source.cell_coords[self.data_source.cell_linear_index])
         self.seq_len = self.data_source.seq_len
+        self.seed = dynamic_downsampler.get("seed") 
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
         
         self.time_size = self.data_source.time_size
 

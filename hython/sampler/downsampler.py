@@ -51,9 +51,14 @@ class RandomDownsampler(AbstractDownSampler):
         self,
         frac_time: float | None = 0.5,
         frac_space: float | None = 0.5,  
+        seed: int | None = None
     ):
         self.frac_time = frac_time 
         self.frac_space = frac_space
+        self.seed = seed
+        if self.seed is not None:
+            np.random.seed(self.seed)
+
 
     def sampling_idx(self, coords):
         space, time = coords
