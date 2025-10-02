@@ -60,10 +60,10 @@ class CalTrainer(AbstractTrainer):
                 mini_batch_loss = mini_batch_loss.mean()
 
             # Add regularization acting on parameters
-            reg_loss = self._compute_regularization(pred["param"], "RangeBoundReg")
+            reg_loss = self._compute_regularization(pred["param"], "param_bound_check")
             # Add regularization on outputs
-            #reg_loss2 = self._compute_regularization(pred["y_hat"], "TargetRuleReg")            
-
+            reg_loss2 = self._compute_regularization(pred["y_hat"], "target_bound_check")            
+            #print(reg_loss, reg_loss2)
             loss = mini_batch_loss + reg_loss #+ reg_loss2
 
             self._backprop_loss(loss, opt)
