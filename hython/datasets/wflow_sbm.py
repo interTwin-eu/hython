@@ -246,7 +246,7 @@ class WflowSBM(BaseDataset):
         
         # Compute sequence (temporal) index
         # Each cell has a time series of equal length, so the sequence index is the same for every cell
-        if self.cfg.downsampling_temporal_dynamic or self.period == "test":
+        if self.cfg.dynamic_downsampler is not None or self.period == "test":
             self.time_index = np.arange(0, len(self.xd.time.values), 1)
         else:
             self.time_index = np.arange(self.seq_len, len(self.xd.time.values), 1)
@@ -258,7 +258,7 @@ class WflowSBM(BaseDataset):
             self.cell_index, self.time_index = self.downsampler.sampling_idx([self.cell_index, self.time_index])
 
         # Generate dataset samples
-        if self.cfg.downsampling_temporal_dynamic:
+        if self.cfg.dynamic_downsampler is not None:
             # Only downsample the spatial index, the time index to downsample the sequences, is generated at runtime.
             # Therefore the dataset samples are sequences of max time series length. 
             self.coord_samples = self.coords[self.cell_index]
@@ -330,44 +330,44 @@ class WflowSBM(BaseDataset):
     def __getitem__(self, index):
         
 
-        if self.cfg.downsampling_temporal_dynamic:
-            lat, lon = self.coord_samples[index]
+        # if self.cfg.downsampling_temporal_dynamic:
+        lat, lon = self.coord_samples[index]
 
-            ds_pixel_dynamic = self.xd.isel(lat=lat, lon=lon) # lat, lon, time -> time
-            ds_pixel_target = self.y.isel(lat=lat, lon=lon)
-            ds_pixel_static = self.xs.isel(lat=lat, lon=lon)
+        ds_pixel_dynamic = self.xd.isel(lat=lat, lon=lon) # lat, lon, time -> time
+        ds_pixel_target = self.y.isel(lat=lat, lon=lon)
+        ds_pixel_static = self.xs.isel(lat=lat, lon=lon)
 
-            ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-            ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+        ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+        ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
 
 
-            ds_pixel_static = ds_pixel_static.to_array()
+        ds_pixel_static = ds_pixel_static.to_array()
+        
+        xd  = torch.tensor(ds_pixel_dynamic.values).float()
+        xs = torch.tensor(ds_pixel_static.values).float()
+        y = torch.tensor(ds_pixel_target.values).float()
+        # else:
+        #     idx_cell, idx_time = self.coord_samples[index]
+
+        #     idx_lat, idx_lon = idx_cell
+        #     # TODO: check
+        #     ds_pixel_dynamic = self.xd.isel(lat=idx_lat, 
+        #                                             lon=idx_lon, 
+        #                                             time=slice(idx_time - self.seq_len + 1, idx_time + 1)) # lat, lon, time -> time
+
+        #     ds_pixel_target = self.y.isel(lat=idx_lat, 
+        #                                             lon=idx_lon, 
+        #                                             time=slice(idx_time - self.seq_len + 1, idx_time + 1)) 
             
-            xd  = torch.tensor(ds_pixel_dynamic.values).float()
-            xs = torch.tensor(ds_pixel_static.values).float()
-            y = torch.tensor(ds_pixel_target.values).float()
-        else:
-            idx_cell, idx_time = self.coord_samples[index]
-
-            idx_lat, idx_lon = idx_cell
-            # TODO: check
-            ds_pixel_dynamic = self.xd.isel(lat=idx_lat, 
-                                                    lon=idx_lon, 
-                                                    time=slice(idx_time - self.seq_len + 1, idx_time + 1)) # lat, lon, time -> time
-
-            ds_pixel_target = self.y.isel(lat=idx_lat, 
-                                                    lon=idx_lon, 
-                                                    time=slice(idx_time - self.seq_len + 1, idx_time + 1)) 
-            
-            ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
+        #     ds_pixel_static = self.xs.isel(lat=idx_lat, lon=idx_lon)
     
-            ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
-            ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
-            ds_pixel_static = ds_pixel_static.to_array()
+        #     ds_pixel_dynamic = ds_pixel_dynamic.to_array().transpose("time", "variable") # time -> time, feature
+        #     ds_pixel_target = ds_pixel_target.to_array().transpose("time", "variable") # time -> time, feature
+        #     ds_pixel_static = ds_pixel_static.to_array()
             
-            xd  = torch.tensor(ds_pixel_dynamic.values).float()
-            xs = torch.tensor(ds_pixel_static.values).float()
-            y = torch.tensor(ds_pixel_target.values).float()
+        #     xd  = torch.tensor(ds_pixel_dynamic.values).float()
+        #     xs = torch.tensor(ds_pixel_static.values).float()
+        #     y = torch.tensor(ds_pixel_target.values).float()
 
         return {"xd": xd, "xs": xs, "y": y}
 

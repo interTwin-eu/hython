@@ -140,20 +140,23 @@ class RNNTrainerHPC(AbstractTrainer):
 
     def _set_dynamic_temporal_downsampling(self, data_loaders=None, opt=None):
         """Return the temporal indices of the timeseries, it may be a subset"""
-
+        
         try:
-            temporal_downsampling = self.cfg.temporal_downsampling
+            temporal_downsampling = self.cfg.dynamic_downsampler
         except:
             return 
             #temporal_downsampling = False
-            
-        if temporal_downsampling:
-            if len(self.cfg.temporal_subset) > 1:
+        
+        frac_time = self.cfg.dynamic_downsampler.get("frac_time", None)
+        #frac_space = self.cfg.dynamic_downsampler.get("frac_space", None)
+
+        if temporal_downsampling is not None:
+            if frac_time is not None: #len(self.cfg.temporal_subset) > 1:
                 # use different time indices for training and validation
                 if opt is None:
                     # validation
                     time_range = next(iter(data_loaders[-1]))["xd"].shape[1]
-                    temporal_subset_size = self.cfg.temporal_subset[-1]
+                    temporal_subset_size = int(time_range*frac_time) #self.cfg.temporal_subset[-1]
 
                     avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
                     if avail_time > 0:
@@ -163,19 +166,19 @@ class RNNTrainerHPC(AbstractTrainer):
                         self.time_index = np.arange(0, time_range - self.cfg.seq_length)
                 else:
                     time_range = next(iter(data_loaders[0]))["xd"].shape[1]
-                    temporal_subset_size = self.cfg.temporal_subset[0]
+                    temporal_subset_size = int(time_range*frac_time) #self.cfg.temporal_subset[0]
                     avail_time = (time_range - self.cfg.seq_length) - temporal_subset_size
                     if avail_time > 0:
                         choice = np.arange(0, time_range - self.cfg.seq_length, 1)
                         self.time_index = np.random.choice(choice, temporal_subset_size, replace=False)
                     else:
                         self.time_index = np.arange(0, time_range - self.cfg.seq_length)
-            else:
-                # use same time indices for training and validation, time indices are from train_loader
-                time_range = next(iter(data_loaders[0]))["xd"].shape[1]
-                self.time_index = np.random.randint(
-                    0, time_range - self.cfg.seq_length, self.cfg.temporal_subset[-1]
-                )
+            # else:
+            #     # use same time indices for training and validation, time indices are from train_loader
+            #     time_range = next(iter(data_loaders[0]))["xd"].shape[1]
+            #     self.time_index = np.random.randint(
+            #         0, time_range - self.cfg.seq_length, self.cfg.temporal_subset[-1]
+            #     )
 
         else:
             if opt is None:
