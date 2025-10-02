@@ -18,7 +18,7 @@ class RegCollection(nn.Module):
         #     collection = [collection]
 
         if collection is not None:
-            self.regs = nn.ModuleDict({str(l)[:-2]: l for l in collection})
+            self.regs = nn.ModuleDict({l.name_handler: l for l in collection})
         else:
             self.regs = {}
 
@@ -132,9 +132,10 @@ class TargetRuleReg(nn.Module):
         return loss
     
 class RangeBoundReg(nn.Module):
-    def __init__(self, bounds: Dict, factor: int = 1, output: str = "param") -> None:
+    def __init__(self, bounds: Dict, factor: int = 1, output: str = "param", name_handler: str = "param_bound_check") -> None:
         super(RangeBoundReg, self).__init__()
         self.factor = factor
+        self.name_handler = name_handler
         lbs = []
         ubs = []
         for k,v in bounds.items():
@@ -149,11 +150,11 @@ class RangeBoundReg(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         #x = x_in[self.output]
         loss = 0
-        for i in range(x.size(1)):
+        for i in range(x.size(-1)):
             lb = self.lbs[i]
             ub = self.ubs[i]
-            upper_bound_loss = torch.relu(x[i] - ub)
-            lower_bound_loss = torch.relu(lb - x[i])
+            upper_bound_loss = torch.relu(x[...,i] - ub)
+            lower_bound_loss = torch.relu(lb - x[...,i])
             mean_loss = self.factor * (upper_bound_loss + lower_bound_loss).mean() / 2.0
             loss = loss + mean_loss
         return loss
