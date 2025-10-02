@@ -142,21 +142,13 @@ class RNNDistributedTrainer(TorchTrainer):
             self.hython_trainer = ConvTrainer(self.config)
 
         elif self.config.hython_trainer == "caltrainer":
-            # LOAD MODEL HEAD/SURROGATE
+            
             self.model_logger = self.model_api.get_model_logger("head")
-
-            # TODO: to remove if condition, delegate logic to model api
+ 
+            # LOAD MODEL HEAD/SURROGATE
             if self.model_logger == "mlflow":
                 surrogate = self.model_api.load_model("head")
             else:
-                # FIXME: There is a clash in "static_inputs" semantics between training and calibration
-                # In the training the "static_inputs" are used to train the CudaLSTM model (main model - the surrogate -)
-                # In the calibration the "static_inputs" are other input features that are used to train the TransferNN model.
-                # Hence during calibration, when loading the weights of the surrogate,
-                # I need to replace the CudaLSTM (now the head model) "static_inputs" with the correct "head_model_inputs"
-                # in order to avoid clashes with the TransferNN model inputs
-                # I think that if I used more modular config files, thanks to hydra, then I could import a surrogate_model.yaml
-                # into both...
                 config = deepcopy(self.config)
                 head_model_input_list = []
                 head_model_input_cal = []
@@ -170,9 +162,11 @@ class RNNDistributedTrainer(TorchTrainer):
                 config.target_variables = config.head_output_variables
 
                 surrogate = get_hython_model(self.config.model_head)(config)
-
+                # There must be a trained model surrogate for calibration (head), load it
                 surrogate = self.model_api.load_model("head", surrogate)
 
+            # LOAD TRANSFER NN
+        
             transfer_nn = get_hython_model(self.config.model_transfer)(
                 head_model_input_cal , #self.config.head_model_inputs,
                 len(self.config.static_inputs), # input predictor
@@ -180,6 +174,17 @@ class RNNDistributedTrainer(TorchTrainer):
                 self.config.mt_hidden_dim,
                 self.config.mt_n_layers,
             )
+
+            if self.config.mt_load_pretrained is True:
+                print("loading transfernn from pretrained weights")
+                # load pretrained weights
+                try:
+                    transfer_nn = self.model_api.load_model("transfernn", transfer_nn)
+                except:
+                    # this could happen when running the calibration loop, the first iteration does not
+                    # have transfenn weights
+                    print("model transfernn weights not found") 
+
 
             self.model = self.model_class(
                 transfernn=transfer_nn,
