@@ -373,10 +373,17 @@ class RNNDistributedTrainer(TorchTrainer):
         else:
             processing = "multi-gpu"
 
+        if self.config.dynamic_downsampler is not None:
+            sampler_train = "temporal-downsampling-random"
+            sampler_val = "temporal-downsampling-sequential"
+        else:
+            sampler_train = "random"
+            sampler_val = "sequential"
+
         train_sampler_builder = SamplerBuilder(
             self.config,
             train_dataset,
-            sampling="random",
+            sampling=sampler_train,
             processing=processing,
             sampling_kwargs=sampling_kwargs,
         )
@@ -384,7 +391,7 @@ class RNNDistributedTrainer(TorchTrainer):
         val_sampler_builder = SamplerBuilder(
             self.config,
             validation_dataset,
-            sampling="sequential",
+            sampling=sampler_val,
             processing=processing,
             sampling_kwargs=sampling_kwargs,
         )
@@ -392,7 +399,7 @@ class RNNDistributedTrainer(TorchTrainer):
         test_sampler_builder = SamplerBuilder(
             self.config,
             test_dataset,
-            sampling="sequential",
+            sampling=sampler_val,
             processing=processing,
             sampling_kwargs=sampling_kwargs,
         )
