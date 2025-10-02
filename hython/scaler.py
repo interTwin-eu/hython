@@ -132,7 +132,7 @@ class TargetCalibrationScaler(BaseScaler):
             vs = reference[ref_var].sel(time=period_range)
             vs = vs.rename_vars(ref2target_mapping)
             
-            if self.method == "zscore":
+            if "zscore" in self.method:
                 kind = self.kwargs.get("kind")
                 if kind == "local":
                     self.reference_scale = vs.std("time").compute()
@@ -146,17 +146,20 @@ class TargetCalibrationScaler(BaseScaler):
                     self.target_center = data[self.variable].mean()
                 else:
                     raise NotImplementedError
+                
             elif self.method == "minmax":
-                self.reference_center = vs.min("time")
-                self.reference_scale = vs.max("time") - self.reference_center
+                self.reference_center = vs.min("time").compute()
+                self.reference_scale = vs.max("time").compute() - self.reference_center
                 self.target_center = data[self.variable].min("time")
                 self.target_scale = data[self.variable].max("time") - self.target_center
 
         return self.reference_scale, self.reference_center
 
     def transform(self, data):
-        return (self.reference_scale / self.target_scale) * (data - self.target_center) + self.reference_center
-    
+        if self.method == "zscore-nonneg":
+            return np.maximum((self.reference_scale / self.target_scale) * (data - self.target_center) + self.reference_center, 0)
+        else:
+            return (self.reference_scale / self.target_scale) * (data - self.target_center) + self.reference_center
 
 class Scaler:
     """Class for performing scaling of input features. Currently supports minmax and standard scaling."""
