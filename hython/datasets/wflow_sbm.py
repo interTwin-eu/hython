@@ -490,8 +490,8 @@ class WflowSBMCal(BaseDataset):
 
         self.scaler.load_or_compute(
             self.y, "target_variables", 
-            True, # FIXME: This should be False after refactoring scaler's compute to accomodate 
-            axes=("lat", "lon", "time"), 
+            True, # compute every dataset initialization
+            axes=None, 
             reference = data_dynamic, 
             period_range=self.period_range
         )
@@ -500,11 +500,15 @@ class WflowSBMCal(BaseDataset):
         self.scaler.load_or_compute( 
             self.xp, "head_model_inputs", is_train, axes=("lat","lon")
         )
-        #
+
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")
+        # transform target variable to reference statistics
         self.y = self.scaler.transform(self.y, "target_variables")
-        
+        # standardise transformed target variable to match emulator
+        # that was trained with standardised reference
+        #self.y = (self.y - self.y.mean("time")) / self.y.std("time")
+
         self.xp = self.scaler.transform(self.xp, "head_model_inputs").compute()
         
         # == PREPARE PARAMETERS FOR REG
