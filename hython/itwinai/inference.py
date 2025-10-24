@@ -106,6 +106,7 @@ class ParameterInference(Predictor):
 
         ds_params = scaler_head_layer.transform_inverse(ds_params, "static_inputs", subset= list(ds_params.data_vars))
 
+
         ds_params.to_netcdf("/mnt/CEPH_PROJECTS/InterTwin/Wflow/models/emo1/run_default/inference_parameters.nc")
 
         return 

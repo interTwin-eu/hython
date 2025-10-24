@@ -152,7 +152,13 @@ class TargetCalibrationScaler(BaseScaler):
                 self.reference_scale = vs.max("time").compute() - self.reference_center
                 self.target_center = data[self.variable].min("time")
                 self.target_scale = data[self.variable].max("time") - self.target_center
-
+            elif self.method == "iqr": # wflow outliers
+                self.reference_center = vs.min("time").compute()
+                vs = vs.chunk(dict(time=-1)).load()
+                self.reference_scale = vs.quantile(dim= "time", q=0.9) - self.reference_center
+                self.target_center = data[self.variable].min("time")
+                self.target_scale = data[self.variable].max("time") - self.target_center
+                
         return self.reference_scale, self.reference_center
 
     def transform(self, data):
@@ -192,8 +198,10 @@ class Scaler:
         except:
             self.run_dir = Path(".")
             
-        with open(self.run_dir / f"config.yaml", "w") as file:
-            yaml.dump(self.cfg, file)
+        # with open(self.run_dir / f"config.yaml", "w") as file:
+        #     import pdb;pdb.set_trace()
+        #     y = OmegaConf.to_yaml(self.cfg)
+        #     yaml.dump(y, file)
         
         LOGGER.info(f"Data statistics saved to: {str(self.run_dir)}") 
 

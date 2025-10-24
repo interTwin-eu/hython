@@ -90,8 +90,9 @@ class AbstractTrainer(ABC):
             # As the greater the size of valid samples the greater the importance in updating
             # the model parameters.
             if valid_mask is not None:
-                scaling_factor = torch.sum(imask) / imask.flatten().shape[0] # fraction valid samples per batch
-                loss_tmp = loss_tmp * scaling_factor
+                if self.cfg.data_loss_scale_proportional_valid_target_timesteps:
+                    scaling_factor = torch.sum(imask) / imask.flatten().shape[0] # fraction valid samples per batch
+                    loss_tmp = loss_tmp * scaling_factor
             
             loss = loss + loss_tmp * w
 

@@ -36,17 +36,12 @@ class CalTrainer(AbstractTrainer):
 
             output = self.predict_step(pred, steps=self.cfg.predict_steps, subset_index=index_tensor_pred)
             target = self.target_step(target_b, steps=self.cfg.predict_steps)
-            # 
-            
-            #import pdb; pdb.set_trace()
-            # rescale surrogate output to same simulation as target was rescaled
-            #output["y_hat"] = dataloader.dataset.sim_std.to(device)/output["y_hat"].std() * (output["y_hat"] - output["y_hat"].mean()) + dataloader.dataset.sim_mean.to(device)
 
             # TODO: consider moving missing values loss handling in the compute loss method
             valid_mask = ~target.isnan()  # non null values
            
             self._concatenate_result(output, target, valid_mask, param = pred["param"])
-            
+
             # Compute loss: default returns average loss per sample
             mini_batch_loss = self._compute_batch_loss(
                 prediction=output,
@@ -55,22 +50,21 @@ class CalTrainer(AbstractTrainer):
                 target_weight=self.target_weights,
                 #calibration_vars=self.cfg.target_variables, # In case
             )
-            
+
             if self.cfg.predict_steps != 0: # not necessary as the loss is already averaged
                 mini_batch_loss = mini_batch_loss.mean()
 
             # Add regularization acting on parameters
             reg_loss = self._compute_regularization(pred["param"], "param_bound_check")
             # Add regularization on outputs
-            reg_loss2 = self._compute_regularization(pred["y_hat"], "target_bound_check")            
-            #print(reg_loss, reg_loss2)
+            #reg_loss2 = self._compute_regularization(pred["y_hat"], "target_bound_check")            
             loss = mini_batch_loss + reg_loss #+ reg_loss2
-
+            
             self._backprop_loss(loss, opt)
 
             # Accumulate mini-batch loss, only valid samples
             running_batch_loss += loss.detach()
-            #print(loss)
+
         epoch_loss = running_batch_loss / len(dataloader)
 
         metric = self._compute_metric()
