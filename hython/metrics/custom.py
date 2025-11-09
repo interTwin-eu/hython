@@ -312,12 +312,16 @@ def compute_kge2(true, pred, sample_weight=None, valid_mask=None, return_all=Fal
     kge = 1 - np.sqrt(
         np.power(r - 1, 2) + np.power(alpha - 1, 2) + np.power(beta - 1, 2)
     )
+    if return_all:
+        kge = np.array([kge, r, alpha, beta])
     return kge
 
+from functools import partial
 def compute_kge_parallel(y_true, y_pred, return_all=False):
     if return_all:
+        ckge = partial(compute_kge2,return_all=return_all)
         kge = xr.apply_ufunc(
-            compute_kge2,
+            ckge,
             y_true,
             y_pred,
             input_core_dims=[["time"], ["time"]],
