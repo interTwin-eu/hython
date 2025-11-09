@@ -60,72 +60,77 @@ def map_kge(
     scale=13,
     map_extent=[],
     return_computation=False,
+    return_all = False,
+    compute_only=True,
     fig=None,
     ax=None
 ):
     # COMPUTE
-    kge = compute_kge_parallel(y_true, y_pred)
+    kge = compute_kge_parallel(y_true, y_pred, return_all=return_all)
     #kge = kge.chunk({"kge": 1})
     #kge = kge.sel(kge="kge")
 
-    # MATPLOTLIB PARAMETERS
-    cmap = plt.colormaps["Blues"]
-    if color_ticks is None:
-        color_ticks = np.linspace(color_bounds[0], color_bounds[-1], 16)
+    if not compute_only:
+        # MATPLOTLIB PARAMETERS
+        cmap = plt.colormaps["Blues"]
+        if color_ticks is None:
+            color_ticks = np.linspace(color_bounds[0], color_bounds[-1], 16)
 
-    norm = set_norm(color_norm, color_bounds, color_ticks, cmap.N, clip=True)
+        norm = set_norm(color_norm, color_bounds, color_ticks, cmap.N, clip=True)
 
-    if color_bad is not None:
-        cmap.set_bad(color_bad)
+        if color_bad is not None:
+            cmap.set_bad(color_bad)
 
-    # PLOT
-    if fig is None:
-        fig = plt.figure(figsize=figsize)
-    if ax is None:
+        # PLOT
+        if fig is None:
+            fig = plt.figure(figsize=figsize)
+        if ax is None:
+            if cartopy:
+                map_proj = ccrs.PlateCarree()
+
+                minx, miny, maxx, maxy = return_map_extent(y_true, map_extent)
+
+                ax = fig.add_subplot(1, 1, 1, projection=map_proj)
+
+                ax.set_extent([minx, maxx, miny, maxy], crs=map_proj)
+                
+            else:
+                ax = fig.add_subplot(1, 1, 1)
+
+
+        if tiles is not None:
+            ax.add_image(tiles, scale)
         if cartopy:
-            map_proj = ccrs.PlateCarree()
-
-            minx, miny, maxx, maxy = return_map_extent(y_true, map_extent)
-
-            ax = fig.add_subplot(1, 1, 1, projection=map_proj)
-
-            ax.set_extent([minx, maxx, miny, maxy], crs=map_proj)
-            
+            p = kge.plot(
+                ax=ax,
+                norm=norm,
+                cmap=cmap,
+                transform=map_proj,
+                add_colorbar=False,
+                **matplot_kwargs,
+            )
         else:
-            ax = fig.add_subplot(1, 1, 1)
+            p = kge.plot(
+                ax=ax,
+                norm=norm,
+                cmap=cmap,
+                #transform=map_proj,
+                add_colorbar=False,
+                **matplot_kwargs,
+            )
 
-
-    if tiles is not None:
-        ax.add_image(tiles, scale)
-    if cartopy:
-        p = kge.plot(
+        fig.colorbar(
+            p,
             ax=ax,
-            norm=norm,
-            cmap=cmap,
-            transform=map_proj,
-            add_colorbar=False,
-            **matplot_kwargs,
+            shrink=0.5,
+            label=f"kge",
+            ticks=color_ticks,
         )
+
+        plt.title(title)
     else:
-        p = kge.plot(
-            ax=ax,
-            norm=norm,
-            cmap=cmap,
-            #transform=map_proj,
-            add_colorbar=False,
-            **matplot_kwargs,
-        )
-
-    fig.colorbar(
-        p,
-        ax=ax,
-        shrink=0.5,
-        label=f"kge",
-        ticks=color_ticks,
-    )
-
-    plt.title(title)
-
+        pass
+    
     if return_computation:
         return fig, ax, kge
     else:

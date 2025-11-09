@@ -59,7 +59,7 @@ class CalTrainer(AbstractTrainer):
             # Add regularization on outputs
             #reg_loss2 = self._compute_regularization(pred["y_hat"], "target_bound_check")            
             loss = mini_batch_loss + reg_loss #+ reg_loss2
-            
+
             self._backprop_loss(loss, opt)
 
             # Accumulate mini-batch loss, only valid samples
