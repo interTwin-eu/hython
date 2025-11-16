@@ -1,0 +1,546 @@
+# === Experiment === 
+experiment_name: "cal"
+experiment_run: "emo1_theta_99199_test" #_128_kgebeta"
+
+# the base directory with all the runs
+# here a new directory <experiment_name>_<experiment_run> is created
+work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run # 
+#work_dir: /p/scratch/intertwin/datasets/eurac/modelvalid
+
+train_temporal_range: ["2017-01-01", "2017-12-31"]
+valid_temporal_range: ["2020-01-01", "2020-12-31"]
+test_temporal_range: ["2022-01-01", "2022-12-31"]
+
+seed: 99199
+
+device: "cuda:0"
+
+# === Model ===
+
+# > hybrid < 
+
+model: Hybrid # model class
+
+freeze_head: True
+
+scale_head_input_parameter: False
+
+# Need to scale to match target
+scale_head_output: False
+
+# > transfernn < 
+
+model_transfer: TransferNN # model class
+
+mt_hidden_dim: 60
+mt_output_dim: 1
+mt_n_layers: 3
+
+mt_load_pretrained: False # Loading pretrained model
+
+# > head model < 
+
+model_head: CudaLSTM # model class
+
+# model_head_dir: training_run_0 # directory to load the surrogate model, relative to work_dir.
+
+model_head_hidden_size: 128 #32 #128 #128 #36
+model_head_dropout: 0.2
+model_lstm_layers: 1
+model_lstm_batch_norm: false
+
+model_head_layer: regression # distr_normal
+model_head_activation: linear
+model_head_kwargs: {}
+  #hidden_dim:  32
+  #n_layers: 2
+
+# === Training ===
+
+strategy: null
+
+log_calib_parameters: null
+  # set: "valid" # "train" # "all"
+  # n_epochs: 1
+  # uri: ${work_dir}/${experiment_name}_${experiment_run}/
+
+
+hython_trainer: caltrainer # trainer class
+
+loss_fn:
+  _target_: hython.losses.KGELoss # hython.losses.NegLLLoss
+
+data_loss_scale_proportional_valid_target_timesteps: True
+
+metric_fn:
+  _target_: hython.metrics.MetricCollection
+  metrics:
+    - _target_: hython.metrics.RMSEMetric
+    - _target_: hython.metrics.KGEMetric
+    - _target_: hython.metrics.NSEMetric
+    - _target_: hython.metrics.PearsonMetric
+
+regularization:
+  - _target_: hython.regularizations.RegCollection
+    collection:
+      - _target_: hython.regularizations.RangeBoundReg
+        factor: 1000
+        output: "param"
+        name_handler: "param_bound_check"
+        bounds:
+            KsatVer: [0.01, 1]
+            c: [0, 1]
+            f: [0, 1]
+            # M: [0, 1]
+            RootingDepth: [0, 1] # (mm)
+            # Swood: [0, 1] # -
+            Sl: [0, 1] #(mm)
+            #thetaS: [0, 1]
+            #thetaR: [0, 1]
+            # Kext: [0, 1] # -
+            # SoilThickenss: [0, 1]
+      - _target_: hython.regularizations.RangeBoundReg # not used ATM
+        factor: 1000
+        output: "y_hat"
+        name_handler: "target_bound_check"
+        bounds:
+            ssm: [0.05, 1]
+      # - _target_: hython.regularizations.TargetRuleReg
+      #   parameters: ${target_variables}
+      #   factor: 0.25
+      #   output: "y_hat"
+      #   rules: 
+      #      - ["ssm", ">", 0] # valid 
+      # - _target_: hython.regularizations.ParamRuleReg
+      #   parameters: ${static_inputs}
+      #   rules: 
+      #      - ["thetaS", ">", "thetaR"]
+      #      - ["thetaS", ">", "KsatVer"]
+
+# regularization:
+#   _target_: hython.regularizations.RangeBoundReg
+#   factor: 1000
+#   bounds:
+#     KsatVer: [0.05, 1]
+#     c: [0, 1]
+#     f: [0, 1]
+#     # M: [0, 1]
+#     RootingDepth: [0, 1] # (mm)
+#     # Swood: [0, 1] # -
+#     Sl: [0, 1] #(mm)
+#     #thetaS: [0, 1]
+#     #thetaR: [0, 1]
+#     # Kext: [0, 1] # -
+#     # SoilThickenss: [0, 1]
+
+
+optimizer: adam
+
+lr_scheduler:
+  mode: min
+  factor: 0.5
+  patience: 10
+
+learning_rate: 0.001
+
+batch: 512
+
+epochs: 150
+
+gradient_clip:
+    max_norm: 1
+
+target_weights: even # null, even, or dict
+
+predict_steps: all # all # (prediction: 0 = t ), ( forecasts: 1 = t+1, 2 = t + 2)
+
+# > Donwsampling < 
+
+# spatial downsampling
+train_downsampler: null
+  # _target_: hython.sampler.downsampler.RandomDownsampler
+  # frac_time: null
+  # frac_space: null
+
+valid_downsampler: null
+  # _target_: hython.sampler.downsampler.RandomDownsampler
+  # frac_time: null
+  # frac_space: null
+
+test_downsampler: null
+
+dynamic_downsampler: null
+
+# === Data ===
+
+data_lazy_load: False
+
+dataset: WflowSBMCal # dataset class
+
+num_workers_dataloader: 24
+num_workers_dataloader_eval: 24
+
+data_source:
+  file:
+    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_emo1_alps.zarr
+    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_dynamic.zarr
+    #target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/ERA5L_SM/cropped/ERA5_2020-2021.nc
+    #target_variables: /mnt/CEPH_PROJECTS/A_DROP/pilot5/data/processed/GSSM1km/GSSM1km2017_2020_intertwin.nc
+    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/alps_rt0old_2017-2022_theta.nc #alps_rt0old_masked_SWI5_2017-2022.nc  #alps_rt0old_2017-2022.nc #alps_rt0old_masked_SWI5_2017-2022.nc #alps_rt0old_masked_SWI5_2017-2022.nc
+    mask_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_static.zarr
+    static_inputs_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_emo1_alps.zarr
+    static_parameter_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_static.zarr/ #/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_static_calib.zarr
+    target_variables_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/alps_rt0old_mask.nc
+  # s3:
+  #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
+  
+
+# data_source:
+#   file:
+#     static_inputs: /p/scratch/intertwin/datasets/eurac/input/predictor_alps.zarr
+#     dynamic_inputs: /p/scratch/intertwin/datasets/eurac/input/eobs_dynamic.zarr
+#     target_variables: /p/scratch/intertwin/datasets/eurac/input/alps_masked_20170101-20171231.nc
+#     #target_variables_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/daily/alps_masked_20170101-20171231.nc
+#     mask_variables: /p/scratch/intertwin/datasets/eurac/input/eobs_static.zarr
+#     static_inputs_mask: /p/scratch/intertwin/datasets/eurac/input/predictor_alps.zarr
+#   # s3:
+#   #   url: https://eurac-eo.s3.amazonaws.com/INTERTWIN/SURROGATE_INPUT/adg1km_eobs_preprocessed.zarr/
+  
+# > Scaling < 
+
+scaling_use_cached: False
+scaling_variant: minmax
+scaling_static_range:
+    thetaS: [0.25, 0.9] 
+    thetaR: [0.01, 0.25] 
+    KsatVer: [1, 8000]
+    c: [1, 20]
+    f: [0.00001, 0.01] # from training data (it is fitted)
+    M: [1, 3000]
+    RootingDepth: [5, 3000] # (mm)
+    Swood: [0.0, 0.5] # -
+    Sl: [0.02, 0.2] #(mm)
+    Kext: [0.48, 0.96] # -
+    SoilThickness: [50, 3000]
+
+# scaling_rescale_target:
+#     # soil-property:
+#     #   lower: thetaR
+#     #   upper: thetaS
+#     model-statistics:
+#       variable: "vwc"
+#       method: "minmax" # zscore
+#       how: "local"
+
+head_model_inputs: # RESPECT POSITIONING of EMULATOR!
+  cal_param: # bounded
+    - KsatVer
+    - c
+    - f
+    - RootingDepth
+    - Sl
+  aux_param: # bounded
+    - thetaS
+    - thetaR 
+    - SoilThickness 
+    - M
+    - Kext
+    - Swood
+  aux_feat: # minmax scaling
+    - wflow_uparea
+    - wflow_landuse
+    - wflow_dem
+    - Slope 
+    - WaterFrac
+    
+
+
+static_inputs:
+  ### -- SoilGrid
+  - oc_sl1
+  - sndppt_sl1
+  - bd_sl1
+  - clyppt_sl1
+  - sltppt_sl1
+  ### -- MeritHydro
+  - elev
+  - slp
+  - aspect
+  #- twi
+  #- hand
+  ### -- EOBS indic 10 km
+  - temprange
+  - frostday
+  - wetday1mm
+  - wetday20mm # REMOVE
+  ### --  Worldclim 1km 
+  #- "bio3" # Isothermality
+  #####- bio4 # Temperature Seasonality # ADD!
+  #- bio5 # Max Temperature of Warmest Month
+  #- bio6 # Min Temperature of Coldest Month
+  #####- bio15 # Precipitation Seasonality # ADD!
+  #- "bio17" # Precipitation of Driest Quarter
+  ### --- CDS ERA5 downscaled 1 km
+  #- dry-days_annual-sum 
+  #- aridity_driest-quarter 
+  #- aridity_annual-mean 
+  #- frost-days_annual-sum 
+  #- growing-degree-days 
+
+
+
+dynamic_inputs:
+  - precip
+  - pet
+  - temp
+  
+head_output_variables: # output from head (surrogate)
+  #- swvl1 
+  - ssm
+
+target_variables: # target for calibration
+  #- swvl1
+  - ssm
+
+mask_variables:
+  - mask_missing
+  - mask_lake
+  # - mask_vwc_suspicious
+
+static_inputs_mask:
+  - mask
+
+min_sample_target: 10
+
+target_has_missing_dates: True
+
+
+preprocessor:  null
+
+scaler:
+    static_inputs:
+        lazy: False
+        variant:
+          - _target_: hython.scaler.MinMax01Scaler
+            variable: ${static_inputs}
+    dynamic_inputs:
+        lazy: False
+        variant:
+          - _target_: hython.scaler.MinMax01Scaler
+            variable: ${dynamic_inputs}
+    target_variables: null
+        # lazy: False
+        # variant:
+        #   - _target_: hython.scaler.TargetCalibrationScaler
+        #     variable: ${target_variables}
+        #     kwargs:
+        #       how: "reference-statistics"
+        #       method: "minmax" #"zscore"
+        #       kind: "local"
+        #       ref2target:
+        #         vwc: ssm
+        #     # soil-property:
+        #     #   lower: thetaR
+        #     #   upper: thetaS
+    head_model_inputs:
+        lazy: False
+        variant: 
+          - _target_: hython.scaler.BoundedScaler
+            variable:
+              thetaS: ${scaling_static_range.thetaS}
+              thetaR: ${scaling_static_range.thetaR}
+              SoilThickness: ${scaling_static_range.SoilThickness}
+              # KsatVer: ${scaling_static_range.KsatVer}
+              # c: ${scaling_static_range.c}
+              # f: ${scaling_static_range.f}
+              M: ${scaling_static_range.M}
+              # RootingDepth: ${scaling_static_range.RootingDepth}
+              Swood: ${scaling_static_range.Swood}
+              # Sl: ${scaling_static_range.Sl}
+              Kext: ${scaling_static_range.Kext}
+          - _target_: hython.scaler.MinMax01Scaler
+            variable:
+              - wflow_uparea
+              - wflow_landuse
+              - wflow_dem
+              - Slope 
+              - WaterFrac
+
+
+# ==== MODEL LOGGER ========
+#mlflow: 
+# - ``/Users/me/path/to/local/model``
+# - ``relative/path/to/local/model``
+# - ``s3://my_bucket/path/to/model``
+# - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
+# - ``models:/<model_name>/<model_version>``
+# - ``models:/<model_name>/<stage>``
+#local:
+# "/home/iferrario/dev/notebooks/config/lstm_v2.yaml"
+# /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc/model.pt
+
+
+model_logger:
+    #mlflow: 
+    # - ``/Users/me/path/to/local/model``
+    # - ``relative/path/to/local/model``
+    # - ``s3://my_bucket/path/to/model``
+    # - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
+    # - ``models:/<model_name>/<model_version>``
+    # - ``models:/<model_name>/<stage>``
+    #local:
+    # "/home/iferrario/dev/notebooks/config/lstm_v2.yaml"
+    # /mnt/CEPH_PROJECTS/InterTwin/hython_model_run/lstm_vwc/model.pt
+  Hybrid:
+     logger: local
+     model_component: model # the main model
+     model_name: ${model}
+     model_uri: ${work_dir}/${experiment_name}_${experiment_run}/${model}.pt
+     log: True
+     load: True
+  CudaLSTM:
+      logger: local #mlflow # local
+      model_component: head
+      model_name: ${model_head}
+      model_uri: "/home/iferrario/dev/article/param_estimation/config/config_training_emulator.yaml"  #"models:/${model_head}/latest"
+      log: False
+      load: True
+  TransferNN:
+      logger: local #mlflow # local
+      model_component: transfernn
+      model_name: ${model_transfer}  # for saving the model
+      model_uri:  ${work_dir}/${experiment_name}_${experiment_run}/${model_transfer}.pt  #"models:/${model_transfer}/latest"  # for loading the model
+      log: True
+      load: False
+
+
+# == Pipeline == 
+
+training_pipeline:
+  _target_: itwinai.pipeline.Pipeline
+  steps:
+    - _target_: hython.itwinai.data.RNNDatasetGetterAndPreprocessor
+      hython_trainer: ${hython_trainer}
+      dynamic_inputs: ${dynamic_inputs}
+      static_inputs: ${static_inputs}
+      target_variables: ${target_variables}
+      head_output_variables: ${head_output_variables}
+      head_model_inputs: ${head_model_inputs}
+
+      mask_variables: ${mask_variables}
+      static_inputs_mask: ${static_inputs_mask}
+    
+      train_temporal_range: ${train_temporal_range}
+      valid_temporal_range: ${valid_temporal_range}
+      test_temporal_range: ${test_temporal_range}
+
+      dataset: ${dataset}
+      data_lazy_load: ${data_lazy_load}
+
+      data_source: ${data_source}
+      preprocessor: ${preprocessor}
+      scaler: ${scaler}
+      scaling_static_range: ${scaling_static_range}
+      scaling_use_cached: ${scaling_use_cached}
+      #scaling_rescale_target: ${scaling_rescale_target}
+      experiment_name: ${experiment_name}
+      experiment_run: ${experiment_run}
+      work_dir: ${work_dir}
+
+      dynamic_downsampler: ${dynamic_downsampler}
+      train_downsampler: ${train_downsampler}
+      valid_downsampler: ${valid_downsampler}
+      test_downsampler: ${test_downsampler}
+
+      min_sample_target: ${min_sample_target}
+      target_has_missing_dates: ${target_has_missing_dates}
+    - _target_: hython.itwinai.trainer.RNNDistributedTrainer
+      model: ${model}
+      config:
+        experiment: ${experiment_name}/${experiment_run}
+        experiment_name: ${experiment_name}
+        experiment_run: ${experiment_run}
+        work_dir: ${work_dir}
+        batch_size: ${batch}
+        learning_rate: ${learning_rate}
+        num_workers_dataloader: ${num_workers_dataloader}
+        num_workers_dataloader_eval: ${num_workers_dataloader_eval}
+        hython_trainer: ${hython_trainer}
+
+        regularization: ${regularization}
+        
+        #calibration_target_variables: ${calibration_target_variables}
+        head_output_variables: ${head_output_variables}
+        target_variables: ${target_variables}
+        dynamic_inputs: ${dynamic_inputs}
+        static_inputs: ${static_inputs}
+
+        optimizer: ${optimizer}
+        lr_scheduler: ${lr_scheduler}
+        target_weights: ${target_weights}
+
+        dynamic_downsampler: ${dynamic_downsampler}
+
+        # model config
+
+        model: ${model}
+        
+        model_head: ${model_head}
+
+        head_model_inputs: ${head_model_inputs}
+
+        freeze_head: ${freeze_head}
+
+        scale_head_input_parameter: ${scale_head_input_parameter} 
+
+        # > transfernn < 
+
+        data_loss_scale_proportional_valid_target_timesteps: ${data_loss_scale_proportional_valid_target_timesteps}
+        
+        model_transfer: ${model_transfer}
+
+        mt_output_dim: ${mt_output_dim}
+        mt_hidden_dim: ${mt_hidden_dim}
+        mt_n_layers: ${mt_n_layers}
+        mt_load_pretrained: ${mt_load_pretrained}
+
+        log_calib_parameters: ${log_calib_parameters}
+
+        # > head model < 
+        # model_file_name: ${model_file_name}
+        # model_head_dir: ${model_head_dir}
+
+        hidden_size: ${model_head_hidden_size}
+        dropout: ${model_head_dropout}
+        lstm_layers: ${model_lstm_layers}
+        lstm_batch_norm: ${model_lstm_batch_norm}
+
+        model_head_layer: ${model_head_layer}
+        model_head_activation: ${model_head_activation}
+        model_head_kwargs: ${model_head_kwargs}
+        
+        loss_fn: ${loss_fn}
+        metric_fn: ${metric_fn}
+
+        gradient_clip: ${gradient_clip}
+
+        predict_steps: ${predict_steps}
+
+        # model logger
+        model_logger: ${model_logger}
+      
+      strategy: ${strategy}
+      epochs: ${epochs}
+      random_seed: ${seed}
+      logger:
+        _target_: itwinai.loggers.LoggersCollection
+        loggers:
+          - _target_: itwinai.loggers.ConsoleLogger
+            log_freq: 1
+          - _target_: itwinai.loggers.MLFlowLogger
+            experiment_name: ${experiment_name}
+            run_name: ${experiment_run}
+            log_freq: batch
+            savedir: /home/iferrario/dev/article/param_estimation/config/mllogs
+    - _target_: hython.itwinai.inference.ParameterInference
+      model: null

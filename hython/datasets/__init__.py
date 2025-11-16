@@ -89,6 +89,7 @@ class BaseDataset(Dataset):
 
 
 from .wflow_sbm import *
+from .landsurf import PBMDataset
 
 DATASETS = {
     "WflowSBM": WflowSBM,
@@ -96,6 +97,7 @@ DATASETS = {
     "WflowSBMCal":WflowSBMCal,
     "WflowSBMCube": WflowSBMCube,
     "Wflow2dCal": Wflow2dCal,
+    "PBM": PBMDataset
 }
 
 DEPRECATED = ["Wflow2dCal"]

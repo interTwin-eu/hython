@@ -7,7 +7,7 @@ from .convLSTM import ConvLSTM
 from .hybrid import Hybrid
 from .transferNN import TransferNN
 from .modularLSTM import ModularLSTM
-
+from .pbm import HBV
 try:
     # it fails if torch < 2.4
     torch.serialization.add_safe_globals([CudaLSTM, Hybrid, ConvLSTM, TransferNN, ModularLSTM])
