@@ -6,6 +6,7 @@ import matplotlib.colors as colors
 from matplotlib.colors import BoundaryNorm, CenteredNorm
 from matplotlib.ticker import MaxNLocator
 import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 from cartopy.io.img_tiles import QuadtreeTiles
 
 from hython.metrics.custom import (
@@ -156,14 +157,19 @@ def map_rmse(
     return_computation=False,
     unit="mm",
     skipna=False,
+    cmap = "Blues",
+    depth=None,
 ):
     # COMPUTE
+    if depth is not None:
+        y_true= y_true*depth
+        y_pred = y_pred*depth
     rmse = compute_rmse(y_true, y_pred, skipna=skipna)
 
     # MATPLOTLIB PARAMETERS
-    cmap = plt.colormaps["RdYlGn"]
+    cmap = plt.colormaps[cmap]
 
-    norm = set_norm(color_norm, color_bounds, color_ticks, cmap.N, clip=True)
+    #norm = set_norm(color_norm, color_bounds, color_ticks, cmap.N, clip=True)
 
     if color_bad is not None:
         cmap.set_bad(color_bad)
@@ -186,28 +192,49 @@ def map_rmse(
         x_inline=False,
         y_inline=False,
         alpha=alpha_gridlines,
+        ylabel_style = {"size":18},
+        xlabel_style = {"size":18},
     )
+
+    gl.ylabels_right = False
 
     if tiles is not None:
         ax.add_image(tiles, scale)
 
     p = rmse.plot(
         ax=ax,
-        norm=norm,
+        #norm=norm,
         cmap=cmap,
         transform=ccrs.PlateCarree(),
         add_colorbar=False,
         **matplot_kwargs,
     )
+    lakes_eu = cfeature.NaturalEarthFeature(
+        'physical', 'lakes', '10m',
+        facecolor='lightblue'
+    )
+    lakes = cfeature.NaturalEarthFeature(
+        'physical', 'lakes_europe', '10m',
+        facecolor='lightblue'
+    )
+    ax.coastlines()
+    #ax.add_feature(cfeature.STATES)
+    ax.add_feature(lakes, alpha=0.5)
+    ax.add_feature(lakes_eu, alpha=0.5)
+    ax.add_feature(cfeature.BORDERS, linestyle=':')
+    ax.add_feature(cfeature.LAND, alpha=1)
 
-    fig.colorbar(
+    cbar=fig.colorbar(
         p,
         ax=ax,
         shrink=0.5,
-        label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}",
+        label=f"{unit}",
         ticks=color_ticks,
+        orientation="horizontal",
+         pad=0.05
     )
-
+    cbar.ax.xaxis.label.set_size(20)  # or your preferred fontsize
+    cbar.ax.tick_params(labelsize=20) 
     plt.title(title)
 
     if return_computation:
@@ -416,6 +443,7 @@ def map_bias(
     skipna=False,
     fig=None,
     ax=None,
+    cmap="RdYlGn"
 ):
     # COMPUTE
     if percentage_bias:
@@ -426,7 +454,7 @@ def map_bias(
         unit = unit if unit is not None else "mm"
 
     # MATPLOTLIB PARAMETERS
-    cmap = plt.colormaps["RdYlGn"]
+    cmap = plt.colormaps[cmap]
 
     if color_ticks is None and percentage_bias is True:
         color_ticks = [c * 10 for c in range(-10, 11, 1)]
@@ -453,13 +481,15 @@ def map_bias(
             ax = fig.add_subplot(1, 1, 1)
 
 
-    # gl = ax.gridlines(
-    #     draw_labels=True,
-    #     dms=False,
-    #     x_inline=False,
-    #     y_inline=False,
-    #     alpha=alpha_gridlines,
-    # )
+    gl = ax.gridlines(
+        draw_labels=True,
+        dms=False,
+        x_inline=False,
+        y_inline=False,
+        alpha=alpha_gridlines,
+        ylabel_style = {"size":18},
+        xlabel_style = {"size":18}
+    )
 
     if tiles is not None:
         ax.add_image(tiles, scale)
@@ -470,8 +500,24 @@ def map_bias(
             cmap=cmap,
             transform=map_proj,
             add_colorbar=False,
+            robust=True,
             **matplot_kwargs,
         )
+
+        lakes_eu = cfeature.NaturalEarthFeature(
+            'physical', 'lakes', '10m',
+            facecolor='lightblue'
+        )
+        lakes = cfeature.NaturalEarthFeature(
+            'physical', 'lakes_europe', '10m',
+            facecolor='lightblue'
+        )
+        ax.coastlines()
+        #ax.add_feature(cfeature.STATES)
+        ax.add_feature(lakes, alpha=0.5)
+        ax.add_feature(lakes_eu, alpha=0.5)
+        ax.add_feature(cfeature.BORDERS, linestyle=':')
+        ax.add_feature(cfeature.LAND)
     else:
         p = bias.plot(
             ax=ax,
@@ -482,13 +528,18 @@ def map_bias(
             **matplot_kwargs,
         )
 
-    fig.colorbar(
+    cbar = fig.colorbar(
         p,
         ax=ax,
         shrink=0.5,
         label=f"{label_2} < {label_1}    {unit}     {label_2} > {label_1}",
         ticks=color_ticks,
+        orientation="horizontal",
+         pad=0.05
     )
+
+    cbar.ax.xaxis.label.set_size(20)  # or your preferred fontsize
+    cbar.ax.tick_params(labelsize=20) 
 
     plt.title(title)
 
@@ -530,7 +581,7 @@ def map_pearson(
     # MATPLOTLIB PARAMETERS
     cmap = plt.colormaps[color_cmap]
     if color_ticks is None:
-        color_ticks = np.linspace(color_bounds[0], color_bounds[-1], 21)
+        color_ticks = np.linspace(color_bounds[0], color_bounds[-1], 10)
     norm = set_norm(color_norm, color_bounds, color_ticks, cmap.N, clip=True)
 
     if color_bad is not None:
@@ -556,13 +607,15 @@ def map_pearson(
         else:
             ax = fig.add_subplot(1, 1, 1)
 
-    # gl = ax.gridlines(
-    #     draw_labels=True,
-    #     dms=False,
-    #     x_inline=False,
-    #     y_inline=False,
-    #     alpha=alpha_gridlines,
-    # )
+    gl = ax.gridlines(
+        draw_labels=True,
+        dms=False,
+        x_inline=False,
+        y_inline=False,
+        alpha=alpha_gridlines,
+        ylabel_style = {"size":18},
+        xlabel_style = {"size":18}
+    )
 
     if tiles is not None:
         ax.add_image(tiles, scale)
@@ -576,6 +629,20 @@ def map_pearson(
             add_colorbar=False,
             **matplot_kwargs,
         )
+        lakes_eu = cfeature.NaturalEarthFeature(
+            'physical', 'lakes', '10m',
+            facecolor='lightblue'
+        )
+        lakes = cfeature.NaturalEarthFeature(
+            'physical', 'lakes_europe', '10m',
+            facecolor='lightblue'
+        )
+        ax.coastlines()
+        #ax.add_feature(cfeature.STATES)
+        ax.add_feature(lakes, alpha=0.5)
+        ax.add_feature(lakes_eu, alpha=0.5)
+        ax.add_feature(cfeature.BORDERS, linestyle=':')
+        ax.add_feature(cfeature.LAND)
     else:
         p = out.plot(
             ax=ax,
@@ -586,13 +653,18 @@ def map_pearson(
             **matplot_kwargs,
         )
 
-    fig.colorbar(
+    cbar=fig.colorbar(
         p,
         ax=ax,
         shrink=0.5,
-        label="correlation",
+        label="pearson correlation coeff.",
         ticks=color_ticks,
+        orientation="horizontal",
+         pad=0.05
     )
+
+    cbar.ax.xaxis.label.set_size(20)  # or your preferred fontsize
+    cbar.ax.tick_params(labelsize=20) 
 
     plt.title(title)
 
