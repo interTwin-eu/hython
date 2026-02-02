@@ -33,7 +33,7 @@ class Hybrid(BaseModel):
 
         if self.scale_head_output:        
             # initialize parameters for scaling output, TODO: move it into BaseModel
-            self.scale = nn.Parameter( torch.ones(self.head_layer.output_size).float() , requires_grad=True)
+            self.scale = nn.Parameter( torch.ones(self.head_layer.output_size).float(), requires_grad=True)
             self.center = nn.Parameter( torch.zeros(self.head_layer.output_size).float() ,requires_grad=True)
             print("Scale and center for output rescaling: ", self.scale, self.center)
     def forward(self, x_predictor, x_head_dynamic, x_head_static = None):

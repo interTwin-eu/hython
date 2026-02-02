@@ -191,6 +191,7 @@ class RNNDistributedTrainer(TorchTrainer):
                 head_layer=surrogate,
                 freeze_head=self.config.freeze_head,
                 scale_head_input_parameter=self.config.scale_head_input_parameter,
+                scale_head_output=self.config.scale_head_output,
             )
 
             self.hython_trainer = CalTrainer(self.config)
