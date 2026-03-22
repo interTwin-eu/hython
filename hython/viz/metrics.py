@@ -167,8 +167,10 @@ def map_rmse(
     rmse = compute_rmse(y_true, y_pred, skipna=skipna)
 
     # MATPLOTLIB PARAMETERS
-    cmap = plt.colormaps[cmap]
-
+    try:
+        cmap = plt.colormaps[cmap]
+    except:
+        pass
     #norm = set_norm(color_norm, color_bounds, color_ticks, cmap.N, clip=True)
 
     if color_bad is not None:
@@ -185,18 +187,25 @@ def map_rmse(
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
     ax.set_extent([minx, maxx, miny, maxy], crs=ccrs.PlateCarree())
-
+    land = cfeature.NaturalEarthFeature(
+        'physical', 'land', '50m',
+        edgecolor='black',       # optional, border around land
+        facecolor="#f0f0f0",    # <--- land color
+        zorder=0   
+    )
+    ax.add_feature(land)
     gl = ax.gridlines(
         draw_labels=True,
         dms=False,
         x_inline=False,
         y_inline=False,
         alpha=alpha_gridlines,
-        ylabel_style = {"size":18},
-        xlabel_style = {"size":18},
+        ylabel_style = {"size":14},
+        xlabel_style = {"size":14},
     )
 
     gl.ylabels_right = False
+    gl.top_labels = False
 
     if tiles is not None:
         ax.add_image(tiles, scale)
@@ -217,12 +226,12 @@ def map_rmse(
         'physical', 'lakes_europe', '10m',
         facecolor='lightblue'
     )
-    ax.coastlines()
+    #ax.coastlines()
     #ax.add_feature(cfeature.STATES)
-    ax.add_feature(lakes, alpha=0.5)
-    ax.add_feature(lakes_eu, alpha=0.5)
-    ax.add_feature(cfeature.BORDERS, linestyle=':')
-    ax.add_feature(cfeature.LAND, alpha=1)
+    ax.add_feature(lakes, alpha=1)
+    ax.add_feature(lakes_eu, alpha=1)
+    ax.add_feature(cfeature.BORDERS, linestyle='--')
+    #ax.add_feature(cfeature.LAND, alpha=1)
 
     cbar=fig.colorbar(
         p,
@@ -476,7 +485,15 @@ def map_bias(
             ax = fig.add_subplot(1, 1, 1, projection=map_proj)
 
             ax.set_extent([minx, maxx, miny, maxy], crs=map_proj)
+            land = cfeature.NaturalEarthFeature(
+                'physical', 'land', '50m',
+                edgecolor='black',       # optional, border around land
+                facecolor="#f0f0f0",    # <--- land color
+                zorder=0   
+            )
+            ax.add_feature(land)
             
+
         else:
             ax = fig.add_subplot(1, 1, 1)
 
@@ -487,9 +504,13 @@ def map_bias(
         x_inline=False,
         y_inline=False,
         alpha=alpha_gridlines,
-        ylabel_style = {"size":18},
-        xlabel_style = {"size":18}
+        ylabel_style = {"size":14},
+        xlabel_style = {"size":14}
     )
+
+    #gl.ylabels_right = False
+    gl.top_labels = False
+    gl.ylabels_left = False
 
     if tiles is not None:
         ax.add_image(tiles, scale)
@@ -512,12 +533,15 @@ def map_bias(
             'physical', 'lakes_europe', '10m',
             facecolor='lightblue'
         )
-        ax.coastlines()
+
+
+        #ax.coastlines()
         #ax.add_feature(cfeature.STATES)
-        ax.add_feature(lakes, alpha=0.5)
-        ax.add_feature(lakes_eu, alpha=0.5)
-        ax.add_feature(cfeature.BORDERS, linestyle=':')
-        ax.add_feature(cfeature.LAND)
+        ax.add_feature(lakes, alpha=1)
+        ax.add_feature(lakes_eu, alpha=1)
+        ax.add_feature(cfeature.BORDERS, linestyle='--')
+        #ax.add_feature(cfeature.LAND)
+        #ax.set_aspect("auto")
     else:
         p = bias.plot(
             ax=ax,
@@ -604,6 +628,14 @@ def map_pearson(
 
             ax.set_extent([minx, maxx, miny, maxy], crs=map_proj)
             
+            land = cfeature.NaturalEarthFeature(
+                'physical', 'land', '50m',
+                edgecolor='black',       # optional, border around land
+                facecolor="#f0f0f0",    # <--- land color
+                zorder=0   
+            )
+            ax.add_feature(land)
+
         else:
             ax = fig.add_subplot(1, 1, 1)
 
@@ -613,10 +645,12 @@ def map_pearson(
         x_inline=False,
         y_inline=False,
         alpha=alpha_gridlines,
-        ylabel_style = {"size":18},
-        xlabel_style = {"size":18}
+        ylabel_style = {"size":12},
+        xlabel_style = {"size":12}
     )
 
+    gl.ylabels_right = False
+    gl.top_labels = False
     if tiles is not None:
         ax.add_image(tiles, scale)
 
@@ -637,12 +671,14 @@ def map_pearson(
             'physical', 'lakes_europe', '10m',
             facecolor='lightblue'
         )
-        ax.coastlines()
+        #ax.coastlines()
         #ax.add_feature(cfeature.STATES)
-        ax.add_feature(lakes, alpha=0.5)
-        ax.add_feature(lakes_eu, alpha=0.5)
-        ax.add_feature(cfeature.BORDERS, linestyle=':')
-        ax.add_feature(cfeature.LAND)
+        ax.add_feature(lakes, alpha=1)
+        ax.add_feature(lakes_eu, alpha=1)
+        ax.add_feature(cfeature.BORDERS, linestyle='--')
+        #ax.add_feature(cfeature.LAND)
+
+        #ax.set_aspect("auto")
     else:
         p = out.plot(
             ax=ax,
@@ -657,7 +693,7 @@ def map_pearson(
         p,
         ax=ax,
         shrink=0.5,
-        label="pearson correlation coeff.",
+        label="Pearson correlation coeff.",
         ticks=color_ticks,
         orientation="horizontal",
          pad=0.05
