@@ -55,7 +55,8 @@ class ParameterInference(Predictor):
         test_loader: Dataset,
         model: nn.Module = None,
         strategy = None,
-        config = None
+        config = None,
+        out_dir = None
     ) -> Dict[str, Any]:
         """Applies a torch model to a dataset for inference.
 
@@ -96,7 +97,7 @@ class ParameterInference(Predictor):
                         )
 
 
-        cfg_head_layer=OmegaConf.load("/home/iferrario/dev/article/param_estimation/config/config_training_calibration_loop.yaml")
+        cfg_head_layer=OmegaConf.load(config)
         cfg_head_layer.pop("training_pipeline")
         cfg_head_layer = instantiate(cfg_head_layer)
 
@@ -107,6 +108,6 @@ class ParameterInference(Predictor):
         ds_params = scaler_head_layer.transform_inverse(ds_params, "static_inputs", subset= list(ds_params.data_vars))
 
 
-        ds_params.to_netcdf("/mnt/CEPH_PROJECTS/InterTwin/Wflow/models/emo1/run_default/inference_parameters.nc")
+        ds_params.to_netcdf(Path(out_dir) / "inference_parameter.nc")
 
         return 
