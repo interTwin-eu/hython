@@ -1,0 +1,40 @@
+center:
+  attrs: {}
+  coords: {}
+  data_vars:
+    pet:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.014411705546081066
+      dims: !!python/tuple []
+    precip:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.0009500080486759543
+      dims: !!python/tuple []
+    temp:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.0016469490947201848
+      dims: !!python/tuple []
+  dims: {}
+scale:
+  attrs: {}
+  coords: {}
+  data_vars:
+    pet:
+      attrs:
+        variant: MinMax01Scaler
+      data: 4.975925445556641
+      dims: !!python/tuple []
+    precip:
+      attrs:
+        variant: MinMax01Scaler
+      data: 4.996556758880615
+      dims: !!python/tuple []
+    temp:
+      attrs:
+        variant: MinMax01Scaler
+      data: 4.996182441711426
+      dims: !!python/tuple []
+  dims: {}

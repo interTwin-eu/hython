@@ -70,7 +70,7 @@ dynamic_downsampler:
 data_lazy_load: false
 num_workers_dataloader: 24
 num_workers_dataloader_eval: 24
-dataset: WflowSBM_HPC
+dataset: WflowSBM_Pool
 data_source:
   file:
     static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_static_calib.zarr

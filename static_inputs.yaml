@@ -1,0 +1,170 @@
+center:
+  attrs: {}
+  coords: {}
+  data_vars:
+    Kext:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.4355332851409912
+      dims: !!python/tuple []
+    KsatVer:
+      attrs:
+        variant: MinMax01Scaler
+      data: 23.503965377807617
+      dims: !!python/tuple []
+    M:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.2665901184082031
+      dims: !!python/tuple []
+    RootingDepth:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.157663494348526
+      dims: !!python/tuple []
+    Sl:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.8245817422866821
+      dims: !!python/tuple []
+    Slope:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.6165449619293213
+      dims: !!python/tuple []
+    SoilThickness:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.2655559480190277
+      dims: !!python/tuple []
+    Swood:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.3239155113697052
+      dims: !!python/tuple []
+    WaterFrac:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.1271967589855194
+      dims: !!python/tuple []
+    c:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.907370924949646
+      dims: !!python/tuple []
+    f:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.1702091097831726
+      dims: !!python/tuple []
+    thetaR:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.8631296753883362
+      dims: !!python/tuple []
+    thetaS:
+      attrs:
+        variant: MinMax01Scaler
+      data: 1.1863731145858765
+      dims: !!python/tuple []
+    wflow_dem:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.33649924397468567
+      dims: !!python/tuple []
+    wflow_landuse:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.31249237060546875
+      dims: !!python/tuple []
+    wflow_uparea:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.29635804891586304
+      dims: !!python/tuple []
+  dims: {}
+scale:
+  attrs: {}
+  coords: {}
+  data_vars:
+    Kext:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.196825981140137
+      dims: !!python/tuple []
+    KsatVer:
+      attrs:
+        variant: MinMax01Scaler
+      data: 1403.677734375
+      dims: !!python/tuple []
+    M:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.723766326904297
+      dims: !!python/tuple []
+    RootingDepth:
+      attrs:
+        variant: MinMax01Scaler
+      data: 8.171957969665527
+      dims: !!python/tuple []
+    Sl:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.137215614318848
+      dims: !!python/tuple []
+    Slope:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.053413391113281
+      dims: !!python/tuple []
+    SoilThickness:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.61781120300293
+      dims: !!python/tuple []
+    Swood:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.25329875946045
+      dims: !!python/tuple []
+    WaterFrac:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.711928367614746
+      dims: !!python/tuple []
+    c:
+      attrs:
+        variant: MinMax01Scaler
+      data: 7.870346546173096
+      dims: !!python/tuple []
+    f:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.470132827758789
+      dims: !!python/tuple []
+    thetaR:
+      attrs:
+        variant: MinMax01Scaler
+      data: 8.790051460266113
+      dims: !!python/tuple []
+    thetaS:
+      attrs:
+        variant: MinMax01Scaler
+      data: 8.533357620239258
+      dims: !!python/tuple []
+    wflow_dem:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.311668395996094
+      dims: !!python/tuple []
+    wflow_landuse:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.323006629943848
+      dims: !!python/tuple []
+    wflow_uparea:
+      attrs:
+        variant: MinMax01Scaler
+      data: 7.138991832733154
+      dims: !!python/tuple []
+  dims: {}

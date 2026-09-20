@@ -37,10 +37,10 @@ to report on that append:
       Almost all of it is reading the 10 GB wflow netCDF; the zarr write is
       seconds. Against wflow's own 54 min, ingestion adds ~10%. **Not yet in
       the A2 budget**
-- [x] **Size** — static 890 K -> 1.8 M, dynamic 255 M -> 509 M. **~256 MB per
-      run**, not the 147 MB the summary predicted: that figure assumed the
-      forcing was stored once, and it is now repeated per run. 2.75 GB at 11
-      runs
+- [x] **Size** — static 1.1 M, dynamic 391 M per run. **~392 MB per
+      run** as zarr v2, not the 147 MB the summary predicted: that figure
+      assumed the forcing was stored once, and it is now repeated per run.
+      4.3 GB at 11 runs
 - [x] **Correctness** — `python pool_archive.py --verify` asserts all of it:
       rows = 2 x `pool_size`; the pool redraws from the stored seed onto the
       same cells; `lat`/`lon`/`lat_i`/`lon_i` agree with the map in both
@@ -87,16 +87,42 @@ Needed before the first calibration, not before the first training.
 ### 3. The hython dataset — H1, H2, H3
 These land together. Each is incomplete alone.
 
-- [ ] New downsampler that knows `pool_size` and picks base cells before
-      expanding to runs (H3 — `RandomDownsampler` cannot do this)
-- [ ] Fixed train/valid base-cell split, drawn once, saved (H3)
-- [ ] Sampler that draws fresh cells every epoch, behind
-      `resample_cells_each_epoch` — validation stays fixed (H3)
-- [ ] Read the stacked layout off the `cell` axis (H1)
-- [ ] Index cells directly; keep the whole pool in memory (~2 GB) instead of
+**H1 and H2 are done, in a new class.** The H2 section below names
+`wflow_sbm.py` line numbers inside `WflowSBM_HPC`, but converting that class in
+place would have broken the full-map training that still uses it. The pool
+rewrite is `WflowSBM_Pool` instead; `WflowSBM_HPC` is untouched. The two cannot
+share a path - the sample axis, the scaler axes and the reshape order all
+differ.
+
+Also done, not in this list: `to_xarray`/`scatter_to_map` moved out of
+`pool_archive.py` into `hython.utils` as `pool_to_xarray`/`scatter_pool_to_map`.
+
+Two things the H2 section below gets wrong, left in place as a record:
+- `crs=None` applies only to the cell path. `inference.py:94` is a real lat/lon
+  grid, so its `crs=4326` is correct and was not changed.
+- it says `pool_archive.to_xarray`/`scatter_to_map` are "tested against the
+  archive". They had no tests. They do now, and writing them found a bug:
+  scattering rows from several runs kept only the last run and silently dropped
+  the others, because every run repeats the same `lat_i`/`lon_i`.
+
+- [x] New downsampler that knows `pool_size` and picks base cells before
+      expanding to runs (H3 — `RandomDownsampler` cannot do this).
+      `PoolDownsampler`, with tests.
+- [~] Fixed train/valid base-cell split, drawn once, saved (H3). Fixed and
+      drawn once, from `split_seed`, and tested. NOT saved: nothing is written
+      to disk, so the split is right only while `split_seed` is unchanged.
+- [~] Sampler that draws fresh cells every epoch, behind
+      `resample_cells_each_epoch` — validation stays fixed (H3). The class does
+      this (`resample_each_epoch`, and validation never resamples), but nothing
+      calls `set_epoch`, so it never fires.
+- [ ] Point the training config at `PoolDownsampler` — it still names
+      `RandomDownsampler` for train and valid (H3)
+- [ ] Call `set_epoch` from the training loop (H3)
+- [x] Read the stacked layout off the `cell` axis (H1)
+- [x] Index cells directly; keep the whole pool in memory (~2 GB) instead of
       only the drawn rows (H2)
-- [ ] Let `test` read the pool; stop it rebuilding a full map (H2)
-- [ ] Add `"cell"` to the dim whitelist in `create_xarray_data` (H2)
+- [x] Let `test` read the pool; stop it rebuilding a full map (H2)
+- [x] Add `"cell"` to the dim whitelist in `create_xarray_data` (H2)
 - [ ] Rename scaler axes to `("cell","time")` and `("cell",)` (H4)
 
 ### 4. Safety
@@ -122,7 +148,7 @@ These land together. Each is incomplete alone.
 
 **1. Do not store the full map.** Each wflow run writes 6 GB. Training only
 reads a few thousand cells. Pick a fixed set of cells once — the **pool**, 5% of
-the map, 16,800 cells — and store only those. **Measured: 256 MB per run**
+the map, 16,800 cells — and store only those. **Measured: 392 MB per run**
 instead of 6 GB.
 
 **2. Stack runs on top of each other in one long list of cells.** No new
@@ -182,7 +208,7 @@ It has to keep growing. If every cell had one parameter set, the surrogate
 could predict soil moisture from the cell alone and never learn how it responds
 to the parameters. That response is what dPL needs.
 
-`WflowSBM_HPC` today assumes one parameter set per cell, on the full map.
+`WflowSBM_HPC` (which the pool dataset `WflowSBM_Pool` replaces) today assumes one parameter set per cell, on the full map.
 
 ## What each change does
 
@@ -213,7 +239,7 @@ reads about 6,700.
 | what we store | per run | 11 runs |
 |---|---|---|
 | the full map | 6.07 GB | **67 GB** |
-| pool cells only (measured) | 256 MB | 2.75 GB |
+| pool cells only (measured) | 392 MB | 4.3 GB |
 
 Nothing else reads this data. Calibration uses `OBS`
 (`run_dpl_cycle.py:403`), not this archive.
@@ -318,26 +344,31 @@ below.
 on `cell` is ambiguous. Leave `cell` as a plain position. Keep `lat` and `lon`
 as attached coordinates.
 
-Those attached coordinates are non-index, but xarray builds an index on demand,
-so `ds.sel(run=0)` and `ds.sel(cycle=3)` do work and are the natural way to
-pick a run. Only operations needing a *unique* index fail: `method="nearest"`
-raises `InvalidIndexError`, since `lat` repeats once per run.
+Those attached coordinates are non-index, and **`.sel()` does not work on them
+in the emulator environment** — xarray 2024.3 raises `KeyError: no index found
+for coordinate 'run'`. Newer xarray builds an index on demand and accepts it,
+but the environment that trains the surrogate does not, so use
+`isel(cell=slice(...))` or `where(ds.run == m, drop=True)`. `method="nearest"`
+cannot work either way, since `lat` repeats across runs and within a run.
 
 ### How big the pool should be
 
 Once cycle 0 is stored, the pool is fixed. Making it bigger later means running
 wflow again, which is the expensive part. Cutting cells is free, so leave room:
 
-Sizes below are scaled from the measured 256 MB at 16,800 cells. They include
-the forcing, which is repeated per run.
+Sizes below are scaled from the measured 392 MB at 16,800 cells, written as
+**zarr v2** by the emulator environment. They include the forcing, which is
+repeated per run. (The same data written as zarr v3 is 256 MB — different
+default compression — but v3 is unreadable by the emulator environment, so v2
+is what counts.)
 
 | pool | cells | per run | 11 runs |
 |------|-------|---------|---------|
-| 2% | 6,720 | 102 MB | 1.1 GB |
-| **5% (chosen)** | 16,800 | 256 MB | 2.75 GB |
-| 10% | 33,600 | 512 MB | 5.5 GB |
+| 2% | 6,720 | 157 MB | 1.7 GB |
+| **5% (chosen)** | 16,800 | 392 MB | 4.3 GB |
+| 10% | 33,600 | 784 MB | 8.6 GB |
 
-5% is 2.75 GB for everything, next to the 32 GB the weather file already uses.
+5% is 4.3 GB for everything, next to the 32 GB the weather file already uses.
 It is 10x the 1,683 cells cycle 0 trains on, and 27x the 612 at cycle 7. That
 room is what lets you raise `train_rows_target` later, or stratify the draw,
 without running wflow again.
@@ -680,6 +711,15 @@ Two things to watch on that path:
   are for. `pool_archive.to_xarray` and `pool_archive.scatter_to_map` do both
   halves and are tested against the archive; move them into hython with H2.
   The result is 568 x 1220 with the 16,800 pool cells filled and the rest NaN.
+
+**`Evaluator` is broken and is being deleted, not fixed.** `Evaluator.preprocess`
+(`evaluator.py:184-202`) assumes a lat/lon grid in three places -
+`list(ds_target.data_vars)` on what is a `torch.Tensor` by then, `~dataset.mask`
+which is now `(cell,)`, and `len(ds_target.lat)` which is 16,800 per run rather
+than 568. It does not survive the pool archive, but it was already incompatible
+with `WflowSBM_HPC` before A1 for the tensor reason. Nothing constructs it -
+no call site, no `_target_`, no import - so the `evaluator:` block in the
+training config is dead config. Do not spend H2 effort on it.
 
 **Calibration is unaffected.** `WflowSBMCal` reads the full-map
 `predictor_emo1_alps.zarr`, not the pool archive, so `inference.py:94` still

@@ -192,6 +192,218 @@ class WflowSBM_HPC(BaseDataset):
 
         return {"xd": xd, "xs": xs, "y": y}
 
+class WflowSBM_Pool(BaseDataset):
+    """Training dataset for the multicycle pool archive (H1, H2, H3, H4).
+
+    `WflowSBM_HPC` reads a full lat/lon map with one parameter set per cell.
+    This class reads the accumulating pool archive instead: a stacked `cell`
+    axis of runs x pool_size rows, one row per (run, base cell). The two cannot
+    share a code path - the sample axis, the scaler axes and the reshape order
+    all differ - so the old class is left untouched for the full-map runs that
+    still use it.
+
+    A sample is (run, base cell, time window): same cell, same weather,
+    different parameters. That difference is what shows how the parameters act.
+    """
+
+    def __init__(
+        self, cfg, scaler, is_train=True, period="train"
+    ):
+        self.scaler = scaler
+        self.seq_len = cfg.seq_length
+        self.cfg = self.validate_config(cfg)
+
+        self.preprocessor = Preprocessor(cfg)
+
+        self.downsampler = self.cfg[f"{period}_downsampler"]
+
+        self.period = period
+        self.period_range = slice(*cfg[f"{period}_temporal_range"])
+
+        self.target_has_missing_dates = self.cfg.get("target_has_missing_dates", False)
+
+        urls, xarray_kwargs = get_source_url(cfg)
+
+        self.scaling_static_range = self.cfg.get("scaling_static_range")
+        
+        data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs).sel(time=self.period_range)
+        data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto", **xarray_kwargs)
+ 
+        self.xd = data_dynamic[self.to_list(cfg.dynamic_inputs)] # list comprehension handle omegaconf lists
+        self.xs = data_static[self.to_list(cfg.static_inputs)]
+        self.y = data_dynamic[self.to_list(cfg.target_variables)]
+
+        # subset dynamic inputs to the target timestep available
+        if self.target_has_missing_dates:
+            self.xd = self.xd.sel(time=self.y.time)
+
+        if not self.cfg.data_lazy_load: # loading in memory
+            self.xd = self.xd.load()
+            self.xs = self.xs.load()
+            self.y = self.y.load()
+
+        # == DATASET INDICES AND MASKING
+
+        # The archive is a stacked `cell` axis: runs x pool_size rows, one row
+        # per (run, base cell). The pool was masked and chosen when the archive
+        # was built (A1), so there is nothing left to mask out and nothing to
+        # flatten - a cell *is* a sample. `mask` is still computed because
+        # callers read it, but it should be all-False.
+        self.pool_size = data_static.attrs.get("pool_size", self.xs.sizes["cell"])
+        self.n_runs = self.xs.sizes["cell"] // self.pool_size
+
+        if self.cfg.mask_variables is not None:
+            self.mask = data_static[self.to_list(self.cfg.mask_variables)].to_array().any("variable")
+        else:
+            self.mask = None
+
+        # `cell_coords` keeps its name and its meaning - where a row sits on the
+        # map - but it now comes from the coordinates the archive carries rather
+        # than from argwhere over a 2D grid.
+        self.cell_coords = np.stack(
+            [self.xs.lat_i.values, self.xs.lon_i.values], axis=1
+        ) if "lat_i" in self.xs.coords else None
+
+        # Compute cell (spatial) index
+        self.cell_linear_index = np.arange(0, self.xs.sizes["cell"], 1)
+        
+        # Compute sequence (temporal) index
+        # Each cell has a time series of equal length, so the sequence index is the same for every cell
+        if self.period == "test":
+            self.time_index = np.arange(0, len(self.xd.time.values), 1)
+        else:
+            self.time_index = np.arange(0, len(self.xd.time.values) - self.seq_len, 1)
+        
+        # == DOWNSAMPLING
+
+        # Downsample spatial and temporal indices based on rule
+        if self.downsampler is not None:
+            self.cell_linear_index , self.time_index = self.downsampler.sampling_idx([self.cell_linear_index , self.time_index])
+
+        if self.period == "test":
+            self.spacetime_index = self.cell_linear_index
+        else:
+            # (cell, time) pairs. itertools.product is cell-major, which is the
+            # order `create_xarray_data` reshapes predictions back with.
+            self.spacetime_index = np.array(
+                list(itertools.product(
+                    self.cell_linear_index.tolist(), self.time_index.tolist()
+                ))
+            )
+
+        # == SOME USEFUL PARAMETERS
+        self.cell_size = self.xs.sizes["cell"]
+        self.time_size = len(self.xd.time)
+        self.dynamic_coords = self.xd.coords
+        self.static_coords = self.xs.coords
+
+
+        #  === PREPROCESS/TRANSFORM VARIABLES
+
+        if self.cfg.get("preprocessor") is not None:
+            self.xs = self.preprocessor.process(self.xs, "static_inputs")
+            self.xd = self.preprocessor.process(self.xd, "dynamic_inputs")
+            self.y = self.preprocessor.process(self.y, "target_variables")
+        
+        # == SCALING 
+
+        # Reduce over the stacked cell axis. Stacking makes this simpler than a
+        # `cycle` dimension would have: reducing over ("cell", "time") already
+        # covers every run, where a cycle axis would have survived the
+        # reduction and left one set of numbers per cycle.
+        self.scaler.load_or_compute(
+            self.xd, "dynamic_inputs", is_train, axes=("cell", "time")
+        )
+
+        self.scaler.load_or_compute(
+            self.xs, "static_inputs", is_train, axes=("cell",)
+        )
+
+        self.scaler.load_or_compute(
+            self.y, "target_variables", is_train, axes=("cell", "time")
+        )
+
+        self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
+
+
+        self.y = self.scaler.transform(self.y, "target_variables")
+
+
+        self.xs = self.scaler.transform(self.xs, "static_inputs")
+        
+
+
+
+        # == WRITE SCALING STATS
+
+        if is_train: # write if train
+            if not self.scaler.use_cached: # write if not reading from cache
+                self.scaler.write("dynamic_inputs")
+                self.scaler.write("static_inputs")
+                self.scaler.write("target_variables")
+            else: # if reading from cache
+                if self.scaler.flag_stats_computed: # if stats were not found in cache
+                    self.scaler.write("dynamic_inputs")
+                    self.scaler.write("static_inputs")
+                    self.scaler.write("target_variables")
+
+
+        # Pre-compute static data once
+        self.static_tensor = torch.tensor(self.xs.to_array().values).float()
+        
+        # Pre-compute dynamic data shapes once
+        self.dynamic_shape = self.xd[self.cfg.dynamic_inputs[0]].shape
+        self.target_shape = self.y[self.cfg.target_variables[0]].shape
+    
+
+        # Convert to tensors once during initialization
+        self.xd = self.xd.to_stacked_array(
+            new_dim="feat", sample_dims=["time", "cell"]
+        ).transpose("time", "feat", "cell").astype("float32")
+        self.y = self.y.to_stacked_array(
+            new_dim="feat", sample_dims=["time", "cell"]
+        ).transpose("time", "feat", "cell").astype("float32")
+        self.xs = self.xs.to_stacked_array(
+            new_dim="feat", sample_dims=["cell"]
+        ).transpose("feat", "cell").astype("float32")
+
+        # Pre-process once
+        if not self.cfg.data_lazy_load:  # Only if we're not doing lazy loading
+            # Convert xarray to pre-processed tensors
+            self.xd = torch.from_numpy(self.xd.values)
+            self.y = torch.from_numpy(self.y.values)
+            self.xs = torch.from_numpy(self.xs.values)
+
+    def __len__(self):
+        return len(self.spacetime_index)
+
+    def __getitem__(self, index):
+        """One sample: (run, base cell, time window).
+
+        All three stores are indexed by the same `idx_cell`, so the static, the
+        forcing and the target of a row always come from the same archive row.
+        The forcing is repeated per run in the archive, so no `% pool_size`
+        lookup is needed here.
+        """
+        if self.period == "test":
+            idx_cell = self.cell_linear_index[index]
+
+            xd = self.xd[:, :, idx_cell]
+
+            y = self.y[:, :, idx_cell]
+
+            xs = self.xs[:, idx_cell]
+        else:
+            idx_cell, idx_time = self.spacetime_index[index]
+
+            xd = self.xd[idx_time:idx_time + self.seq_len, :, idx_cell]
+
+            y = self.y[idx_time:idx_time + self.seq_len, :, idx_cell]
+
+            xs = self.xs[:, idx_cell]
+
+        return {"xd": xd, "xs": xs, "y": y}
+
 class WflowSBM(BaseDataset):
     def __init__(
         self, cfg, scaler, is_train=True, period="train"

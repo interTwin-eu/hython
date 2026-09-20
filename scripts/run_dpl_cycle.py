@@ -61,7 +61,7 @@ WD_CYCLE = Path(__file__).resolve().parent / "outputs" / "dpl_cycles"
 
 # The two archive stores live in pool_archive, which owns their layout.
 # `DYNAMIC_ARCHIVE` holds the forcing *and* the target, because that is what
-# WflowSBM_HPC reads: it opens `dynamic_inputs` once and takes both out of it.
+# WflowSBM_Pool reads: it opens `dynamic_inputs` once and takes both out of it.
 
 OBS = Path(
     "/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed"
@@ -311,7 +311,7 @@ def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
         "model_logger.CudaLSTM.load": cycle > 0,
         "scaling_use_cached": cycle > 0,
         "data_source.file.static_inputs": str(STATIC_ARCHIVE),
-        # Both keys name the same store on purpose: WflowSBM_HPC opens
+        # Both keys name the same store on purpose: WflowSBM_Pool opens
         # `dynamic_inputs` once and reads the target out of that same object,
         # and never opens `target_variables` at all.
         "data_source.file.dynamic_inputs": str(DYNAMIC_ARCHIVE),

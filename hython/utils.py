@@ -517,7 +517,10 @@ def create_xarray_data(
         output_shape["variable"] = target.shape[-1]
         
     reordered_out_shape = {}
-    for v in ["lat", "lon", "time", "variable"]:
+    # "cell" is the stacked (run, base cell) axis of the pool archive. It comes
+    # before "time" because WflowSBM_Pool builds spacetime_index as
+    # itertools.product(cells, times), so the flat prediction is cell-major.
+    for v in ["lat", "lon", "cell", "time", "variable"]:
         if output_shape.get(v):
             reordered_out_shape[v] = output_shape[v]
         
@@ -533,6 +536,91 @@ def create_xarray_data(
         ds = ds.to_dataset(dim=to_dataset_dim)
 
     return ds
+
+
+# ==== POOL ARCHIVE -> XARRAY
+#
+# The pool archive stacks (run, base cell) along one `cell` axis, so a
+# prediction over it comes back flat and cell-major. These two put it back:
+# `pool_to_xarray` gives it its dims and coords, `scatter_pool_to_map` puts it
+# on the wflow grid. Moved here from scripts/pool_archive.py so the training
+# and inference paths can reach them without importing a script.
+
+
+def pool_to_xarray(arr, ds: xr.Dataset, variables: list[str]) -> xr.Dataset:
+    """Flat model output -> (cell, time, variable), carrying the row's coords.
+
+    `create_xarray_data` can also do this now that "cell" is in its dim
+    whitelist, but it needs `crs=None` on this path - a CRS is meaningless on a
+    scattered cell axis - and it does not carry `lat_i`/`lon_i` through, which
+    `scatter_pool_to_map` needs. Use this one for pool output.
+
+    The reshape is cell-major because `WflowSBM_Pool` builds `spacetime_index`
+    as `itertools.product(cells, times)`.
+
+    `ds` is the archive slice the prediction was made over, and supplies
+    lat/lon/lat_i/lon_i so the rows stay traceable.
+    """
+    arr = np.asarray(arr)
+    out = xr.DataArray(
+        arr.reshape(ds.sizes["cell"], ds.sizes["time"], len(variables)),
+        dims=("cell", "time", "variable"),
+        coords={
+            "time": ds.time,
+            "variable": variables,
+            **{k: ("cell", ds[k].values) for k in ("lat", "lon", "lat_i", "lon_i")},
+        },
+    )
+    return out.to_dataset(dim="variable")
+
+
+def scatter_pool_to_map(ds: xr.Dataset, grid: xr.Dataset, crs: int | None = 4326) -> xr.Dataset:
+    """(cell, ...) -> the full grid, via `lat_i`/`lon_i`.
+
+    Only pool cells are filled; everything else is NaN. That is the visible
+    cost of the pool archive - it can no longer produce a dense map. For dense
+    output use the full-map runs kept at cycle 0 and the last cycle.
+
+    `grid` supplies the target shape and coordinates; it is the wflow
+    staticmaps dataset, and is passed in rather than opened here so this stays
+    free of wflow paths.
+
+    Calibration does not need this: `WflowSBMCal` reads the full-map predictor
+    file, so inference still writes a dense parameter map.
+    """
+    lat_i, lon_i = ds.lat_i.values, ds.lon_i.values
+
+    # The archive stacks runs along `cell`, so every base cell appears once per
+    # run and maps to the same pixel. `a[..., lat_i, lon_i] = ...` would keep
+    # whichever run was written last and silently drop the others, so refuse a
+    # multi-run input rather than return a map that looks fine and is not.
+    if len(set(zip(lat_i.tolist(), lon_i.tolist()))) != len(lat_i):
+        raise ValueError(
+            f"{len(lat_i)} rows cover only "
+            f"{len(set(zip(lat_i.tolist(), lon_i.tolist())))} pixels: a map is "
+            "ambiguous when rows span several runs. Select one run first, e.g. "
+            "ds.isel(cell=slice(run * pool_size, (run + 1) * pool_size))."
+        )
+
+    dims = [d for d in ds.dims if d != "cell"]
+    shape = [ds.sizes[d] for d in dims] + [grid.sizes["latitude"], grid.sizes["longitude"]]
+
+    out = {}
+    for v in ds.data_vars:
+        a = np.full(shape, np.nan, "float32")
+        a[..., lat_i, lon_i] = ds[v].transpose(*dims, "cell").values
+        out[v] = (dims + ["lat", "lon"], a)
+
+    m = xr.Dataset(
+        out,
+        coords={**{d: ds[d] for d in dims},
+                "lat": grid.latitude.values, "lon": grid.longitude.values},
+    )
+    if crs:
+        import rioxarray  # noqa: F401  (registers the .rio accessor)
+        m = m.rio.write_crs(crs)
+    return m
+
 
 def rescale_target(ds, r, s):
     dsmin = ds.min("time")

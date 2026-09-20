@@ -143,3 +143,106 @@ class RegularIntervalDownsampler(AbstractDownSampler):
         return idxs_sampled
 
 
+
+
+class PoolDownsampler(AbstractDownSampler):
+    """Pick base cells, then take every run of each (H3).
+
+    `RandomDownsampler` cannot do this. Run against the stacked `cell` axis it
+    draws rows independently, so a base cell lands in some runs and not others,
+    and the surrogate sees that cell with one parameter set instead of several
+    - the failure the accumulating archive exists to prevent.
+
+    Two things hold at once:
+
+    **(i) Every run uses the same base cells.** The surrogate learns from same
+    cell, same weather, different theta. Taking all runs of each chosen cell
+    also means every run contributes the same number of rows.
+
+    **(ii) The train/valid split never changes.** `split` partitions the pool
+    once, from `split_seed`, and that partition is independent of `runs`,
+    `rows_target`, `seed` and the epoch. Otherwise a cell could be in train at
+    cycle 0 and in valid at cycle 3 - same weather, nearly the same parameters
+    - and validation would look best exactly when the surrogate starts getting
+    worse.
+
+    `places` shrinks as runs accumulate (A2 b2: `places = rows_target // runs`),
+    and the choice is a *prefix* of a fixed shuffled order, so each cycle's
+    cells sit inside the previous cycle's. No cell joins training for the first
+    time late in the run.
+
+    With `resample_each_epoch`, `set_epoch` redraws which cells are used while
+    keeping (i) and (ii). Validation never resamples, so its loss stays
+    comparable between epochs and between cycles.
+    """
+
+    def __init__(
+        self,
+        pool_size: int,
+        runs: int = 1,
+        rows_target: int | None = None,
+        seed: int | None = None,
+        split: str = "train",
+        valid_frac: float = 0.2,
+        split_seed: int = 0,
+        resample_each_epoch: bool = True,
+        frac_time: float | None = None,
+    ):
+        if split not in ("train", "valid"):
+            raise ValueError(f"split must be 'train' or 'valid', got {split!r}")
+        self.pool_size = pool_size
+        self.runs = runs
+        self.rows_target = rows_target
+        self.seed = seed
+        self.split = split
+        self.valid_frac = valid_frac
+        self.split_seed = split_seed
+        # validation is never resampled, whatever the caller asks for
+        self.resample_each_epoch = resample_each_epoch and split == "train"
+        self.frac_time = frac_time
+        self.epoch = 0
+
+        # Own generator, never the global one, so a draw depends on this
+        # object's seed and nothing else (H6).
+        self.rng = np.random.default_rng(seed)
+
+    def base_cells(self) -> NDArray:
+        """This split's base cells, in a fixed order. Never depends on epoch."""
+        order = np.random.default_rng(self.split_seed).permutation(self.pool_size)
+        n_valid = int(self.pool_size * self.valid_frac)
+        return order[:n_valid] if self.split == "valid" else order[n_valid:]
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
+    def _places(self, available: int) -> int:
+        if self.rows_target is None:
+            return available
+        return max(1, min(available, self.rows_target // max(self.runs, 1)))
+
+    def sampling_idx(self, coords):
+        space, time = coords
+
+        cells = self.base_cells()
+        places = self._places(len(cells))
+
+        if self.resample_each_epoch:
+            # Seeded from (seed, epoch) so a run still repeats exactly.
+            rng = np.random.default_rng([self.seed or 0, self.epoch])
+            chosen = rng.choice(cells, size=places, replace=False)
+        else:
+            # A prefix of the fixed order, so a smaller `places` nests inside
+            # a larger one.
+            chosen = cells[:places]
+
+        # expand each base cell to every run
+        rows = np.concatenate(
+            [np.sort(chosen) + m * self.pool_size for m in range(self.runs)]
+        )
+        rows = rows[rows < len(space)]
+
+        if self.frac_time:
+            time = np.sort(
+                self.rng.choice(time, int(len(time) * self.frac_time), replace=False)
+            )
+        return [rows, time]

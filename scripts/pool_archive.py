@@ -15,7 +15,7 @@ Row `i` is base cell `i % pool_size` from run `i // pool_size`. Both stores
 carry every run, so they stay the same length and are read positionally.
 
 **The forcing lives in the dynamic store beside the target**, repeated once per
-run, because that is the dataset's contract: `WflowSBM_HPC.__init__` opens
+run, because that is the dataset's contract: `WflowSBM_Pool.__init__` opens
 `urls["dynamic_inputs"]` once and takes both out of it
 (`self.xd = data_dynamic[dynamic_inputs]`, `self.y = data_dynamic[
 target_variables]`, wflow_sbm.py:30-34), and `urls["target_variables"]` is
@@ -48,21 +48,37 @@ both-stores-or-neither write.
 `cell` is deliberately left without a coordinate. Giving it one would make the
 index repeat (0 1 2 0 1 2 ...) and `.sel()` ambiguous.
 
-The other coordinates are non-index, but xarray still selects on them by
-building an index on demand, so `ds.sel(run=0)` and `ds.sel(cycle=3)` work and
-are the natural way to pick a run (~18 ms of index building, chunks preserved).
-What does *not* work is anything needing a unique index - `method="nearest"`
-raises `InvalidIndexError`, because `lat` repeats once per run. For the nearest
-cell to a point, use `argmin` on the squared distance.
+`lat`, `lon`, `run`, `cycle` and `member` are attached but non-index, so
+**`.sel()` does not work on them** in the emulator environment: xarray 2024.3
+raises `KeyError: no index found for coordinate 'run'`. Newer xarray (2026.2)
+builds an index on demand and would accept it, but the environment that trains
+the surrogate does not. Use position instead, which works everywhere:
+
+    ds.isel(cell=slice(m * pool_size, (m + 1) * pool_size))   # run m
+    ds.where(ds.run == m, drop=True)                          # same, by value
+
+For the cell nearest a point, use `argmin` on the squared distance - even where
+`.sel()` is available, `method="nearest"` cannot work here, because `lat`
+repeats across runs and within a run.
+
+**Run this with the emulator environment**, not a bare `python`:
+
+    EMU=/home/iferrario/.local/miniforge/envs/emulator/bin/python
+
+A bare `python` here resolves to a different project's env (xarray 2026 /
+zarr 3) and writes a zarr **v3** store, which the emulator environment
+(xarray 2024.3 / zarr 2.13) cannot open at all. `_write` pins v2, but run it in
+the right place anyway - that is where `hython`, `itwinai` and `toml` live.
 
 Run directly to build the archive and check it:
 
-    python pool_archive.py --build          # draw pool, write run 0
-    python pool_archive.py --append-test    # run 1 = run 0 with KsatVer x 3
-    python pool_archive.py --verify
+    $EMU pool_archive.py --build            # draw pool, write run 0
+    $EMU pool_archive.py --append-test      # run 1 = run 0 with KsatVer x 3
+    $EMU pool_archive.py --verify
 """
 
 import argparse
+import inspect
 import json
 import logging
 import shutil
@@ -257,6 +273,20 @@ def _tidy(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
+# Every other store in WD_SURROGATE is zarr v2, and the emulator environment
+# that trains the surrogate has zarr 2.13, which cannot open a v3 store at all
+# (it looks for `.zgroup`; v3 writes `zarr.json`). Newer environments default
+# to v3, so the format is pinned here rather than left to whoever runs this.
+_ZARR_V2 = {"zarr_format": 2} if "zarr_format" in inspect.signature(
+    xr.Dataset.to_zarr
+).parameters else {}
+
+
+def _write(ds: xr.Dataset, path: Path, **mode) -> None:
+    """`to_zarr`, pinned to zarr v2 when the installed xarray can express it."""
+    ds.to_zarr(path, **mode, **_ZARR_V2)
+
+
 def _chunked(ds: xr.Dataset) -> xr.Dataset:
     chunks = {"cell": CELL_CHUNK}
     if "time" in ds.dims:
@@ -286,8 +316,8 @@ def write_run(static: xr.Dataset, dynamic: xr.Dataset, first: bool) -> None:
 
     try:
         mode = dict(mode="w") if first else dict(mode="a", append_dim="cell")
-        _chunked(static).to_zarr(tmp_static, **mode)
-        _chunked(dynamic).to_zarr(tmp_dynamic, **mode)
+        _write(_chunked(static), tmp_static, **mode)
+        _write(_chunked(dynamic), tmp_dynamic, **mode)
     except Exception:
         for tmp, _ in pairs:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -330,64 +360,17 @@ def du(path: Path) -> str:
 # ==== BACK TO XARRAY
 
 
-def to_xarray(arr, ds: xr.Dataset, variables: list[str]) -> xr.Dataset:
-    """Flat model output -> (cell, time, variable), carrying the row's coords.
+# These moved into `hython.utils` so the training and inference paths can use
+# them without importing this script. `scatter_pool_to_map` takes the grid as
+# an argument there - it cannot carry STATICMAPS, which is a wflow path - so
+# the wrapper below supplies it and this module's surface is unchanged.
 
-    `hython.utils.create_xarray_data` cannot do this today. Its dim whitelist is
-    hardcoded to `["lat", "lon", "time", "variable"]` (utils.py:520), so `cell`
-    is dropped from `reordered_out_shape` and the reshape fails with a size
-    mismatch. The fix there is one line - add "cell" to that list, before
-    "time" - because `WflowSBM_HPC` builds `spacetime_index` as
-    `itertools.product(cells, times)`, so the flat array is cell-major.
-
-    Pass `crs=None` on this path: a CRS is meaningless on a scattered cell axis.
-
-    `ds` is the archive slice the prediction was made over, and supplies
-    lat/lon/lat_i/lon_i so the rows stay traceable and `scatter_to_map` works.
-    """
-    arr = np.asarray(arr)
-    out = xr.DataArray(
-        arr.reshape(ds.sizes["cell"], ds.sizes["time"], len(variables)),
-        dims=("cell", "time", "variable"),
-        coords={
-            "time": ds.time,
-            "variable": variables,
-            **{k: ("cell", ds[k].values) for k in ("lat", "lon", "lat_i", "lon_i")},
-        },
-    )
-    return out.to_dataset(dim="variable")
+from hython.utils import pool_to_xarray as to_xarray, scatter_pool_to_map  # noqa: E402
 
 
 def scatter_to_map(ds: xr.Dataset, crs: int | None = 4326) -> xr.Dataset:
-    """(cell, ...) -> the full 568 x 1220 map, via `lat_i`/`lon_i`.
-
-    Only pool cells are filled; everything else is NaN. That is the visible
-    cost of A1 - the training archive can no longer produce a dense map. For
-    dense output use the full-map runs A1 keeps at cycle 0 and the last cycle.
-
-    Calibration does not need this: `WflowSBMCal` reads the full-map predictor
-    file, so `inference.py` still writes a dense `inference_parameter.nc`.
-    """
-    grid = xr.open_dataset(STATICMAPS)
-    lat_i, lon_i = ds.lat_i.values, ds.lon_i.values
-    dims = [d for d in ds.dims if d != "cell"]
-    shape = [ds.sizes[d] for d in dims] + [grid.sizes["latitude"], grid.sizes["longitude"]]
-
-    out = {}
-    for v in ds.data_vars:
-        a = np.full(shape, np.nan, "float32")
-        a[..., lat_i, lon_i] = ds[v].transpose(*dims, "cell").values
-        out[v] = (dims + ["lat", "lon"], a)
-
-    m = xr.Dataset(
-        out,
-        coords={**{d: ds[d] for d in dims},
-                "lat": grid.latitude.values, "lon": grid.longitude.values},
-    )
-    if crs:
-        import rioxarray  # noqa: F401  (registers the .rio accessor)
-        m = m.rio.write_crs(crs)
-    return m
+    """`hython.utils.scatter_pool_to_map` against this model's staticmaps."""
+    return scatter_pool_to_map(ds, xr.open_dataset(STATICMAPS), crs)
 
 
 # ==== CHECKS

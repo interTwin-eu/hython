@@ -93,6 +93,7 @@ from .wflow_sbm import *
 DATASETS = {
     "WflowSBM": WflowSBM,
     "WflowSBM_HPC": WflowSBM_HPC,
+    "WflowSBM_Pool": WflowSBM_Pool,
     "WflowSBMCal":WflowSBMCal,
     "WflowSBMCube": WflowSBMCube,
     "Wflow2dCal": Wflow2dCal,
