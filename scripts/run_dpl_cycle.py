@@ -316,6 +316,11 @@ def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
         # and never opens `target_variables` at all.
         "data_source.file.dynamic_inputs": str(DYNAMIC_ARCHIVE),
         "data_source.file.target_variables": str(DYNAMIC_ARCHIVE),
+        # H3. The downsamplers take every run of each chosen base cell, so they
+        # have to know how many runs the archive holds now. This also shrinks
+        # `places` as the archive grows (A2 b2), keeping rows per epoch fixed.
+        "train_downsampler.runs": pool_archive.next_run_index(),
+        "valid_downsampler.runs": pool_archive.next_run_index(),
     }
     out_dir, name = write_cycle_config("config_training_calibration_loop", cycle, overrides)
 

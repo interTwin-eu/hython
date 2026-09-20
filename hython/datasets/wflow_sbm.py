@@ -264,36 +264,17 @@ class WflowSBM_Pool(BaseDataset):
             [self.xs.lat_i.values, self.xs.lon_i.values], axis=1
         ) if "lat_i" in self.xs.coords else None
 
-        # Compute cell (spatial) index
-        self.cell_linear_index = np.arange(0, self.xs.sizes["cell"], 1)
-        
-        # Compute sequence (temporal) index
-        # Each cell has a time series of equal length, so the sequence index is the same for every cell
-        if self.period == "test":
-            self.time_index = np.arange(0, len(self.xd.time.values), 1)
-        else:
-            self.time_index = np.arange(0, len(self.xd.time.values) - self.seq_len, 1)
-        
         # == DOWNSAMPLING
 
-        # Downsample spatial and temporal indices based on rule
-        if self.downsampler is not None:
-            self.cell_linear_index , self.time_index = self.downsampler.sampling_idx([self.cell_linear_index , self.time_index])
-
-        if self.period == "test":
-            self.spacetime_index = self.cell_linear_index
-        else:
-            # (cell, time) pairs. itertools.product is cell-major, which is the
-            # order `create_xarray_data` reshapes predictions back with.
-            self.spacetime_index = np.array(
-                list(itertools.product(
-                    self.cell_linear_index.tolist(), self.time_index.tolist()
-                ))
-            )
-
-        # == SOME USEFUL PARAMETERS
+        # Captured before `build_sample_index`, which needs them, and before
+        # the xarray objects become tensors further down.
         self.cell_size = self.xs.sizes["cell"]
         self.time_size = len(self.xd.time)
+
+        self.build_sample_index()
+
+        # == SOME USEFUL PARAMETERS
+        # `cell_size` and `time_size` are set above, before the index build.
         self.dynamic_coords = self.xd.coords
         self.static_coords = self.xs.coords
 
@@ -373,6 +354,55 @@ class WflowSBM_Pool(BaseDataset):
             self.xd = torch.from_numpy(self.xd.values)
             self.y = torch.from_numpy(self.y.values)
             self.xs = torch.from_numpy(self.xs.values)
+
+    def build_sample_index(self):
+        """Build the (cell, time) sample index from scratch.
+
+        Called by `__init__`, and again by `set_epoch` when the downsampler
+        redraws (H3). It always starts from the full axes, because
+        `sampling_idx` returns a subset: running it on its own output would
+        shrink the selection again every epoch.
+
+        It reads `cell_size`/`time_size` rather than `self.xs`/`self.xd`. By the
+        time `set_epoch` first fires, `__init__` has replaced both with torch
+        tensors, which have no `.sizes` and no `.time`.
+        """
+        # Compute cell (spatial) index
+        self.cell_linear_index = np.arange(0, self.cell_size, 1)
+
+        # Compute sequence (temporal) index
+        # Each cell has a time series of equal length, so the sequence index is the same for every cell
+        if self.period == "test":
+            self.time_index = np.arange(0, self.time_size, 1)
+        else:
+            self.time_index = np.arange(0, self.time_size - self.seq_len, 1)
+
+        # Downsample spatial and temporal indices based on rule
+        if self.downsampler is not None:
+            self.cell_linear_index , self.time_index = self.downsampler.sampling_idx([self.cell_linear_index , self.time_index])
+
+        if self.period == "test":
+            self.spacetime_index = self.cell_linear_index
+        else:
+            # (cell, time) pairs. itertools.product is cell-major, which is the
+            # order `create_xarray_data` reshapes predictions back with.
+            self.spacetime_index = np.array(
+                list(itertools.product(
+                    self.cell_linear_index.tolist(), self.time_index.tolist()
+                ))
+            )
+
+    def set_epoch(self, epoch: int):
+        """Redraw this epoch's cells, if the downsampler resamples (H3).
+
+        A no-op unless the downsampler takes an epoch. `PoolDownsampler` only
+        resamples for `split="train"`, so the validation set is unchanged from
+        epoch to epoch and its loss stays comparable.
+        """
+        if self.downsampler is None or not hasattr(self.downsampler, "set_epoch"):
+            return
+        self.downsampler.set_epoch(epoch)
+        self.build_sample_index()
 
     def __len__(self):
         return len(self.spacetime_index)

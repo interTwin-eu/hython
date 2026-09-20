@@ -71,10 +71,49 @@ Also done, not originally on this list:
 - [ ] Rebuild from a real cycle 0. Run 1 in the archive today is the synthetic
       `KsatVer x 3` append test — the user is deleting both stores; the wired
       orchestrator rebuilds them by itself
-- [ ] The real H1 test needs wflow actually run with `KsatVer x 3`, so that
-      `vwc` genuinely differs. 54 min
-- [ ] `pip install toml` — `run_dpl_cycle.py` cannot be imported without it
-      (needed to *write* wflow TOMLs; stdlib `tomllib` only reads)
+- [x] **The real H1 test passed on 2026-09-20.** A two-run scratch archive was
+      built from `emo1_static.zarr` + `emo1_dynamic.zarr` (run 0, apriori) and
+      `review/P_KsatVer_*` (run 1, `KsatVer x 0.195`, every other static
+      bit-identical). Trained 4 epochs on held-in cells, then compared the same
+      held-out cell in both runs:
+
+      | | predicted gap | true gap | r |
+      |---|---|---|---|
+      | untrained | -0.0011 | -0.0369 | +0.58 |
+      | after 4 epochs | **-0.0430** | -0.0369 | **+0.82** |
+
+      Sign agreement on individual cells 93%; 117% of the true mean gap
+      recovered, so the response slightly overshoots. The untrained r is
+      already +0.58 because `KsatVer` is the only input that differs, so even a
+      random network orders the pairs - the evidence is the *magnitude*, which
+      goes from ~0 to the right size. 19 s on the A100.
+
+- [ ] (superseded, kept for the record) The real H1 test. **No new wflow run is
+      needed** — an earlier draft said
+      54 min for a fresh `KsatVer x 3` run, but
+      `/mnt/CEPH_PROJECTS/InterTwin/Wflow/models/emo1/review/` already holds
+      seven matched (staticmaps, output) pairs from real wflow runs, over the
+      same forcing and the same period (2016-01-02 to 2022-12-31):
+
+      | pair | what moves |
+      |---|---|
+      | `apriori_*` | baseline |
+      | `P_KsatVer_*` | `KsatVer x 0.2`, everything else bit-identical |
+      | `P_c_*`, `P_f_*`, `P_Sl_*`, `P_RootingDepth_*` | one parameter each |
+      | `cal_*` | the calibrated set |
+
+      `apriori` + `P_KsatVer` is a cleaner H1 test than the one proposed here,
+      because it is a controlled single-parameter perturbation rather than a
+      whole-field rescale. Confirmed: `c`, `f`, `RootingDepth`, `Sl`, `thetaS`
+      and `SoilThickness` are identical between the two staticmaps; the outputs
+      hold `vwc` on 4 layers, 2556 days each.
+
+      The forcing needs no work either. `cut_dynamic` reads it from
+      `emo1_dynamic.zarr`, not from the output netCDF, and that store spans
+      2000-01-01 to 2022-12-31. `emo1/forcings.nc` is the same 8401 steps if a
+      raw source is ever wanted instead.
+
+      So the real H1 test is an ingestion job over files that already exist.
 
 ### 2. Scaling numbers — H4
 Needed before the first calibration, not before the first training.
@@ -108,22 +147,33 @@ Two things the H2 section below gets wrong, left in place as a record:
 - [x] New downsampler that knows `pool_size` and picks base cells before
       expanding to runs (H3 — `RandomDownsampler` cannot do this).
       `PoolDownsampler`, with tests.
-- [~] Fixed train/valid base-cell split, drawn once, saved (H3). Fixed and
-      drawn once, from `split_seed`, and tested. NOT saved: nothing is written
-      to disk, so the split is right only while `split_seed` is unchanged.
-- [~] Sampler that draws fresh cells every epoch, behind
-      `resample_cells_each_epoch` — validation stays fixed (H3). The class does
-      this (`resample_each_epoch`, and validation never resamples), but nothing
-      calls `set_epoch`, so it never fires.
-- [ ] Point the training config at `PoolDownsampler` — it still names
-      `RandomDownsampler` for train and valid (H3)
-- [ ] Call `set_epoch` from the training loop (H3)
+- [x] Fixed train/valid base-cell split, drawn once (H3). Derived from
+      `split_seed`, not written to disk - the per-cycle config *is* the
+      persistence, and `tests/test_cycle_config.py` asserts `split_seed`,
+      `valid_frac`, `pool_size` and `split` are identical in all 8 generated
+      cycle configs. Verified disjoint on the real archive too.
+- [x] Sampler that draws fresh cells every epoch (H3). Fires now, and
+      measured on the real two-run archive: 800 cells an epoch, only ~50 shared
+      with epoch 0, **2,913 distinct cells over 4 epochs**, row count constant
+      at 1,600, train/valid overlap 0 throughout. This is the behaviour that
+      makes storing the whole pool worth it.
+- [x] Point the training config at `PoolDownsampler` (H3). Both blocks, with
+      `pool_size`/`train_rows_target` as top-level keys and `runs` overridden
+      per cycle by `run_dpl_cycle.py`.
+- [x] Call `set_epoch` from the training loop (H3). `trainer.py:220` now
+      forwards to `train_loader.dataset` and `val_loader.dataset` **outside**
+      the `is_distributed` branch - that branch never runs on one GPU, which is
+      why nothing fired before. Tested with stub loaders **and confirmed in a
+      real `itwinai exec-pipeline` run** (38 s, 2 epochs, scratch archive): the
+      probe recorded `train: 2 calls, 2 distinct cell sets` and `valid: 2
+      calls, 1 distinct cell set` - training resamples, validation does not.
 - [x] Read the stacked layout off the `cell` axis (H1)
 - [x] Index cells directly; keep the whole pool in memory (~2 GB) instead of
       only the drawn rows (H2)
 - [x] Let `test` read the pool; stop it rebuilding a full map (H2)
 - [x] Add `"cell"` to the dim whitelist in `create_xarray_data` (H2)
-- [ ] Rename scaler axes to `("cell","time")` and `("cell",)` (H4)
+- [x] Rename scaler axes to `("cell","time")` and `("cell",)` (H4). Done in
+      `WflowSBM_Pool`; the lat/lon classes keep their own axes.
 
 ### 4. Safety
 - [ ] H5 — assert the files line up

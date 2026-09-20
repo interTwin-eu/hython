@@ -225,6 +225,14 @@ class RNNDistributedTrainer(TorchTrainer):
             self.train_loader.sampler.set_epoch(epoch)
             self.val_loader.sampler.set_epoch(epoch)
 
+        # Tell the datasets too, not just the distributed samplers (H3). The
+        # pool dataset redraws its cells here, so this has to run on a single
+        # GPU as well - which is why it sits outside the branch above.
+        for loader in (self.train_loader, self.val_loader):
+            dataset = getattr(loader, "dataset", None)
+            if hasattr(dataset, "set_epoch"):
+                dataset.set_epoch(epoch)
+
     #@measure_gpu_utilization
     def train(self):
         """Override train_val version of hython to support distributed strategy."""

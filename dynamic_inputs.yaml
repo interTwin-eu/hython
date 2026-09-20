@@ -5,7 +5,7 @@ center:
     pet:
       attrs:
         variant: MinMax01Scaler
-      data: 0.014411705546081066
+      data: 0.0005400340305641294
       dims: !!python/tuple []
     precip:
       attrs:
@@ -15,7 +15,7 @@ center:
     temp:
       attrs:
         variant: MinMax01Scaler
-      data: 0.0016469490947201848
+      data: 0.0016577504575252533
       dims: !!python/tuple []
   dims: {}
 scale:
@@ -25,16 +25,16 @@ scale:
     pet:
       attrs:
         variant: MinMax01Scaler
-      data: 4.975925445556641
+      data: 4.999443531036377
       dims: !!python/tuple []
     precip:
       attrs:
         variant: MinMax01Scaler
-      data: 4.996556758880615
+      data: 4.996836185455322
       dims: !!python/tuple []
     temp:
       attrs:
         variant: MinMax01Scaler
-      data: 4.996182441711426
+      data: 4.997683048248291
       dims: !!python/tuple []
   dims: {}

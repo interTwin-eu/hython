@@ -104,6 +104,17 @@ STATIC_ARCHIVE = WD_SURROGATE / "emo1_static_cycle.zarr"
 STATICMAPS = WD_WFLOW / "staticmaps.nc"
 FORCING_STORE = WD_SURROGATE / "emo1_dynamic.zarr"
 
+# The same default run as STATICMAPS/FORCING_STORE, already cut to zarr on the
+# full map: `emo1_static.zarr` is staticmaps.nc (verified bit-identical) and
+# `emo1_dynamic.zarr` carries its `vwc` beside the forcing. Ingesting from
+# these skips a 10 GB netCDF read entirely.
+STATIC_STORE = WD_SURROGATE / "emo1_static.zarr"
+
+# The stores span 2000-2022; the configs only ever ask for train 2017-2019,
+# valid 2020 and test 2022. Writing the other 17 years would triple the
+# archive for data nothing reads.
+ARCHIVE_TIME = slice("2017-01-01", "2022-12-31")
+
 # 5% of the 336,466 usable cells, rounded so it divides evenly into zarr chunks.
 # Fixed once: growing the pool later means re-running wflow, cutting it is free.
 POOL_SIZE = 16800
@@ -119,8 +130,15 @@ STATIC_VARS = [
 FORCING_VARS = ["precip", "pet", "temp"]
 TARGET_VARS = ["vwc"]
 
-# `c` and `vwc` carry a leading layer axis; the surrogate uses layer index 1.
-LAYER = 1
+# The surrogate models **surface** soil moisture, so every layered variable is
+# taken at layer 0. `c` and `vwc` are the two that carry a layer axis.
+#
+# Note this differs from the existing full-map stores, which were not
+# consistent: `emo1_dynamic.zarr`'s `vwc` is layer 0 (correct), but
+# `emo1_static.zarr`'s `c` is staticmaps layer 1. Checked directly against
+# staticmaps.nc - layer 1 matches exactly, layer 0 differs by up to 2.87. So
+# `c` cannot be taken from that store; see `cut_static_store`.
+LAYER = 0
 
 
 # ==== POOL
@@ -251,6 +269,10 @@ def cut_dynamic(output_nc: Path, coords: np.ndarray, prov: dict) -> xr.Dataset:
     """
     target = xr.open_dataset(output_nc, chunks={"time": 256})
     target = target.sel(lat=slice(None, None, -1))  # wflow writes lat ascending
+    # Same window as `cut_dynamic_store`, or a run cut from a netCDF covering a
+    # different period could not be appended to one cut from the stores: the
+    # time axis has to be identical in every run.
+    target = target.sel(time=ARCHIVE_TIME)
     target = _unpack_layer(target, "vwc")
     target = target[TARGET_VARS].isel(**_selector(coords)).load()
 
@@ -262,6 +284,51 @@ def cut_dynamic(output_nc: Path, coords: np.ndarray, prov: dict) -> xr.Dataset:
     # lat/lon/time must raise here rather than be silently overridden.
     merged = xr.merge([forcing, target], compat="equals", join="exact")
     return _describe(_tidy(merged), coords, prov)
+
+
+def cut_static_store(store: Path, coords: np.ndarray, prov: dict) -> xr.Dataset:
+    """Full-map static zarr -> (cell,) archive rows.
+
+    The zarr twin of `cut_static`. The store is already on lat/lon with the
+    layer axis resolved, so the rename and the `_unpack_layer` call that the
+    netCDF path needs are no-ops here - `_unpack_layer` is still called so the
+    two paths cannot drift apart if a future store keeps its layer axis.
+    """
+    ds = xr.open_zarr(store)
+
+    # `c` in the store has its layer axis already resolved, and resolved to
+    # layer 1 - the surface run needs layer 0, and once the axis is gone there
+    # is no way to get it back from the store. So `c` comes from staticmaps.nc
+    # while everything else comes from the store. Every other STATIC_VAR is
+    # unlayered, so this is the only variable that needs it.
+    if "layer" in ds["c"].dims:
+        ds = _unpack_layer(ds, "c")
+    else:
+        src = xr.open_dataset(STATICMAPS).rename_dims(
+            {"latitude": "lat", "longitude": "lon"}
+        )
+        ds = ds.drop_vars("c")
+        ds["c"] = _unpack_layer(src, "c")["c"].variable
+
+    ds = ds[STATIC_VARS].isel(**_selector(coords)).load()
+
+    # All-False, as in `cut_static`: the pool was masked when it was drawn.
+    zeros = xr.zeros_like(ds["thetaS"], dtype=bool)
+    ds["mask_missing"] = zeros
+    ds["mask_lake"] = zeros
+    return _describe(_tidy(ds), coords, prov)
+
+
+def cut_dynamic_store(store: Path, coords: np.ndarray, prov: dict) -> xr.Dataset:
+    """Full-map dynamic zarr -> (time, cell) archive rows.
+
+    Simpler than `cut_dynamic` because this store already holds the forcing and
+    the target together, so there is no cross-source merge to get wrong.
+    """
+    ds = xr.open_zarr(store).sel(time=ARCHIVE_TIME)
+    ds = _unpack_layer(ds, "vwc")
+    ds = ds[FORCING_VARS + TARGET_VARS].isel(**_selector(coords)).load()
+    return _describe(_tidy(ds), coords, prov)
 
 
 def _tidy(ds: xr.Dataset) -> xr.Dataset:
@@ -343,6 +410,34 @@ def ingest_run(
     static = cut_static(static_nc, coords, prov)
     t_static = time.perf_counter() - t0
     dynamic = cut_dynamic(output_nc, coords, prov)
+    t_dynamic = time.perf_counter() - t0 - t_static
+
+    t1 = time.perf_counter()
+    write_run(static, dynamic, first=first)
+    logger.info(
+        f"ingest: static {t_static:.1f}s, dynamic {t_dynamic:.1f}s, "
+        f"write {time.perf_counter() - t1:.1f}s, total {time.perf_counter() - t0:.1f}s"
+    )
+
+
+def ingest_store_run(
+    first: bool, cycle: int = 0, member: int = 0,
+    static_store: Path = None, dynamic_store: Path = None,
+) -> None:
+    """`ingest_run`, sourced from the full-map zarr stores instead of netCDF."""
+    static_store = STATIC_STORE if static_store is None else static_store
+    dynamic_store = FORCING_STORE if dynamic_store is None else dynamic_store
+
+    t0 = time.perf_counter()
+    coords = draw_pool() if first else load_pool()
+    prov = dict(
+        run=0 if first else next_run_index(), cycle=cycle, member=member,
+        static=static_store.name, output=dynamic_store.name,
+    )
+
+    static = cut_static_store(static_store, coords, prov)
+    t_static = time.perf_counter() - t0
+    dynamic = cut_dynamic_store(dynamic_store, coords, prov)
     t_dynamic = time.perf_counter() - t0 - t_static
 
     t1 = time.perf_counter()
@@ -551,7 +646,33 @@ if __name__ == "__main__":
     ap.add_argument("--append-test", action="store_true")
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--overwrite", action="store_true")
+    ap.add_argument("--from-stores", action="store_true",
+                    help="ingest run 0 from emo1_static.zarr + emo1_dynamic.zarr")
+    ap.add_argument("--scratch", action="store_true",
+                    help="write to *_scratch.zarr instead of the production archive")
+    ap.add_argument("--ingest-pair", nargs=2, metavar=("STATIC_NC", "OUTPUT_NC"),
+                    help="append one run from a (staticmaps, output) netCDF pair")
     args = ap.parse_args()
+
+    if args.scratch:
+        # Rebound before anything reads them. `write_run`, `load_pool`,
+        # `next_run_index` and `verify` all go through these two names, so this
+        # is the whole redirection.
+        STATIC_ARCHIVE = WD_SURROGATE / "emo1_static_scratch.zarr"
+        DYNAMIC_ARCHIVE = WD_SURROGATE / "emo1_dynamic_scratch.zarr"
+        logger.info(f"scratch mode: {STATIC_ARCHIVE.name}, {DYNAMIC_ARCHIVE.name}")
+
+    if args.ingest_pair:
+        static_nc, output_nc = (Path(a) for a in args.ingest_pair)
+        first = not STATIC_ARCHIVE.exists()
+        ingest_run(static_nc, output_nc, first=first, cycle=0,
+                   member=0 if first else next_run_index())
+        logger.info(f"static {du(STATIC_ARCHIVE)}, dynamic {du(DYNAMIC_ARCHIVE)}")
+
+    if args.from_stores:
+        first = not STATIC_ARCHIVE.exists()
+        ingest_store_run(first=first)
+        logger.info(f"static {du(STATIC_ARCHIVE)}, dynamic {du(DYNAMIC_ARCHIVE)}")
 
     if args.build:
         build(overwrite=args.overwrite)

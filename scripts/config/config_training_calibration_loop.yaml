@@ -52,16 +52,34 @@ regularization:
     vwc:
     - 0.01
     - 0.9
+# H3. `pool_size` must match the archive attrs, and `runs` is overridden per
+# cycle by run_dpl_cycle.py as the archive grows. `split`/`split_seed`/
+# `valid_frac` partition the pool once and must stay identical in both blocks,
+# or a cell could be trained on in one cycle and validated on in the next.
+pool_size: 16800
+train_rows_target: 6730
 train_downsampler:
-  _target_: hython.sampler.downsampler.RandomDownsampler
-  frac_time: null
-  frac_space: 0.01
+  _target_: hython.sampler.downsampler.PoolDownsampler
+  pool_size: ${pool_size}
+  runs: 1
+  rows_target: ${train_rows_target}
+  split: train
+  valid_frac: 0.2
+  split_seed: 0
+  resample_each_epoch: true
   seed: ${sampling_seed}
+  frac_time: null
 valid_downsampler:
-  _target_: hython.sampler.downsampler.RandomDownsampler
-  frac_time: null
-  frac_space: 0.01
+  _target_: hython.sampler.downsampler.PoolDownsampler
+  pool_size: ${pool_size}
+  runs: 1
+  rows_target: ${train_rows_target}
+  split: valid
+  valid_frac: 0.2
+  split_seed: 0
+  resample_each_epoch: false
   seed: ${sampling_seed}
+  frac_time: null
 test_downsampler: null
 dynamic_downsampler:
   frac_time: 0.3
