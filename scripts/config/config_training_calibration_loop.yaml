@@ -121,6 +121,11 @@ mask_variables:
 - mask_missing
 - mask_lake
 scaling_use_cached: false
+# H4: the five statics scaled by MinMax01 in BOTH configs read their
+# numbers from here, worked out once on the full map. Without it the
+# training side would scale them on the 5% pool and disagree with
+# calibration, silently. Written by `pool_archive.py --freeze-stats`.
+scaling_frozen_stats: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/scaling_frozen_fullmap.yaml
 scaling_static_range:
   thetaS:
   - 0.25
@@ -254,6 +259,7 @@ training_pipeline:
     preprocessor: ${preprocessor}
     scaler: ${scaler}
     scaling_use_cached: ${scaling_use_cached}
+    scaling_frozen_stats: ${scaling_frozen_stats}
     scaling_static_range: ${scaling_static_range}
     experiment_name: ${experiment_name}
     experiment_run: ${experiment_run}

@@ -88,6 +88,7 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+import yaml
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -448,6 +449,42 @@ def ingest_store_run(
     )
 
 
+FROZEN_STATS = WD_SURROGATE / "scaling_frozen_fullmap.yaml"
+
+# Scaled by MinMax01 in *both* configs, so both sides must use one set of
+# numbers. See `Scaler.apply_frozen`.
+FROZEN_VARS = ["wflow_uparea", "wflow_landuse", "wflow_dem", "Slope", "WaterFrac"]
+
+
+def freeze_scaling_stats(path: Path = None, store: Path = None) -> Path:
+    """Work the five shared statics out on the **full map** and write them once.
+
+    Cheap - the statics have no time axis - and it has to happen on the full
+    map, because the 5% pool misses the extremes that define the scale.
+
+    The format is the one `Scaler.load` reads: a yaml mapping `center` and
+    `scale` to serialised datasets. `center`/`scale` follow `MinMax01Scaler`:
+    centre at the minimum, scale by the range.
+    """
+    path = FROZEN_STATS if path is None else path
+    store = STATIC_STORE if store is None else store
+
+    ds = xr.open_zarr(store)[FROZEN_VARS]
+    center = ds.min(("lat", "lon")).compute()
+    scale = (ds.max(("lat", "lon")).compute() - center)
+
+    with open(path, "w") as file:
+        yaml.dump({"center": center.to_dict(), "scale": scale.to_dict()}, file)
+
+    for v in FROZEN_VARS:
+        logger.info(
+            f"  {v:16s} min {float(center[v]):.6g}  max "
+            f"{float(center[v]) + float(scale[v]):.6g}"
+        )
+    logger.info(f"frozen full-map statistics written to {path}")
+    return path
+
+
 def du(path: Path) -> str:
     return sp.run(["du", "-sh", str(path)], capture_output=True, text=True).stdout.split()[0]
 
@@ -652,6 +689,8 @@ if __name__ == "__main__":
                     help="write to *_scratch.zarr instead of the production archive")
     ap.add_argument("--ingest-pair", nargs=2, metavar=("STATIC_NC", "OUTPUT_NC"),
                     help="append one run from a (staticmaps, output) netCDF pair")
+    ap.add_argument("--freeze-stats", action="store_true",
+                    help="write the full-map scaling numbers both configs share")
     args = ap.parse_args()
 
     if args.scratch:
@@ -661,6 +700,9 @@ if __name__ == "__main__":
         STATIC_ARCHIVE = WD_SURROGATE / "emo1_static_scratch.zarr"
         DYNAMIC_ARCHIVE = WD_SURROGATE / "emo1_dynamic_scratch.zarr"
         logger.info(f"scratch mode: {STATIC_ARCHIVE.name}, {DYNAMIC_ARCHIVE.name}")
+
+    if args.freeze_stats:
+        freeze_scaling_stats()
 
     if args.ingest_pair:
         static_nc, output_nc = (Path(a) for a in args.ingest_pair)

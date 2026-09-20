@@ -56,7 +56,11 @@ class RNNDatasetGetterAndPreprocessor(DataSplitter):
         for i in configs:
             setattr(cfg, i, configs[i])
 
-        scaler = Scaler(cfg, cfg.scaling_use_cached)
+        # Keyword, not positional: `Scaler.__init__` takes (cfg, is_train,
+        # use_cached), so the positional form set `is_train` and left
+        # `use_cached` False for ever - `scaling_use_cached` had no effect at
+        # all, including the per-cycle override in run_dpl_cycle.py (H4).
+        scaler = Scaler(cfg, use_cached=cfg.scaling_use_cached)
         
         # if "cal" in cfg.hython_trainer:
         #     cfg.target_variables = cfg.calibration_target_variables

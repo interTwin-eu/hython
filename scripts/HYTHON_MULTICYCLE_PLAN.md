@@ -118,10 +118,32 @@ Also done, not originally on this list:
 ### 2. Scaling numbers — H4
 Needed before the first calibration, not before the first training.
 
-- [ ] Work out the five `MinMax01` numbers on the full map
-- [ ] Save them where both configs can name the same path
-- [ ] Set `scaling_use_cached: true` in both configs
-- [ ] Make `load_or_compute` raise instead of quietly recomputing
+- [x] Work out the five `MinMax01` numbers on the full map.
+      `pool_archive.py --freeze-stats` writes them from `emo1_static.zarr`:
+      `wflow_uparea` 67409, `wflow_landuse` 521, `wflow_dem` 4545.2,
+      `Slope` 144.567, `WaterFrac` 0.904794.
+- [x] Save them where both configs can name the same path.
+      `scaling_frozen_stats` in both configs, pointing at
+      `surrogate_input/scaling_frozen_fullmap.yaml`. `Scaler.apply_frozen`
+      overrides by **variable name**, so one file serves `static_inputs` in
+      training and `head_model_inputs.aux_feat` in calibration although they
+      are different groups in different files.
+- [x] `scaling_use_cached` works at all. It never did: `data.py:59` passed it
+      as `Scaler.__init__`'s second positional, which is `is_train`, so
+      `use_cached` stayed False for ever and `run_dpl_cycle.py`'s
+      `cycle > 0` override was inert. Now passed by keyword. The template stays
+      `false` on purpose - cycle 0 has nothing to load - and the per-cycle
+      override does the rest.
+- [x] Make `load_or_compute` raise instead of quietly recomputing. Also
+      `Scaler.load` itself, which did not raise either: the `raise
+      FileNotFoundError()` was commented out, so a missing cache left
+      `self.archive` empty and failed somewhere far away. Groups with no
+      scaler (`target_variables: null`) are skipped rather than demanded.
+- [x] Stop the scaler writing statistics into the working directory. A bare
+      `except:` in `Scaler.__init__` fell back to `Path(".")` silently; that is
+      how a config without `work_dir` overwrote the tracked
+      `static_inputs.yaml` in the repo root during this work. Still falls back,
+      but logs a warning naming the directory.
 
 ### 3. The hython dataset — H1, H2, H3
 These land together. Each is incomplete alone.

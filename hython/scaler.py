@@ -195,8 +195,18 @@ class Scaler:
             self.run_dir = Path(generate_run_folder(cfg))
             if not self.run_dir.exists():
                 self.run_dir.mkdir()
-        except:
+        except Exception as err:
+            # Falling back to the working directory writes statistics wherever
+            # the process happens to be started, which silently overwrites any
+            # `<type>.yaml` already sitting there. Kept for compatibility, but
+            # no longer silent: a config without `work_dir` used to corrupt the
+            # cached numbers with no visible sign.
             self.run_dir = Path(".")
+            LOGGER.warning(
+                f"Could not resolve the run folder ({err!r}); falling back to "
+                f"{self.run_dir.resolve()}. Statistics written there may "
+                f"overwrite unrelated files - set `work_dir` to avoid this."
+            )
             
         # with open(self.run_dir / f"config.yaml", "w") as file:
         #     import pdb;pdb.set_trace()
@@ -247,19 +257,70 @@ class Scaler:
             return data[list(self.cfg[type1])] 
 
     def load_or_compute(self, data, type="dynamic_inputs", is_train=True, axes=(0, 1), **kwargs):
+        """Load cached statistics, or compute them, for one variable group.
+
+        `use_cached` is strict (H4). It used to fall back to recomputing when
+        the cache was missing, which on the pool archive would quietly derive
+        the numbers from 5% of the map and hand calibration a different scale
+        than training - with no error anywhere. If the cache is asked for, it
+        has to be there.
+        """
         if is_train:
             if self.use_cached:
-                try:
-                    self.load(type)
-                except FileNotFoundError:
-                    LOGGER.info(f"Statistics not found in {str(self.run_dir)} for {type}, computing statistics..")            
-                    self.compute(data, type, axes, **kwargs)
-                    self.flag_stats_computed = True
+                self.load(type)
             else:
                 self.compute(data, type, axes, **kwargs)
                 self.flag_stats_computed = True
         else:
             self.load(type)
+
+        self.apply_frozen(type)
+
+    def apply_frozen(self, type):
+        """Override named variables with statistics frozen on the full map (H4).
+
+        Five statics - `wflow_uparea`, `wflow_landuse`, `wflow_dem`, `Slope`,
+        `WaterFrac` - are MinMax01-scaled in *both* configs: as part of
+        `static_inputs` when training the surrogate, and as
+        `head_model_inputs.aux_feat` when calibrating. Each side works its own
+        numbers out, and after A1 the training side only sees the 5% pool,
+        whose maxima are far below the map's (`WaterFrac` reached 0.567 against
+        a true 0.905). The same cell would then mean two different numbers on
+        the two sides, with nothing raising.
+
+        Matching is by variable name, so one frozen file serves both groups
+        even though they sit in different `type`s and different files.
+        """
+        # `getattr` rather than `.get`: cfg may be a DictConfig or a Config,
+        # and OmegaConf's missing-key error subclasses AttributeError, so this
+        # form works for both.
+        path = getattr(self.cfg, "scaling_frozen_stats", None)
+        if not path:
+            return
+
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"`scaling_frozen_stats` points at {path}, which does not "
+                f"exist. Write it once from the full map before training."
+            )
+
+        stats = self.archive.get(type)
+        if stats is None:
+            return
+
+        with open(path, "r") as file:
+            temp = yaml.load(file, Loader=yaml.Loader)
+        frozen = {k: xr.Dataset.from_dict(temp[k]) for k in temp}
+
+        shared = [v for v in frozen["center"].data_vars if v in stats["center"].data_vars]
+        if not shared:
+            return
+
+        for k in ("center", "scale"):
+            stats[k] = stats[k].assign({v: frozen[k][v] for v in shared})
+        self.archive[type] = stats
+        LOGGER.info(f"{type}: {len(shared)} variable(s) frozen from {path}: {shared}")
 
     def transform(self, data, type):
         stats_dist = self.archive.get(type)
@@ -334,20 +395,33 @@ class Scaler:
     
 
     def load(self, type):
-        path = self.run_dir / f"{type}.yaml"
-        if path.exists():
-            with open(path, "r") as file:
-                temp = yaml.load(file, Loader=yaml.Loader)
-                try:
-                    stats = {
-                        type: {k: xr.Dataset.from_dict(temp[k]) for k in temp}
-                    }  # loop over center, scale
-                except:
-                    stats = {type: {k: xr.DataArray.from_dict(temp[k]) for k in temp}}
+        """Read cached statistics for one variable group.
 
-            self.archive.update(stats)
-        # else:
-        #     raise FileNotFoundError()
+        Raises if they are not there. It used to return silently, which left
+        `self.archive` without the group and pushed the failure somewhere far
+        from the cause. Groups with no scaler configured (`target_variables:
+        null`) have nothing to read and are skipped.
+        """
+        if self.cfg_scaler.get(type) is None:
+            return
+
+        path = self.run_dir / f"{type}.yaml"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"No cached statistics for '{type}' at {path}. "
+                f"They are written by the training run that computes them; "
+                f"with `scaling_use_cached: true` they must already exist."
+            )
+        with open(path, "r") as file:
+            temp = yaml.load(file, Loader=yaml.Loader)
+            try:
+                stats = {
+                    type: {k: xr.Dataset.from_dict(temp[k]) for k in temp}
+                }  # loop over center, scale
+            except Exception:
+                stats = {type: {k: xr.DataArray.from_dict(temp[k]) for k in temp}}
+
+        self.archive.update(stats)
 
     def clean_cache(self, type=None):
         if type:
