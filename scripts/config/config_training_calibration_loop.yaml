@@ -37,6 +37,12 @@ lr_scheduler:
   mode: min
   factor: 0.5
   patience: 10
+# Early stopping (H7). Deliberately larger than the scheduler's `patience: 10`
+# above: a scheduled learning-rate drop must get a chance to work before the
+# run is abandoned. Set to 0 or null to disable. `epochs: 100` is now a
+# ceiling rather than a target.
+early_stopping_patience: 20
+early_stopping_min_delta: 0.0
 seq_length: 240
 learning_rate: 0.001
 batch: 512
@@ -301,6 +307,8 @@ training_pipeline:
       metric_fn: ${metric_fn}
       gradient_clip: ${gradient_clip}
       predict_steps: ${predict_steps}
+      early_stopping_patience: ${early_stopping_patience}
+      early_stopping_min_delta: ${early_stopping_min_delta}
       model_logger: ${model_logger}
     strategy: ${strategy}
     epochs: ${epochs}

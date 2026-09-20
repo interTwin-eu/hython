@@ -15,15 +15,27 @@ could fit the target from cell identity alone and never attribute variance to
 the calibrated parameters, which makes d(vwc)/d(theta) - the quantity dPL
 backpropagates through - meaningless.
 
-Storage is delegated to `pool_archive` (A1). Each wflow run writes ~6 GB over
+Storage is delegated to `pool_archive` (A1). Each wflow run writes ~10 GB over
 the full map, of which training reads a few thousand cells, so only a fixed
 random 5% of cells - the *pool* - is kept, and runs are stacked along one
-`cell` axis instead of gaining a `cycle` dimension. 256 MB a run. See
-`pool_archive.py` for the layout and why the forcing sits in the same store as
-the target.
+`cell` axis instead of gaining a `cycle` dimension. ~392 MB a run, measured.
+See `pool_archive.py` for the layout and why the forcing sits in the same store
+as the target.
 
-Requires the hython changes in HYTHON_MULTICYCLE_PLAN.md (H1-H4). Without them
-the dataset cannot read the stacked layout.
+How much is run each cycle (A2):
+
+  cycle 0   4 perturbed members, spread across the physical range by a Latin
+            hypercube, plus the clean theta_cal run.
+  cycle 1+  1 perturbed member plus the clean run. After cycle 0 the members
+            carry no level offset, only per-cell noise, and one run already
+            gives thousands of (theta, vwc) pairs for 5 parameters.
+
+Training stops on its own (H7, `early_stopping_patience`), so `epochs` in the
+config is a ceiling rather than a target, and the row budget per epoch is fixed
+by `train_rows_target` rather than a fraction of a growing archive.
+
+Requires the hython changes in HYTHON_MULTICYCLE_PLAN.md (H1-H5, H7). Without
+them the dataset cannot read the stacked layout.
 """
 
 import json
@@ -32,7 +44,9 @@ import shutil
 import subprocess as sp
 import sys
 import tomllib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
+from typing import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -86,7 +100,14 @@ LAYERED_PARAMS = {"c"}
 @dataclass
 class CycleConfig:
     n_cycles: int = 8
-    n_members: int = 4  # perturbed wflow runs per cycle, feeding the archive
+    # A2(a). Cycle 0 is the only time the surrogate sees parameters far from
+    # the current guess: `build_members` spreads its members across the whole
+    # physical range with a Latin hypercube. After that the offsets are zero
+    # and runs differ only by per-cell noise, which one run supplies just as
+    # well - it already gives thousands of (theta, vwc) pairs for 5 parameters.
+    # 4 + 1 per cycle is 40 runs and ~36 h; 4 then 1 is 19 runs and ~17 h.
+    n_members: int = 4        # cycle 0, feeding the archive
+    n_members_later: int = 1  # cycles 1+
 
     # Cycle 0 seeds the archive with a Latin hypercube over the full physical
     # range. Ahmad 2025 sec 2.4.1: training "designed to capture sensitivity to
@@ -97,7 +118,10 @@ class CycleConfig:
     # Later cycles perturb theta_cal locally, annealed as the search settles.
     # Tsai 2021: "as the search algorithms went near an optimum".
     jitter_start: float = 0.15
-    jitter_end: float = 0.03
+    # A2(a). Floored at 0.05-0.08, not 0.03: with one run per cycle the
+    # per-cell noise is the *only* local signal the surrogate gets after cycle
+    # 0, so annealing it away leaves nothing to learn the local gradient from.
+    jitter_end: float = 0.06
 
     # Ahmad 2025 sec 2.4.1 stopping rule, on the clean theta_cal wflow run.
     rel_tol: float = 0.01
@@ -106,7 +130,42 @@ class CycleConfig:
     skip_wflow: bool = False
     skip_train: bool = False
     skip_calibration: bool = False
-    julia_threads: int = 24
+    # A2(f), measured: one wflow run plateaus at ~8 threads - 12 to 24 buys
+    # 2.3%. So `julia_threads` is the **total core budget**, split across
+    # concurrent runs, rather than a per-run count. `wflow_parallel: 1` leaves
+    # 24 threads on one run, exactly as before.
+    #
+    #   wflow_parallel   threads each   30-day run each
+    #   1                24             28.3 s
+    #   3                8              28.9 s
+    #   4                6              32.2 s
+    #
+    # 3 or 4 is the sweet spot on 24 cores. It only helps where a cycle has
+    # several members to run, which after A2(a) means cycle 0.
+    julia_threads: int = 24   # total, not per run
+    wflow_parallel: int = 1   # concurrent wflow runs
+    wflow_retries: int = 2  # A2(a): one run per cycle, so a failure costs a whole cycle
+
+    # A2(f). Measured on a 30-day run: level 5 costs 20% of the simulation time
+    # and level 1 gives 131 MB against level 5's 128 MB - 2.3% more disk for
+    # 8.5% less time. Level 0 is not the alternative: it is 318 MB, 2.5x.
+    # Set on the per-run TOML, never on the shared template.
+    output_compression: int = 1
+
+    # A full 8-cycle run leaves ~190 GB of full-map netCDFs for an archive that
+    # reads ~4 GB of them. The pool cells are taken at ingestion, so the big
+    # file has no reader afterwards. Kept: cycle 0 and the last cycle (for
+    # figures and for checking the surrogate against the full map), and every
+    # cycle's *score*, which lives in the state JSON and is never a netCDF.
+    prune_outputs: bool = True
+
+    def members_for(self, cycle: int) -> int:
+        """How many perturbed wflow runs this cycle feeds the archive (A2 a)."""
+        return self.n_members if cycle == 0 else self.n_members_later
+
+    def threads_per_run(self) -> int:
+        """Julia threads for one wflow run, dividing the total core budget."""
+        return max(1, self.julia_threads // max(1, self.wflow_parallel))
 
 
 @dataclass
@@ -178,20 +237,21 @@ def build_members(
     perturb theta_cal locally with an annealed jitter.
     """
     names = list(CAL_PARAMS)
+    n_members = cfg.members_for(cycle)
 
     if cycle == 0:
-        lhs = latin_hypercube(cfg.n_members, len(names), rng)
+        lhs = latin_hypercube(n_members, len(names), rng)
         offsets = (lhs - 0.5) * 2.0 * cfg.seed_offset
         jitter = cfg.seed_jitter
     else:
-        offsets = np.zeros((cfg.n_members, len(names)))
+        offsets = np.zeros((n_members, len(names)))
         frac = cycle / max(cfg.n_cycles - 1, 1)
         jitter = cfg.jitter_start + (cfg.jitter_end - cfg.jitter_start) * frac
 
-    logger.info(f"cycle {cycle}: {cfg.n_members} members, jitter={jitter:.3f}")
+    logger.info(f"cycle {cycle}: {n_members} member(s), jitter={jitter:.3f}")
 
     members = []
-    for m in range(cfg.n_members):
+    for m in range(n_members):
         out = theta.copy(deep=True)
         for p, name in enumerate(names):
             lo, hi = CAL_PARAMS[name]
@@ -239,21 +299,35 @@ def run_wflow(static: Path, out_nc: Path, cfg: CycleConfig) -> None:
 
     data["input"]["path_static"] = str(static)
     data["output"]["path"] = str(out_nc)
+    data["output"]["compressionlevel"] = cfg.output_compression
     data["csv"]["path"] = str(out_nc.with_suffix(".csv"))
 
     run_toml = WD_WFLOW / f"wflow_sbm_{out_nc.stem}.toml"
     with open(run_toml, "w") as f:
         toml.dump(data, f)
 
-    sp.run(
-        [
-            "julia",
-            f"--project={WD_WFLOW}",
-            f"-t {cfg.julia_threads}",
-            f'-e using Wflow;Wflow.run("{run_toml}")',
-        ],
-        check=True,
-    )
+    cmd = [
+        "julia",
+        f"--project={WD_WFLOW}",
+        f"-t {cfg.julia_threads}",
+        f'-e using Wflow;Wflow.run("{run_toml}")',
+    ]
+
+    # A2(a). With one run per cycle a failure costs the whole cycle - the
+    # archive gains nothing and the surrogate sees no new parameters. `check`
+    # used to stop the loop outright; retry first, and only then give up.
+    attempts = max(1, cfg.wflow_retries + 1)
+    for attempt in range(1, attempts + 1):
+        result = sp.run(cmd)
+        if result.returncode == 0:
+            return
+        if attempt < attempts:
+            logger.warning(
+                f"wflow failed (rc={result.returncode}) on {out_nc.name}, "
+                f"attempt {attempt} of {attempts}; retrying"
+            )
+
+    raise sp.CalledProcessError(result.returncode, cmd)
 
 
 # ==== SURROGATE ARCHIVE
@@ -364,6 +438,80 @@ def calibrate(cycle: int, cfg: CycleConfig) -> Path:
 # ==== EVALUATION
 
 
+def member_waves(members: list, cfg: CycleConfig) -> Iterator[list[tuple[int, object]]]:
+    """Split members into groups that run at the same time.
+
+    Yields `[(index, member), ...]` per wave. With `wflow_parallel: 1` every
+    wave holds one member, which is the sequential behaviour.
+    """
+    width = max(1, cfg.wflow_parallel)
+    indexed = list(enumerate(members))
+    for start in range(0, len(indexed), width):
+        yield indexed[start:start + width]
+
+
+def run_wflow_concurrently(jobs: list[tuple[Path, Path]], cfg: CycleConfig) -> None:
+    """Run several wflow jobs at once, each on `cfg.threads_per_run()` threads.
+
+    Threads, not processes: every job spends its life inside `subprocess.run`,
+    which releases the GIL, and the real work happens in separate julia
+    processes anyway.
+
+    If any job fails after its retries, the others are still waited for before
+    raising - leaving a julia process running against a half-written output is
+    worse than the delay.
+    """
+    if len(jobs) == 1:
+        run_wflow(jobs[0][0], jobs[0][1], cfg)
+        return
+
+    logger.info(
+        f"running {len(jobs)} wflow jobs at once, "
+        f"{cfg.threads_per_run()} threads each"
+    )
+    errors = []
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        futures = {pool.submit(run_wflow, s, o, cfg): o for s, o in jobs}
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as err:  # noqa: BLE001 - re-raised below
+                errors.append((futures[future], err))
+
+    if errors:
+        for out_nc, err in errors:
+            logger.error(f"wflow failed for {out_nc.name}: {err}")
+        raise errors[0][1]
+
+
+def prune_cycle_outputs(cycle: int, cfg: CycleConfig) -> None:
+    """Delete one finished cycle's full-map wflow outputs.
+
+    Called with a one-cycle lag, so the cycle just finished always survives:
+    the loop can stop on `rel_tol` at any point, and which cycle turns out to
+    be the last is not known until it is. Cycle 0 is never pruned.
+
+    Only the `.nc` files go. The `.csv` holds gauge discharge, is small, and
+    the scores themselves are in the state JSON either way.
+    """
+    if cycle < 1 or not cfg.prune_outputs:
+        return
+
+    run_dir = WD_WFLOW / "run_default"
+    targets = [run_dir / f"output_cycle{cycle}_m{m}.nc"
+               for m in range(cfg.members_for(cycle))]
+    targets.append(run_dir / f"output_cycle{cycle}_cal.nc")
+
+    freed = 0
+    for path in targets:
+        if path.exists():
+            freed += path.stat().st_size
+            path.unlink()
+
+    if freed:
+        logger.info(f"pruned cycle {cycle} outputs: {freed / 2**30:.1f} GB freed")
+
+
 def score(output_nc: Path) -> dict:
     """RMSE and bias of the clean theta_cal run against the observations.
 
@@ -418,18 +566,30 @@ def main() -> None:
         theta = xr.open_dataset(theta_path).load() if n == 0 else read_theta(theta_path)
         members = build_members(n, cfg, theta, rng)
 
-        # 2/3. wflow forward run per member, ingested as each one finishes.
-        # Ingesting inside the loop rather than batching keeps one run's worth
-        # of pool cells in memory instead of every member's full map, and means
-        # an interrupted cycle still leaves a usable archive.
-        for m, member in enumerate(members):
-            static_nc = WD_WFLOW / f"staticmaps_cycle{n}_m{m}.nc"
-            out_nc = WD_WFLOW / "run_default" / f"output_cycle{n}_m{m}.nc"
-            write_staticmaps(member, static_nc)
+        # 2/3. wflow forward runs, in waves of `wflow_parallel`, each wave
+        # ingested before the next starts. Ingesting per wave rather than at
+        # the end keeps one run's worth of pool cells in memory instead of
+        # every member's full map, and means an interrupted cycle still leaves
+        # a usable archive.
+        #
+        # `wflow_parallel: 1` gives one member per wave, which is exactly the
+        # sequential loop this replaced.
+        for wave in member_waves(members, cfg):
+            jobs = []
+            for m, member in wave:
+                static_nc = WD_WFLOW / f"staticmaps_cycle{n}_m{m}.nc"
+                out_nc = WD_WFLOW / "run_default" / f"output_cycle{n}_m{m}.nc"
+                write_staticmaps(member, static_nc)
+                jobs.append((m, static_nc, out_nc))
+
             if not cfg.skip_wflow:
-                run_wflow(static_nc, out_nc, cfg)
-            ingest_member(static_nc, out_nc, cycle=n, member=m, state=state)
-            state.save(state_path)
+                run_wflow_concurrently([(s, o) for _, s, o in jobs], cfg)
+
+            # Sequential, and in member order, so the archive's run indices do
+            # not depend on which wflow run happened to finish first.
+            for m, static_nc, out_nc in jobs:
+                ingest_member(static_nc, out_nc, cycle=n, member=m, state=state)
+                state.save(state_path)
 
         pool_archive.verify()
 
@@ -451,6 +611,10 @@ def main() -> None:
 
         state.cycle += 1
         state.save(state_path)
+
+        # One cycle behind, so the most recent cycle is always still on disk
+        # whenever the loop stops.
+        prune_cycle_outputs(n - 1, cfg)
 
         if converged(state.history, cfg.rel_tol):
             logger.info(f"converged after cycle {n}")

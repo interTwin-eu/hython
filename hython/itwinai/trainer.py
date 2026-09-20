@@ -217,6 +217,21 @@ class RNNDistributedTrainer(TorchTrainer):
             **distribute_kwargs,
         )
 
+    def _early_stop_agreed(self) -> bool:
+        """Whether every worker should leave the epoch loop now (H7).
+
+        Only the main worker sees the gathered validation loss, so only it can
+        decide. `allgather_obj` then gives every worker the same answer. Under
+        a single process this is just the local flag.
+
+        Stopping early is safe because the weights restored after the loop are
+        the best ones seen, not the last ones.
+        """
+        flag = getattr(self, "_stop_requested", False)
+        if self.strategy.is_distributed:
+            flag = any(self.strategy.allgather_obj(flag))
+        return bool(flag)
+
     def set_epoch(self, epoch: int):
         if self.profiler is not None:
             self.profiler.step()
@@ -257,7 +272,26 @@ class RNNDistributedTrainer(TorchTrainer):
         metric_history.update({f"val_{target}": [] for target in self.config.target_variables})
 
         best_loss = float("inf")
+
+        # Early stopping (H7). Disabled when `early_stopping_patience` is unset
+        # or not positive, which is how the calibration config leaves it.
+        patience = getattr(self.config, "early_stopping_patience", None)
+        min_delta = float(getattr(self.config, "early_stopping_min_delta", 0.0) or 0.0)
+        epochs_without_improvement = 0
+        self._stop_requested = False
+
         for epoch in tqdm(range(self.epochs)):
+            # Checked at the top, where *every* worker reaches it. The decision
+            # is made on the main worker, which is the only one holding the
+            # gathered validation loss, then shared - a worker breaking out of
+            # a collective on its own would hang the others.
+            if self._early_stop_agreed():
+                if self.strategy.is_main_worker:
+                    print(f"Early stopping at epoch {epoch}: validation loss has "
+                          f"not improved by more than {min_delta} for {patience} "
+                          f"epochs. Restoring the best weights.", flush=True)
+                break
+
             epoch_start_time = default_timer()
             self.set_epoch(epoch)
 
@@ -321,10 +355,21 @@ class RNNDistributedTrainer(TorchTrainer):
                     step=epoch,
                 )
 
+            # Measured before `best_loss` moves, and against `min_delta`, so a
+            # run creeping down by a negligible amount still stops. The best
+            # model is kept on *any* improvement, which is a separate question
+            # from whether the run is still making progress.
+            improved = bool(avg_val_loss < best_loss - min_delta)
+
             if avg_val_loss < best_loss:
                 best_loss = avg_val_loss
                 best_model = self.model.state_dict()
                 self.logging(best_model)
+
+            if patience and patience > 0:
+                epochs_without_improvement = 0 if improved else epochs_without_improvement + 1
+                if epochs_without_improvement >= patience:
+                    self._stop_requested = True
 
             epoch_time = default_timer() - epoch_start_time
             epoch_time_tracker.add_epoch_time(epoch + 1, epoch_time)

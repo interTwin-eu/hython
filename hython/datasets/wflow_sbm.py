@@ -264,6 +264,10 @@ class WflowSBM_Pool(BaseDataset):
             [self.xs.lat_i.values, self.xs.lon_i.values], axis=1
         ) if "lat_i" in self.xs.coords else None
 
+        # == ALIGNMENT (H5)
+
+        self.check_alignment()
+
         # == DOWNSAMPLING
 
         # Captured before `build_sample_index`, which needs them, and before
@@ -354,6 +358,64 @@ class WflowSBM_Pool(BaseDataset):
             self.xd = torch.from_numpy(self.xd.values)
             self.y = torch.from_numpy(self.y.values)
             self.xs = torch.from_numpy(self.xs.values)
+
+    def check_alignment(self):
+        """Refuse an archive whose stores do not line up (H5).
+
+        The stores are opened separately and matched purely by position, so a
+        difference in length or order pairs one run's theta with another run's
+        vwc. Nothing downstream notices: the shapes still work, training still
+        converges, and the surrogate is just quietly wrong. These checks cost
+        microseconds and turn that into a startup failure.
+
+        The plan proposed comparing `xs.lat` against `np.tile(xd.lat, runs)`,
+        which does not apply here - the forcing is repeated per run in the
+        archive, so `xd` already carries all `runs x pool_size` rows and the
+        two lat arrays compare directly.
+        """
+        n = self.xs.sizes["cell"]
+        for name, obj in (("dynamic", self.xd), ("target", self.y)):
+            if obj.sizes["cell"] != n:
+                raise ValueError(
+                    f"archive stores disagree: static has {n} cells, {name} "
+                    f"has {obj.sizes['cell']}. They are paired by position, so "
+                    f"this would marry one run's parameters to another's vwc."
+                )
+
+        if n % self.pool_size:
+            raise ValueError(
+                f"{n} rows is not a whole number of runs of "
+                f"pool_size={self.pool_size}."
+            )
+
+        # The real check. `n % pool_size == 0` passes for a 16,800-row run
+        # followed by two 300-row runs, because 17,400 divides by 300.
+        if "run" in self.xs.coords:
+            expected = np.repeat(np.arange(self.n_runs, dtype="int32"), self.pool_size)
+            if not np.array_equal(self.xs.run.values, expected):
+                raise ValueError(
+                    f"the `run` coordinate is not {self.n_runs} contiguous "
+                    f"blocks of {self.pool_size} rows. The archive was appended "
+                    f"with a run of the wrong length."
+                )
+
+        # Same cells, in the same order, in both stores.
+        for coord in ("lat", "lon"):
+            if coord in self.xs.coords and coord in self.xd.coords:
+                if not np.array_equal(self.xs[coord].values, self.xd[coord].values):
+                    raise ValueError(
+                        f"static and dynamic stores disagree on `{coord}`: the "
+                        f"same row index points at different cells of the map."
+                    )
+
+        # Every run must cover the same base cells in the same order, or
+        # `idx % pool_size` no longer identifies a base cell.
+        if "lat_i" in self.xs.coords and self.n_runs > 1:
+            base = self.xs.lat_i.values[:self.pool_size]
+            if not np.array_equal(self.xs.lat_i.values, np.tile(base, self.n_runs)):
+                raise ValueError(
+                    "runs do not cover the same base cells in the same order."
+                )
 
     def build_sample_index(self):
         """Build the (cell, time) sample index from scratch.

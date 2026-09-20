@@ -198,21 +198,141 @@ Two things the H2 section below gets wrong, left in place as a record:
       `WflowSBM_Pool`; the lat/lon classes keep their own axes.
 
 ### 4. Safety
-- [ ] H5 — assert the files line up
-- [ ] H6 — give `RandomDownsampler` its own random generator
+- [x] H5 — assert the files line up. `WflowSBM_Pool.check_alignment`, called
+      from `__init__`, with `tests/test_alignment.py` corrupting an archive in
+      each way it can go wrong. Checks: equal cell counts across the three
+      stores, `n % pool_size == 0`, the `run` coordinate is `n_runs`
+      contiguous blocks, `lat`/`lon` agree row-for-row between the static and
+      dynamic stores, and every run lists the same base cells in the same
+      order.
+
+      **The plan's snippet above does not apply.** It compares `xs.lat`
+      against `np.tile(xd.lat, runs)`, but the forcing is repeated per run in
+      the archive, so `xd` already carries all `runs x pool_size` rows and the
+      two arrays compare directly. Verified against the real archive.
+- [ ] H6 — give `RandomDownsampler` its own random generator. **Deliberately
+      deferred** (decided 2026-09-20), not an oversight: it is a legacy
+      problem, and nothing in the multicycle path reaches it. Train and valid
+      are `PoolDownsampler`, `test_downsampler` is null, and
+      `dynamic_downsampler` is a plain dict read only by `WflowSBM`
+      (`wflow_sbm.py:553,565`), never by `WflowSBM_Pool`. So
+      `RandomDownsampler` is never instantiated by a multicycle run and its
+      global `np.random.seed` cannot perturb one.
+
+      Calibration does not reach it either, though for a different reason:
+      `config_calibration_loop.yaml:80-83` sets all four downsamplers to
+      `null`, and `WflowSBMCal` guards with `if self.downsampler is not None`.
+      `RandomDownsampler` currently appears in **no config**.
+
+      **Trip-wire, currently dormant.** The one thing that would wake H6 up is
+      putting a downsampler into the calibration config. A2(d) would have done
+      that, and it was **dropped** on 2026-09-20 partly for this reason. If
+      anyone revives it, or adds sampling to calibration another way, do H6
+      first or use `PoolDownsampler` there - otherwise the global
+      `np.random.seed` starts running inside the loop.
+
+      The two `xfail(strict=True)` tests in `tests/test_downsampler.py` stay as
+      they are. They state the behaviour H6 owes and will turn into failures
+      the moment it lands, which is the prompt to drop the marker.
 
 ### 5. Speed — A2, orchestrator only, any time
-- [ ] 4 runs at cycle 0, then 1 per cycle (a)
-- [ ] Floor `jitter_end` at 0.05-0.08, add a retry to `run_wflow` (a)
-- [ ] Expose `train_rows_target`; `places = rows // runs` (b2)
-- [ ] Fewer epochs after cycle 0 — skip if H7 lands first (c)
-- [ ] Sample calibration cells in the middle cycles (d)
-- [ ] Time wflow at 12 threads against 24 before running two at once (f)
-- [ ] Update `run_dpl_cycle.py` docstring, lines 18-23 — still describes the old
+- [x] 4 runs at cycle 0, then 1 per cycle (a). `CycleConfig.members_for`,
+      with `n_members: 4` and `n_members_later: 1`. Over 8 cycles that is 11
+      archive runs instead of 32.
+- [x] Floor `jitter_end` at 0.05-0.08, add a retry to `run_wflow` (a).
+      `jitter_end` is 0.06. `run_wflow` retries `wflow_retries: 2` times and
+      then still raises - retrying must not turn a real failure into a silent
+      one, or the cycle would ingest a missing or stale output.
+- [x] Expose `train_rows_target`; `places = rows // runs` (b2). Landed with the
+      H3 wiring: top-level `train_rows_target: 6730` in the training config,
+      and `PoolDownsampler._places` divides it by `runs`. Measured at 4 runs:
+      `places=1682`, 6,728 rows, against the plan's predicted 1,683.
+- [~] Fewer epochs after cycle 0 (c). **Superseded by H7**, which landed
+      2026-09-20: each cycle now runs as long as it keeps improving rather than
+      for a guessed number of epochs. Nothing to do unless early stopping turns
+      out to let cycles run too long in practice.
+- [~] Sample calibration cells in the middle cycles (d). **Dropped on
+      2026-09-20** - considered and rejected, not forgotten. See (d) below.
+- [x] Time wflow at 12 threads against 24 (f). **Measured 2026-09-20**, and
+      the answer is not what this section assumed.
+
+      | threads | 30-day run | | | 1-year run |
+      |---|---|---|---|---|
+      | 1 | 86.4 s | | 12 | 8m42s |
+      | 2 | 55.1 s | | 24 | 8m30s |
+      | 4 | 38.6 s | | | |
+      | 6 | 32.2 s | | | |
+      | 8 | 28.9 s | | | |
+      | 12 | 28.3 s | | | |
+
+      **One run cannot use 24 threads.** It plateaus around 8; 12 to 24 buys
+      2.3%. Asking for more threads would not help a single run at all.
+
+      **So run 3-4 wflow runs in parallel at 6-8 threads each**, not one at 24.
+      Six threads is 14% slower than twelve on half the cores, so four
+      concurrent runs give roughly 3.5x the throughput on the same 24 cores.
+      With `n_members_later: 1` this only bites at cycle 0, where it turns four
+      sequential runs into one wave.
+
+      **Two things this ruled out.** CEPH is *not* the bottleneck: the same run
+      writing to local disk finished within a tenth of a second of the CEPH
+      one, with and without compression. And `compressionlevel = 5` costs 20%
+      of the simulation time for nothing - level 1 gives 131 MB against 128 MB
+      for 30 days, and is 8.5% faster than level 5. The rest is wflow's own
+      serial computation.
+
+      Untested: whether concurrent runs actually scale, since nothing is
+      saturated it should, but it was not measured.
+- [x] Make parallel wflow a choice, not a rewrite (f). `wflow_parallel`
+      (default **1**, sequential) and `julia_threads` as a **total** core
+      budget split by `threads_per_run()`. Members run in waves, each wave
+      ingested before the next starts, so memory still holds one run at a time
+      and an interrupted cycle still leaves a usable archive. At
+      `wflow_parallel: 1` a wave is one member - the sequential loop exactly.
+      Ingestion stays sequential and in member order, so archive run indices do
+      not depend on which wflow finished first.
+
+- [x] Lower `compressionlevel` from 5 to 1 (f). `CycleConfig.output_compression`,
+      applied to the per-run TOML `run_wflow` already writes - **never to the
+      shared template**, which every future run reads. 8.5% off each run for
+      2.3% more disk.
+- [x] **Delete wflow outputs after ingestion.** `prune_cycle_outputs`, called
+      with a **one-cycle lag** - the loop can stop on `rel_tol` at any point, so
+      which cycle turns out to be the last is not known until it is, and
+      pruning one behind means the most recent cycle is always still on disk.
+      Cycle 0 is never pruned. Only `.nc` files go; the `.csv` is small and
+      holds gauge discharge, and the scores live in the state JSON.
+
+      Decision (2026-09-20): keep the scores plus cycle 0 and the last cycle,
+      **not** all 8 clean `theta_cal` outputs. ~190 GB becomes ~20 GB. Switch
+      off with `prune_outputs: false`.
+- [x] Update `run_dpl_cycle.py` docstring. Now states the per-cycle run
+      schedule, the measured ~392 MB a run rather than the old 256 MB estimate,
+      that training stops on its own (H7), and that H1-H5 and H7 have landed.
+      (was: still describes the old
       `cycle` dimension
 
 ### 6. Worth doing, not required
-- [ ] H7 — early stopping (replaces the epoch guesses in 5)
+- [x] H7 — early stopping. `RNNDistributedTrainer` now counts epochs without
+      improvement and leaves the loop. `early_stopping_patience: 20` and
+      `early_stopping_min_delta: 0.0` in the training config; unset in the
+      calibration config, where it stays off. `epochs: 100` is now a **ceiling**,
+      not a target.
+
+      Patience is deliberately larger than the scheduler's `patience: 10`, so a
+      learning-rate drop gets a chance before the run is abandoned.
+
+      **The decision is made on the main worker and shared** via
+      `strategy.allgather_obj`, checked at the *top* of the loop where every
+      worker reaches it. A worker breaking out of a collective on its own would
+      hang the others. Under one process no collective is touched at all.
+
+      Verified in a real run: with `patience: 1` and a `min_delta` nothing can
+      beat, a 10-epoch ceiling stopped after 2 epochs and restored the best
+      weights. `tests/test_early_stopping.py` covers the agreement logic - and
+      found that assigning `trainer.strategy` silently replaces a stub via a
+      property setter, so the distributed cases had to set `_strategy`
+      directly or they would have passed without testing anything.
 
 ---
 
@@ -647,13 +767,33 @@ takes 9 h a cycle down to ~2.5 h. Both are overrides in the dict
 Those numbers are guesses. H7 replaces them with a rule. If H7 lands first,
 skip this section.
 
-### (d) Calibration does not need every cell while training
+### (d) Calibration does not need every cell while training — DROPPED
 
-`train_downsampler` is `null` in the calibration config, so the head trains on
-all 157,817 cells. `TransferNN` maps attributes to parameters one cell at a
-time, so training it on a sample and then applying it to the whole map is fine,
-and you still get a full map of parameters out. Sample the middle cycles, run
-the last one at full size.
+**Decision, 2026-09-20: not doing this.** The reasoning below still holds; it
+is simply not worth what it costs.
+
+The original idea: `train_downsampler` is `null` in the calibration config, so
+the head trains on all 157,817 cells. `TransferNN` maps attributes to
+parameters one cell at a time, so training it on a sample and then applying it
+to the whole map is fine, and you still get a full map of parameters out.
+Sample the middle cycles, run the last one at full size.
+
+**Why it was dropped.** It buys about **6 h** - calibration goes from 3 h to
+1 h in the middle cycles, but the `+2 h` full-size run at the end exists only
+because the middle ones were sampled, so the net on a run stopping at cycle 5
+is ~39 h instead of ~33 h. Against that:
+
+- it is the only A2 item that needs **new code**. The rest are settings.
+- it puts a sampler into the calibration path, which today has none. That is
+  exactly where `RandomDownsampler`'s global `np.random.seed` would start to
+  matter, so H6 would have to land first (see the H6 note above).
+- each cycle would calibrate on a different subset, adding variance between
+  cycles to the thing the whole loop is trying to converge.
+
+The other A2 items - run counts per cycle (a), the row budget (b2), fewer
+epochs after cycle 0 (c) - save more, are pure scheduling, and carry none of
+this. If the loop turns out slower than the budget predicts, (d) is still
+available as a last-resort lever.
 
 ### (e) `n_cycles: 8` is a limit, not a plan
 
