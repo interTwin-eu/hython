@@ -1,0 +1,295 @@
+experiment_name: loop
+experiment_run: train_multicycle
+work_dir: /mnt/CEPH_PROJECTS/InterTwin/hython_model_run
+train_temporal_range:
+- '2017-01-01'
+- '2019-12-31'
+valid_temporal_range:
+- '2020-01-01'
+- '2020-12-31'
+test_temporal_range:
+- '2022-01-01'
+- '2022-12-31'
+seed: 10
+sampling_seed: 10
+device: cuda:0
+model: CudaLSTM
+hidden_size: 128
+dropout: 0.2
+lstm_layers: 1
+lstm_batch_norm: false
+model_head_layer: regression
+model_head_activation: linear
+model_head_kwargs: {}
+strategy: null
+hython_trainer: rnntrainer_hpc
+loss_fn:
+  _target_: hython.losses.RMSELoss
+metric_fn:
+  _target_: hython.metrics.MetricCollection
+  metrics:
+  - _target_: hython.metrics.RMSEMetric
+  - _target_: hython.metrics.MSEMetric
+  - _target_: hython.metrics.KGEMetric
+  - _target_: hython.metrics.NSEMetric
+optimizer: adam
+lr_scheduler:
+  mode: min
+  factor: 0.5
+  patience: 10
+seq_length: 240
+learning_rate: 0.001
+batch: 512
+epochs: 100
+gradient_clip:
+  max_norm: 1
+target_weights: even
+predict_steps: 0
+regularization:
+  _target_: hython.regularizations.RangeBoundReg
+  factor: 100
+  bounds:
+    vwc:
+    - 0.01
+    - 0.9
+train_downsampler:
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac_time: null
+  frac_space: 0.01
+  seed: ${sampling_seed}
+valid_downsampler:
+  _target_: hython.sampler.downsampler.RandomDownsampler
+  frac_time: null
+  frac_space: 0.01
+  seed: ${sampling_seed}
+test_downsampler: null
+dynamic_downsampler:
+  frac_time: 0.3
+  frac_space: null
+  seed: ${sampling_seed}
+data_lazy_load: false
+num_workers_dataloader: 24
+num_workers_dataloader_eval: 24
+dataset: WflowSBM_HPC
+data_source:
+  file:
+    static_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_static_calib.zarr
+    dynamic_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_dynamic_calib.zarr
+    target_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_dynamic_calib.zarr
+static_inputs:
+- KsatVer
+- c
+- f
+- RootingDepth
+- Sl
+- thetaS
+- thetaR
+- SoilThickness
+- M
+- Kext
+- Swood
+- wflow_uparea
+- wflow_landuse
+- wflow_dem
+- Slope
+- WaterFrac
+dynamic_inputs:
+- precip
+- pet
+- temp
+target_variables:
+- vwc
+mask_variables:
+- mask_missing
+- mask_lake
+scaling_use_cached: false
+scaling_static_range:
+  thetaS:
+  - 0.25
+  - 0.9
+  thetaR:
+  - 0.01
+  - 0.25
+  KsatVer:
+  - 1
+  - 8000
+  c:
+  - 1
+  - 20
+  f:
+  - 1.0e-05
+  - 0.01
+  M:
+  - 1
+  - 3000
+  RootingDepth:
+  - 5
+  - 3000
+  Swood:
+  - 0.0
+  - 0.5
+  Sl:
+  - 0.02
+  - 0.2
+  Kext:
+  - 0.48
+  - 0.96
+  SoilThickness:
+  - 50
+  - 3000
+preprocessor: null
+scaler:
+  static_inputs:
+    lazy: false
+    variant:
+    - _target_: hython.scaler.BoundedScaler
+      variable:
+        KsatVer: ${scaling_static_range.KsatVer}
+        c: ${scaling_static_range.c}
+        f: ${scaling_static_range.f}
+        RootingDepth: ${scaling_static_range.RootingDepth}
+        Sl: ${scaling_static_range.Sl}
+        thetaS: ${scaling_static_range.thetaS}
+        thetaR: ${scaling_static_range.thetaR}
+        SoilThickness: ${scaling_static_range.SoilThickness}
+        M: ${scaling_static_range.M}
+        Kext: ${scaling_static_range.Kext}
+        Swood: ${scaling_static_range.Swood}
+    - _target_: hython.scaler.MinMax01Scaler
+      variable:
+      - wflow_uparea
+      - wflow_landuse
+      - wflow_dem
+      - Slope
+      - WaterFrac
+  dynamic_inputs:
+    lazy: false
+    variant:
+    - _target_: hython.scaler.MinMax01Scaler
+      variable: ${dynamic_inputs}
+  target_variables: null
+model_logger:
+  CudaLSTM:
+    logger: local
+    model_component: model
+    model_name: ${model}
+    model_uri: ${work_dir}/${experiment_name}_${experiment_run}/${model}.pt
+    log: true
+    load: false
+eval_var:
+- runoff_land
+- runoff_river
+- ssf
+evaluator:
+  var_metadata:
+    vwc:
+      unit: mm/mm
+    actevap:
+      unit: mm
+  dir_out: ${work_dir}/${experiment_name}_${experiment_run}/evaluate
+  map:
+    var: ${eval_var}
+    metric:
+    - bias
+    - pbias
+    - pearson
+    - nse
+    write: true
+  distr:
+    var: ${eval_var}
+    metric: null
+    write: true
+    kwargs: {}
+  ts_compare:
+    var: ${eval_var}
+    metric: null
+    coords:
+    - - 48
+      - 11
+    - - 45
+      - 10
+    write: false
+  global_metric:
+    var: ${eval_var}
+    metric:
+    - bias
+    - pbias
+    - pearson
+    - nse
+    - rmse
+    write: true
+training_pipeline:
+  _target_: itwinai.pipeline.Pipeline
+  steps:
+  - _target_: hython.itwinai.data.RNNDatasetGetterAndPreprocessor
+    hython_trainer: ${hython_trainer}
+    dynamic_inputs: ${dynamic_inputs}
+    static_inputs: ${static_inputs}
+    target_variables: ${target_variables}
+    mask_variables: ${mask_variables}
+    train_temporal_range: ${train_temporal_range}
+    valid_temporal_range: ${valid_temporal_range}
+    test_temporal_range: ${test_temporal_range}
+    dataset: ${dataset}
+    data_lazy_load: ${data_lazy_load}
+    data_source: ${data_source}
+    preprocessor: ${preprocessor}
+    scaler: ${scaler}
+    scaling_use_cached: ${scaling_use_cached}
+    scaling_static_range: ${scaling_static_range}
+    experiment_name: ${experiment_name}
+    experiment_run: ${experiment_run}
+    work_dir: ${work_dir}
+    dynamic_downsampler: ${dynamic_downsampler}
+    train_downsampler: ${train_downsampler}
+    valid_downsampler: ${valid_downsampler}
+    test_downsampler: ${test_downsampler}
+    seq_length: ${seq_length}
+  - _target_: hython.itwinai.trainer.RNNDistributedTrainer
+    model: ${model}
+    config:
+      experiment: ${experiment_name}/${experiment_run}
+      experiment_name: ${experiment_name}
+      experiment_run: ${experiment_run}
+      work_dir: ${work_dir}
+      batch_size: ${batch}
+      learning_rate: ${learning_rate}
+      num_workers_dataloader: ${num_workers_dataloader}
+      num_workers_dataloader_eval: ${num_workers_dataloader_eval}
+      hython_trainer: ${hython_trainer}
+      regularization: ${regularization}
+      dynamic_downsampler: ${dynamic_downsampler}
+      seq_length: ${seq_length}
+      target_variables: ${target_variables}
+      dynamic_inputs: ${dynamic_inputs}
+      static_inputs: ${static_inputs}
+      optimizer: ${optimizer}
+      lr_scheduler: ${lr_scheduler}
+      target_weights: ${target_weights}
+      hidden_size: ${hidden_size}
+      dropout: ${dropout}
+      lstm_layers: ${lstm_layers}
+      lstm_batch_norm: ${lstm_batch_norm}
+      model_head_layer: ${model_head_layer}
+      model_head_activation: ${model_head_activation}
+      model_head_kwargs: ${model_head_kwargs}
+      loss_fn: ${loss_fn}
+      metric_fn: ${metric_fn}
+      gradient_clip: ${gradient_clip}
+      predict_steps: ${predict_steps}
+      model_logger: ${model_logger}
+    strategy: ${strategy}
+    epochs: ${epochs}
+    random_seed: ${seed}
+    profiling_wait_epochs: 1
+    profiling_warmup_epochs: 1
+    logger:
+      _target_: itwinai.loggers.LoggersCollection
+      loggers:
+      - _target_: itwinai.loggers.ConsoleLogger
+        log_freq: 1
+      - _target_: itwinai.loggers.MLFlowLogger
+        experiment_name: ${experiment_name}
+        run_name: ${experiment_run}
+        log_freq: batch
+        savedir: /home/iferrario/dev/hython/scripts/config/mllogs
