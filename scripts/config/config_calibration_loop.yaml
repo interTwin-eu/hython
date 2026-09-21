@@ -33,7 +33,7 @@ strategy: null
 log_calib_parameters: null
 hython_trainer: caltrainer
 loss_fn:
-  _target_: hython.losses.KGELoss
+  _target_: hython.losses.CellKGELoss
 data_loss_scale_proportional_valid_target_timesteps: true
 metric_fn:
   _target_: hython.metrics.MetricCollection

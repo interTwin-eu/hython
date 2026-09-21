@@ -71,13 +71,24 @@ class AbstractTrainer(ABC):
                 imask = valid_mask[..., i]
             else:
                 imask = Ellipsis
-            iytrue = target[..., i][imask] 
 
-            if self.cfg.model_head_layer == "regression":
-                iypred["y_pred"] = prediction["y_hat"][..., i][imask]
-            elif self.cfg.model_head_layer == "distr_normal":
-                iypred["mu"] = prediction["mu"][..., i][imask]
-                iypred["sigma"] = prediction["sigma"][..., i][imask]
+            # A per-cell loss (e.g. CellKGELoss) needs the (N, T) shape, so
+            # the invalid values are set to NaN instead of removed.
+            if getattr(self.cfg.loss_fn, "per_cell", False):
+                if self.cfg.model_head_layer != "regression":
+                    raise NotImplementedError("per-cell loss needs model_head_layer: regression")
+                iytrue = target[..., i]
+                iypred["y_pred"] = prediction["y_hat"][..., i]
+                if valid_mask is not None:
+                    iytrue = torch.where(imask, iytrue, torch.nan)
+                    iypred["y_pred"] = torch.where(imask, iypred["y_pred"], torch.nan)
+            else:
+                iytrue = target[..., i][imask]
+                if self.cfg.model_head_layer == "regression":
+                    iypred["y_pred"] = prediction["y_hat"][..., i][imask]
+                elif self.cfg.model_head_layer == "distr_normal":
+                    iypred["mu"] = prediction["mu"][..., i][imask]
+                    iypred["sigma"] = prediction["sigma"][..., i][imask]
 
             w = target_weight[target_name]
 

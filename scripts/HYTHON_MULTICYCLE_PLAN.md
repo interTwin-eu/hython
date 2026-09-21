@@ -1868,7 +1868,17 @@ bias 0.100 against 0.086 (see "Step 3 results" in Next steps).
 **Files:** `hython/trainer/base.py:64-97` (`_compute_batch_loss`),
 `hython/losses/standard.py:56-94` (`compute_kge_torch`, `KGELoss`).
 
-**Status: found 2026-09-21, a flaw - waits on the user's decision on the fix.**
+**Status: implemented 2026-09-21, not committed.** `CellKGELoss` and
+`compute_kge_per_cell` in `hython/losses/standard.py`; `_compute_batch_loss`
+gives a loss with `per_cell = True` the `(N, T)` tensors, with NaN where not
+valid; `config_calibration_loop.yaml` uses `CellKGELoss`; tests in
+`tests/test_cell_kge.py`. Decided by the user: weight = observation count
+(fewer observations = a less representative series, less effect on the loss).
+Minimum count: a user parameter later, not now - only cells with fewer than 2
+observations are dropped (the standard deviation needs 2). No pooled term (user: for the old pooled behaviour, configure `KGELoss`).
+The per-batch valid-fraction scaling
+(`data_loss_scale_proportional_valid_target_timesteps`) is kept. The logged
+calibration metrics are still pooled (goes with H12).
 
 **What the code does.** `_compute_batch_loss` indexes the `(cells, days)`
 target with the mask - `target[..., i][imask]` - which flattens the whole

@@ -77,6 +77,71 @@ def compute_kge_torch(true, pred, eps=1e-8):
 
     return kge
 
+def compute_kge_per_cell(true, pred, eps=1e-8):
+    """
+    Compute the KGE of each cell over its own time series.
+
+    :param true: torch tensor (N, T). NaN marks a missing observation.
+    :param pred: torch tensor (N, T).
+    :return: tuple (kge, count). kge is (M,) and holds only the cells with
+        2 or more observations, because the standard deviation needs 2.
+        count is (M,), the number of observations of each of these cells.
+    """
+    mask = (~torch.isnan(true)) & (~torch.isnan(pred))
+    keep = mask.sum(-1) >= 2
+    mask = mask[keep].float()
+    # Set the missing values to 0 before the arithmetic. A NaN that is only
+    # multiplied by 0 still makes the gradient NaN.
+    true = torch.where(mask.bool(), true[keep], 0.0)
+    pred = torch.where(mask.bool(), pred[keep], 0.0)
+
+    n = mask.sum(-1)
+    true_mean = (true * mask).sum(-1) / n
+    pred_mean = (pred * mask).sum(-1) / n
+    dtrue = (true - true_mean[:, None]) * mask
+    dpred = (pred - pred_mean[:, None]) * mask
+    ss_true = (dtrue**2).sum(-1)
+    ss_pred = (dpred**2).sum(-1)
+
+    # Pearson correlation
+    r = (dtrue * dpred).sum(-1) / torch.sqrt(ss_true * ss_pred + eps)
+
+    # Standard deviation ratio (α). eps in the sqrt keeps the gradient finite
+    # when a cell's prediction is constant.
+    alpha = torch.sqrt(ss_pred / (n - 1) + eps) / (torch.sqrt(ss_true / (n - 1)) + eps)
+
+    # Mean ratio (β)
+    beta = pred_mean / (true_mean + eps)
+
+    kge = 1 - torch.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
+
+    return kge, n
+
+class CellKGELoss(_Loss):
+    """
+    Negative KGE, computed per cell and then averaged over the cells.
+
+    Each cell's KGE is weighted by its number of observations: a cell with
+    few observations represents its time series less well, so it has less
+    effect on the loss. Cells with fewer than 2 observations get no weight.
+
+    The trainer gives this loss the (N, T) tensors, not the flattened valid
+    values (see ``per_cell``).
+    """
+
+    # Tells the trainer to keep the (N, T) shape and set the invalid values to NaN
+    per_cell = True
+
+    def __init__(self):
+        super(CellKGELoss, self).__init__()
+
+    def forward(self, target, y_pred):
+        kge, n = compute_kge_per_cell(target, y_pred)
+        if kge.numel() == 0:
+            # No cell with enough observations: a zero loss that keeps the graph
+            return y_pred.nan_to_num().sum() * 0.0
+        return -1 * (kge * n).sum() / n.sum()
+
 class SPAEFLoss(_Loss):
     def __init__(self, method: str = 'mean'):
         super(SPAEFLoss, self).__init__()
