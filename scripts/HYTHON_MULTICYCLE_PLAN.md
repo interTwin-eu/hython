@@ -10,6 +10,59 @@ that.
 
 ---
 
+## Next steps (written 2026-09-21, after the overnight smoke)
+
+The 5-cycle smoke ran end to end, but its surrogate was too weak (100-300
+cells per run) and calibration made wflow worse than not calibrating (RMSE
+0.116-0.119 against 0.101 uncalibrated). A training-only test on the smoke
+archive showed more cells double the surrogate's skill (H9). The work below
+comes out of that. Do it in this order.
+
+1. **Code, in hython.**
+   - *NumPy sample-index build* (H9, prerequisite). Replace the Python tuple
+     list in `WflowSBM_Pool.build_sample_index` with `np.repeat`/`np.tile`;
+     test that the index is identical to the old one.
+   - *Temporal samplers* (H8). Validation draws its days once, with its own
+     row target and day fraction; training redraws each epoch from a seeded
+     generator; no global `np.random.seed`; tests. This goes in with, or before,
+     the larger budget: early stopping is only as good as the validation loss
+     it reads.
+2. **Config** (H9). `train_rows_target: 22000`, `frac_time: 0.1`, the new
+   validation budget from H8. Keep `epochs: 100` and
+   `early_stopping_patience: 20` - longer training is accepted because early
+   stopping ends it.
+3. **Check on the smoke archive** - no new wflow runs except one.
+   - Train once with the new code and config; score with
+     `smoke_runs/rows_test/eval_rows_test.py`. Confirms the fixes, and gives
+     the real seconds per epoch.
+   - Calibrate against that surrogate, then one clean wflow run to score it
+     against the 0.101 baseline (~40 min). Shows whether a better surrogate
+     fixes calibration before hours of production wflow time go in.
+4. **Production.** Rebuild the archive from a real cycle 0. The old stores are
+   renamed aside (`emo1_*_cycle_old.zarr`) and are not to be reused.
+
+**Waiting on a decision, not blocking 1-3:**
+
+- `compute_nse` (`hython/metrics/custom.py:127`) subtracts `y_pred.mean()`
+  where NSE needs the mean of the observations. It makes the logged NSE a
+  little high. Logged NSE/KGE are also pooled over the whole batch, not per
+  cell.
+- Turning off the clean/baseline wflow scoring runs at cycle 0 - deferred by
+  the user. `smoke_multicycle.py` has no flag for `score_baseline`.
+
+**Worth a look later:**
+
+- Static ingest takes ~210 s per run against ~12 s for dynamic, although the
+  static store grows by ~1 MB per run.
+- Calibration takes 12-21 min per cycle (~1 min per epoch), now the second
+  cost after wflow. Its validation loss was flat from epoch 1 in every cycle.
+- Surrogate sensitivity slope is ~0.5 at best: it recovers about half of
+  theta's effect on vwc, which weakens the gradient calibration gets.
+- Calibration logs repeat `OSError: Directory not empty: /tmp/pymp-*` - the
+  24 loader workers' temp dirs at shutdown. Harmless noise.
+
+---
+
 ## Checklist
 
 ### 1. Build the archive — A1
@@ -379,7 +432,7 @@ Two things the H2 section below gets wrong, left in place as a record:
       property setter, so the distributed cases had to set `_strategy`
       directly or they would have passed without testing anything.
 - [ ] H8 — fix the temporal samplers so validation uses the same start days
-      every epoch. **Planned, not started; waits on a decision.** See H8 below.
+      every epoch. **Agreed 2026-09-21, not started.** See H8 below.
 - [ ] H9 — more cells for the surrogate: `train_rows_target: 22000`,
       `frac_time: 0.1`, and a NumPy sample-index build. **Values decided
       2026-09-21, not applied yet.** See H9 below.
@@ -1328,13 +1381,16 @@ trainer):
 - `DistributedTemporalDynamicDownsampler`: same seeding fix, and make
   `shuffle=False` (validation) draw once.
 
-**Decisions still open:**
+**Agreed 2026-09-21** (the plan above, and the recommended answers to the two
+questions it raised - correct here if that is wrong):
 
-- *Default validation fraction.* All start days (recommended: validation is
-  forward passes only, and the smoke has only ~60 start days per validation
-  cell, so 30% is ~18 days) or keep `frac_time`.
-- *Distributed variant.* Its `__iter__` never splits the samples by rank, so on
-  several GPUs every GPU gets every sample. Fix now, or leave for later.
+- *Validation fraction.* Validation gets its own fixed subset of days, drawn
+  once. Default: every start day, as long as one validation pass stays around a
+  minute; otherwise the smallest fraction that does. Pick the number when
+  implementing, from the measured pass time.
+- *Distributed variant.* Fix the seeding and the draw-once for validation now.
+  The missing split by rank is **left for later** - we run on one GPU - but
+  gets a comment in the code and a line under "Still not checked".
 
 **Validation needs its own budget (agreed 2026-09-21).** Today the validation
 size follows the training settings twice over: `valid_downsampler.rows_target`
@@ -1471,6 +1527,9 @@ time.
   assuming two at once is faster.
 
 ## Still not checked
+
+- `DistributedTemporalDynamicDownsampler.__iter__` never splits samples by
+  rank: on several GPUs every GPU would get every sample. Left for later (H8).
 
 - **Training time is assumed to grow in step with rows.** The direction is
   certain. The hours are arithmetic, not measurement.
