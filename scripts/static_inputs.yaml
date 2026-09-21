@@ -1,0 +1,50 @@
+center:
+  attrs: {}
+  coords: {}
+  data_vars:
+    KsatVer:
+      attrs:
+        variant: MinMax01Scaler
+      data: 23.503965377807617
+      dims: !!python/tuple []
+    Slope:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.8245817422866821
+      dims: !!python/tuple []
+    SoilThickness:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.157663494348526
+      dims: !!python/tuple []
+    thetaS:
+      attrs:
+        variant: MinMax01Scaler
+      data: 0.1702091097831726
+      dims: !!python/tuple []
+  dims: {}
+scale:
+  attrs: {}
+  coords: {}
+  data_vars:
+    KsatVer:
+      attrs:
+        variant: MinMax01Scaler
+      data: 1448.1796875
+      dims: !!python/tuple []
+    Slope:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.137215614318848
+      dims: !!python/tuple []
+    SoilThickness:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.041314125061035
+      dims: !!python/tuple []
+    thetaS:
+      attrs:
+        variant: MinMax01Scaler
+      data: 9.470132827758789
+      dims: !!python/tuple []
+  dims: {}

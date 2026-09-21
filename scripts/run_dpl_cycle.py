@@ -40,6 +40,7 @@ them the dataset cannot read the stacked layout.
 
 import json
 import logging
+import re
 import shutil
 import subprocess as sp
 import sys
@@ -55,7 +56,7 @@ import xarray as xr
 from omegaconf import OmegaConf
 
 import pool_archive
-from pool_archive import DYNAMIC_ARCHIVE, STATIC_ARCHIVE, _unpack_layer
+from pool_archive import DYNAMIC_ARCHIVE, LAYER, STATIC_ARCHIVE, _unpack_layer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -123,8 +124,33 @@ class CycleConfig:
     # 0, so annealing it away leaves nothing to learn the local gradient from.
     jitter_end: float = 0.06
 
-    # Ahmad 2025 sec 2.4.1 stopping rule, on the clean theta_cal wflow run.
+    # Ahmad 2025 sec 2.4.1 stopping rule. `converge_on` chooses what it looks
+    # at, because there are two defensible answers:
+    #
+    #   "wflow"      the clean theta_cal run scored against the satellite.
+    #                Ground truth, but it costs a wflow run per scored cycle
+    #                and is only available on cycles `score_every` allows.
+    #   "surrogate"  what calibration itself reported - surrogate(theta) vs
+    #                satellite, already in `cal_metrics`, free, available every
+    #                cycle. It is the quantity the search actually minimises,
+    #                so its plateau is the optimiser's own convergence. It
+    #                mixes parameter quality with surrogate quality, but across
+    #                cycles those improve jointly, and both flattening is a
+    #                reasonable definition of the loop having converged.
+    #   "both"       stop only when they agree. The conservative choice.
+    #
+    # With "surrogate" the loop can stop early even at `score_every: 0`, so
+    # ground truth is paid for only where it is wanted, not to decide when to
+    # stop. Tsai's released code has no convergence test at all - a fixed
+    # `nEpoch=500` - so this is not inherited from there.
     rel_tol: float = 0.01
+
+    # Chosen 2026-09-20: "surrogate". Note this signal is noisier than the
+    # wflow score and is available from cycle 1, so `rel_tol` can fire early on
+    # two numbers that happened to land close together. `rel_tol: 0` disables
+    # stopping entirely (any change clears the threshold), which is the way to
+    # force a full-length run.
+    converge_on: str = "surrogate"
 
     seed: int = 42
     skip_wflow: bool = False
@@ -159,9 +185,53 @@ class CycleConfig:
     # cycle's *score*, which lives in the state JSON and is never a netCDF.
     prune_outputs: bool = True
 
+    # The clean `theta_cal` run costs a full wflow simulation - as much as a
+    # training member - and yields only the two numbers in `score()`. It feeds
+    # nothing else: the next cycle's centre comes from `calibrate()`, not from
+    # this run. So it is optional.
+    #
+    #   1  score every cycle (what `rel_tol` was designed around)
+    #   k  score every k-th cycle  <- 2 by default: half the clean runs, and
+    #      `rel_tol` still works, just checked on alternate cycles
+    #   0  never score - no clean run at all
+    #
+    # With 0 there is no history, so `converged()` can never fire and the loop
+    # always runs the full `n_cycles`. With k > 1 convergence is still checked,
+    # but only against the cycles that were scored.
+    score_every: int = 2
+
+    # Score the first and last cycle whatever `score_every` says. With
+    # `score_every: 0` this gives exactly two scores - where the campaign
+    # started and where it ended - for two wflow runs instead of eight.
+    # `converged()` then has nothing to compare until the very end, so the loop
+    # always runs the full `n_cycles`: this trades early stopping for wflow
+    # time, and is only worth it if you expect to use every cycle anyway.
+    score_first_last: bool = False
+
+    # Score the uncalibrated parameters once, as a reference for every cycle.
+    # One wflow run for the whole campaign.
+    score_baseline: bool = True
+
+    # Test hooks. All None/empty in a real run, so nothing below changes.
+    # `wflow_starttime`/`wflow_endtime` shorten the simulation window for a
+    # smoke test; `config_overrides` is merged into both the training and the
+    # calibration config, which is how a test redirects `work_dir` away from
+    # the production run folder.
+    wflow_starttime: str | None = None
+    wflow_endtime: str | None = None
+    config_overrides: dict = field(default_factory=dict)
+
     def members_for(self, cycle: int) -> int:
         """How many perturbed wflow runs this cycle feeds the archive (A2 a)."""
         return self.n_members if cycle == 0 else self.n_members_later
+
+    def scores_cycle(self, cycle: int) -> bool:
+        """Whether this cycle runs the clean `theta_cal` evaluation."""
+        if self.score_first_last and cycle in (0, self.n_cycles - 1):
+            return True
+        if self.score_every <= 0:
+            return False
+        return cycle % self.score_every == 0
 
     def threads_per_run(self) -> int:
         """Julia threads for one wflow run, dividing the total core budget."""
@@ -175,6 +245,26 @@ class CycleState:
     cycle: int = 0
     archive_runs: int = 0  # wflow runs committed to BOTH stores
     history: list = field(default_factory=list)  # per-cycle {rmse, bias}
+
+    # One wflow run for the whole campaign: the *uncalibrated* parameters,
+    # scored the same way. Without it a cycle's rmse has nothing to be read
+    # against, and the loop can converge neatly on a result worse than not
+    # calibrating at all - `converged()` only compares consecutive cycles.
+    baseline: dict = field(default_factory=dict)
+
+    # What calibration itself reported, per cycle. This is surrogate(theta) vs
+    # satellite, NOT wflow(theta) vs satellite, so it mixes parameter quality
+    # with surrogate quality and cannot replace `history`. Kept because it
+    # answers a question the wflow score cannot: when a cycle goes badly, was
+    # it the parameters or the imitation? A near-zero `pearson` says the
+    # surrogate is not usable yet.
+    cal_metrics: list = field(default_factory=list)
+
+    # Progress inside the current cycle, reset when it ends. Without these a
+    # crash mid-cycle reruns the cycle from the top and ingests its members a
+    # second time. Members ingest in order, so a count is enough.
+    members_done: int = 0
+    stages_done: list = field(default_factory=list)  # "train", "calibrate"
 
     @classmethod
     def load(cls, path: Path) -> "CycleState":
@@ -263,15 +353,59 @@ def build_members(
 # ==== STATICMAPS I/O
 
 
+def _fill_nearest_along_last(a: np.ndarray) -> np.ndarray:
+    """Forward then backward fill NaNs along the last axis.
+
+    The semantics of `DataArray.ffill().bfill()`: take the nearest valid value
+    along the axis. xarray routes those through `bottleneck`, which is not
+    installed here and is not worth a dependency for what turns out to be ~49
+    cells - so the same thing in numpy.
+
+    A slice that is entirely NaN stays NaN, exactly as ffill/bfill leave it.
+    `read_theta` reports that case rather than inventing a value for it.
+    """
+    def forward(x):
+        idx = np.where(~np.isnan(x), np.arange(x.shape[-1]), 0)
+        np.maximum.accumulate(idx, axis=-1, out=idx)
+        return np.take_along_axis(x, idx, axis=-1)
+
+    out = forward(a)
+    return forward(out[..., ::-1])[..., ::-1]
+
+
 def read_theta(path: Path) -> xr.Dataset:
-    """Calibrated parameters, gap-filled and renamed onto the staticmaps grid."""
+    """Calibrated parameters, gap-filled and renamed onto the staticmaps grid.
+
+    dPL leaves gaps where predictors are missing - about 6.7% of land cells.
+    Interpolate along a single axis so the result stays on the wflow grid,
+    then fill whatever interpolation could not reach with the nearest valid
+    value on that row.
+
+    Measured on a real cycle-0 `theta_cal.nc`: `interpolate_na` leaves only 49
+    of 343,226 land cells, and no latitude row is entirely empty, so every
+    remaining gap is a row end with a genuine neighbour to copy.
+    """
     ds = xr.open_dataset(path).load()
     ds = ds.rename({"lat": "latitude", "lon": "longitude"})
-    # dPL leaves gaps where predictors are missing; fill along a single axis so
-    # the result stays on the wflow grid.
-    return ds.interpolate_na(dim="longitude", method="linear").ffill("longitude").bfill(
-        "longitude"
-    )
+
+    out = ds.copy()
+    for name in ds.data_vars:
+        interp = ds[name].interpolate_na(dim="longitude", method="linear")
+        interp = interp.transpose(..., "longitude")
+        filled = xr.DataArray(
+            _fill_nearest_along_last(interp.values),
+            dims=interp.dims, coords=interp.coords, name=name,
+        )
+        remaining = int(filled.isnull().sum())
+        if remaining:
+            # Only possible where a whole row is empty, which the measurement
+            # above did not find. Loud, because a NaN reaching wflow is not.
+            logger.warning(
+                f"{name}: {remaining} cells still empty after filling - "
+                f"an entire latitude row had no calibrated value"
+            )
+        out[name] = filled
+    return out
 
 
 def write_staticmaps(theta: xr.Dataset, dest: Path) -> None:
@@ -280,8 +414,30 @@ def write_staticmaps(theta: xr.Dataset, dest: Path) -> None:
     nodata = base["thetaS"].isnull()
 
     for name in CAL_PARAMS:
-        filled = theta[name].where(~nodata)
+        lo, hi = CAL_PARAMS[name]
+
+        # Clamp to the declared physical bounds. The perturbed members never
+        # need this - `perturb` works in normalised space and reflects back
+        # inside [0, 1], so their bounds hold by construction - but the clean
+        # `theta_cal` map comes straight from calibration and is not bounded by
+        # anything. Measured on a real cycle 0: 6 cells of KsatVer below 1.0
+        # (down to -2.6), 190 of Sl below 0.02, 38 of f and 5 of c above their
+        # maxima. 0.07% of land, but a negative conductivity is not a small
+        # error, it is an invalid one, and wflow would be handed it.
+        outside = int(((theta[name] < lo) | (theta[name] > hi)).sum())
+        if outside:
+            logger.warning(
+                f"{name}: {outside} cells outside [{lo}, {hi}], clamped"
+            )
+
+        filled = theta[name].clip(lo, hi).where(~nodata)
         if name in LAYERED_PARAMS:
+            # At cycle 0 `theta` is the raw staticmaps, so a layered parameter
+            # still carries all 4 layers and cannot be written into the single
+            # layer slot below. From cycle 1 on it comes back from calibration
+            # already flat, which is why this only ever bit at cycle 0.
+            if "layer" in filled.dims:
+                filled = filled.isel(layer=LAYER, drop=True)
             base[name][0] = filled
         else:
             base[name] = filled
@@ -300,6 +456,10 @@ def run_wflow(static: Path, out_nc: Path, cfg: CycleConfig) -> None:
     data["input"]["path_static"] = str(static)
     data["output"]["path"] = str(out_nc)
     data["output"]["compressionlevel"] = cfg.output_compression
+    if cfg.wflow_starttime:
+        data["starttime"] = cfg.wflow_starttime
+    if cfg.wflow_endtime:
+        data["endtime"] = cfg.wflow_endtime
     data["csv"]["path"] = str(out_nc.with_suffix(".csv"))
 
     run_toml = WD_WFLOW / f"wflow_sbm_{out_nc.stem}.toml"
@@ -372,6 +532,24 @@ def write_cycle_config(template: str, cycle: int, overrides: dict) -> tuple[Path
     return out_dir, name
 
 
+def exec_pipeline(out_dir: Path, name: str) -> str:
+    """Run one itwinai pipeline and return its combined output.
+
+    Captured rather than streamed so metrics can be read back. The output is
+    echoed and also kept next to the cycle's config, so nothing is lost.
+    """
+    proc = sp.run(
+        f"itwinai exec-pipeline --config-dir {out_dir} --config-name {name}",
+        shell=True, capture_output=True, text=True,
+    )
+    log = (proc.stdout or "") + (proc.stderr or "")
+    print(log, end="")
+    (out_dir / f"{name}.log").write_text(log)
+    if proc.returncode != 0:
+        raise sp.CalledProcessError(proc.returncode, "itwinai exec-pipeline")
+    return log
+
+
 def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
     """Retrain on the full archive, warm-started from the previous cycle.
 
@@ -396,20 +574,17 @@ def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
         "train_downsampler.runs": pool_archive.next_run_index(),
         "valid_downsampler.runs": pool_archive.next_run_index(),
     }
+    overrides.update(cfg.config_overrides)
     out_dir, name = write_cycle_config("config_training_calibration_loop", cycle, overrides)
 
-    sp.run(
-        f"itwinai exec-pipeline --config-dir {out_dir} --config-name {name}",
-        shell=True,
-        check=True,
-    )
+    exec_pipeline(out_dir, name)
 
     keep = WD_RUN / "loop_train_multicycle" / "model_sequence"
     keep.mkdir(parents=True, exist_ok=True)
     shutil.copy(WD_RUN / "loop_train_multicycle" / "CudaLSTM.pt", keep / f"CudaLSTM_{cycle}.pt")
 
 
-def calibrate(cycle: int, cfg: CycleConfig) -> Path:
+def calibrate(cycle: int, cfg: CycleConfig) -> tuple[Path, dict]:
     """Run dPL against the observations, returning the calibrated parameter file."""
     overrides = {
         "experiment_run": "cal_multicycle",
@@ -417,13 +592,10 @@ def calibrate(cycle: int, cfg: CycleConfig) -> Path:
         "scaling_use_cached": cycle > 0,
         "data_source.file.target_variables": str(OBS),
     }
+    overrides.update(cfg.config_overrides)
     out_dir, name = write_cycle_config("config_calibration_loop", cycle, overrides)
 
-    sp.run(
-        f"itwinai exec-pipeline --config-dir {out_dir} --config-name {name}",
-        shell=True,
-        check=True,
-    )
+    log = exec_pipeline(out_dir, name)
 
     keep = WD_RUN / "loop_cal_multicycle" / "model_sequence"
     keep.mkdir(parents=True, exist_ok=True)
@@ -432,7 +604,25 @@ def calibrate(cycle: int, cfg: CycleConfig) -> Path:
     src = WD_WFLOW / "run_default" / "inference_parameter.nc"
     dest = WD_CYCLE / f"cycle_{cycle}" / "theta_cal.nc"
     shutil.move(src, dest)
-    return dest
+    return dest, parse_cal_metrics(log)
+
+
+def parse_cal_metrics(log: str) -> dict:
+    """The last validation metrics calibration reported, from its own output.
+
+    `ConsoleLogger: val_<target>_<metric>_epoch = <value>`, one line per metric
+    per epoch; the last of each wins. Returns {} if the format ever changes -
+    these are a diagnostic, and a parsing miss must not stop a cycle.
+    """
+    found = {}
+    for line in log.splitlines():
+        m = re.search(r"val_\w+?_(\w+)_epoch\s*=\s*([-\d.eE+]+)", line)
+        if m:
+            try:
+                found[m.group(1)] = float(m.group(2))
+            except ValueError:
+                pass
+    return found
 
 
 # ==== EVALUATION
@@ -533,28 +723,95 @@ def score(output_nc: Path) -> dict:
     }
 
 
-def converged(history: list, rel_tol: float) -> bool:
-    """Ahmad 2025: stop when RMSE or bias improves by less than 1 percent."""
+def score_baseline(cfg: CycleConfig) -> dict:
+    """Score the *uncalibrated* parameters, once, the same way a cycle is scored.
+
+    One wflow run for the whole campaign - the default parameters never change.
+    Warm-started and windowed exactly like a cycle's clean run, so the only
+    difference between this and any cycle's score is the parameters themselves.
+    """
+    out_nc = WD_WFLOW / "run_default" / "output_baseline_apriori.nc"
+    static = WD_WFLOW / "staticmaps.nc"
+
+    if not cfg.skip_wflow:
+        logger.info("baseline: scoring the uncalibrated parameters (one run)")
+        run_wflow(static, out_nc, cfg)
+
+    result = score(out_nc)
+    logger.info(f"baseline (uncalibrated): {result}")
+    return result
+
+
+def relative_to_baseline(current: dict, baseline: dict) -> dict:
+    """How a cycle compares with not calibrating at all.
+
+    `converged()` only looks at consecutive cycles, so without this the loop
+    can settle on a result worse than the starting point and report success.
+    """
+    if not baseline:
+        return {}
+    out = {}
+    for key in ("rmse", "bias"):
+        if key in current and key in baseline and baseline[key]:
+            out[f"{key}_vs_baseline_pct"] = round(
+                100.0 * (abs(baseline[key]) - abs(current[key])) / abs(baseline[key]), 2
+            )
+    out["better_than_uncalibrated"] = bool(
+        abs(current.get("rmse", float("inf"))) <= abs(baseline.get("rmse", 0.0))
+    )
+    return out
+
+
+def converged(history: list, rel_tol: float, keys=("rmse", "bias")) -> bool:
+    """Ahmad 2025: stop when every tracked quantity improves by less than
+    `rel_tol`. Needs two entries; a missing key is skipped rather than assumed
+    converged, and if none of the keys are present the answer is False."""
     if len(history) < 2:
         return False
     prev, curr = history[-2], history[-1]
-    for key in ("rmse", "bias"):
+    seen = False
+    for key in keys:
+        if key not in prev or key not in curr:
+            continue
+        seen = True
         denom = abs(prev[key])
         if denom > 0 and abs(prev[key] - curr[key]) / denom >= rel_tol:
             return False
-    return True
+    return seen
+
+
+def has_converged(state: "CycleState", cfg: CycleConfig) -> bool:
+    """Whether the loop should stop, by whichever signal `converge_on` names."""
+    wflow = converged(state.history, cfg.rel_tol)
+    surrogate = converged(state.cal_metrics, cfg.rel_tol, keys=("rmse",))
+
+    if cfg.converge_on == "surrogate":
+        return surrogate
+    if cfg.converge_on == "both":
+        return wflow and surrogate
+    if cfg.converge_on != "wflow":
+        raise ValueError(
+            f"converge_on must be 'wflow', 'surrogate' or 'both', "
+            f"got {cfg.converge_on!r}"
+        )
+    return wflow
 
 
 # ==== DRIVER
 
 
-def main() -> None:
-    cfg = CycleConfig()
+def main(cfg: CycleConfig | None = None) -> None:
+    cfg = CycleConfig() if cfg is None else cfg
     state_path = WD_CYCLE / "state.json"
     state = CycleState.load(state_path)
     rng = np.random.default_rng(cfg.seed + state.cycle)
 
     theta_path = WD_WFLOW / "staticmaps.nc"
+    if state.cycle > 0:
+        # Resuming: centre on the last calibration, not on the PTF map.
+        prev = WD_CYCLE / f"cycle_{state.cycle - 1}" / "theta_cal.nc"
+        if prev.exists():
+            theta_path = prev
 
     while state.cycle < cfg.n_cycles:
         n = state.cycle
@@ -577,11 +834,15 @@ def main() -> None:
         for wave in member_waves(members, cfg):
             jobs = []
             for m, member in wave:
+                if m < state.members_done:
+                    continue  # ingested before a crash; see CycleState
                 static_nc = WD_WFLOW / f"staticmaps_cycle{n}_m{m}.nc"
                 out_nc = WD_WFLOW / "run_default" / f"output_cycle{n}_m{m}.nc"
                 write_staticmaps(member, static_nc)
                 jobs.append((m, static_nc, out_nc))
 
+            if not jobs:
+                continue
             if not cfg.skip_wflow:
                 run_wflow_concurrently([(s, o) for _, s, o in jobs], cfg)
 
@@ -589,35 +850,69 @@ def main() -> None:
             # not depend on which wflow run happened to finish first.
             for m, static_nc, out_nc in jobs:
                 ingest_member(static_nc, out_nc, cycle=n, member=m, state=state)
+                state.members_done = m + 1
                 state.save(state_path)
 
         pool_archive.verify()
 
         # 4/5. retrain the surrogate on the whole archive, then calibrate
-        if not cfg.skip_train:
+        if "train" in state.stages_done:
+            logger.info(f"cycle {n}: surrogate already trained, skipping")
+        elif not cfg.skip_train:
             train_surrogate(n, cfg)
-        if not cfg.skip_calibration:
-            theta_path = calibrate(n, cfg)
+            state.stages_done.append("train")
+            state.save(state_path)
+        if "calibrate" in state.stages_done:
+            logger.info(f"cycle {n}: already calibrated, skipping")
+            theta_path = WD_CYCLE / f"cycle_{n}" / "theta_cal.nc"
+        elif not cfg.skip_calibration:
+            theta_path, cal_metrics = calibrate(n, cfg)
+            state.cal_metrics.append({"cycle": n} | cal_metrics)
+            state.stages_done.append("calibrate")
+            state.save(state_path)
+            if cal_metrics:
+                logger.info(f"cycle {n} calibration reported: {cal_metrics}")
 
-        # 6. clean theta_cal run: the evaluation, and the next cycle's centre
-        eval_static = WD_WFLOW / f"staticmaps_cycle{n}_cal.nc"
-        eval_out = WD_WFLOW / "run_default" / f"output_cycle{n}_cal.nc"
-        write_staticmaps(read_theta(theta_path), eval_static)
-        if not cfg.skip_wflow:
-            run_wflow(eval_static, eval_out, cfg)
+        # 6. clean theta_cal run: the evaluation, and nothing else. The next
+        # cycle's centre comes from `calibrate()` above, not from here, so
+        # skipping this costs only the score.
+        if cfg.scores_cycle(n):
+            eval_static = WD_WFLOW / f"staticmaps_cycle{n}_cal.nc"
+            eval_out = WD_WFLOW / "run_default" / f"output_cycle{n}_cal.nc"
+            write_staticmaps(read_theta(theta_path), eval_static)
+            if not cfg.skip_wflow:
+                run_wflow(eval_static, eval_out, cfg)
 
-        state.history.append(score(eval_out))
-        logger.info(f"cycle {n}: {state.history[-1]}")
+            if cfg.score_baseline and not state.baseline:
+                state.baseline = score_baseline(cfg)
+
+            result = score(eval_out)
+            state.history.append(result)
+            rel = relative_to_baseline(result, state.baseline)
+            logger.info(f"cycle {n}: {result}{(' | vs uncalibrated: ' + str(rel)) if rel else ''}")
+            if rel and not rel["better_than_uncalibrated"]:
+                logger.warning(
+                    f"cycle {n} is WORSE than not calibrating "
+                    f"(rmse {result['rmse']:.4f} vs baseline "
+                    f"{state.baseline['rmse']:.4f})"
+                )
+        else:
+            logger.info(
+                f"cycle {n}: not scored (score_every={cfg.score_every}); "
+                f"one wflow run saved"
+            )
 
         state.cycle += 1
+        state.members_done = 0
+        state.stages_done = []
         state.save(state_path)
 
         # One cycle behind, so the most recent cycle is always still on disk
         # whenever the loop stops.
         prune_cycle_outputs(n - 1, cfg)
 
-        if converged(state.history, cfg.rel_tol):
-            logger.info(f"converged after cycle {n}")
+        if has_converged(state, cfg):
+            logger.info(f"converged after cycle {n} (on {cfg.converge_on})")
             break
 
     logger.info(f"history: {json.dumps(state.history, indent=2)}")

@@ -73,3 +73,47 @@ def test_no_gather_when_not_distributed():
 def test_nobody_stops_when_nobody_asked():
     s = Strategy(distributed=True, others=[False, False])
     assert trainer(flag=False, strategy=s)._early_stop_agreed() is False
+
+
+# ==== both pipelines must actually receive the setting
+
+
+import sys
+from pathlib import Path
+
+from omegaconf import OmegaConf
+
+CONFIGS = Path(__file__).resolve().parents[1] / "scripts" / "config"
+
+
+def trainer_config(name):
+    cfg = OmegaConf.load(CONFIGS / f"{name}.yaml")
+    pipe = cfg[[k for k in cfg if k.endswith("_pipeline")][0]]
+    step = [s for s in pipe.steps if "Trainer" in s._target_][0]
+    return cfg, step.config
+
+
+@pytest.mark.parametrize("name", ["config_training_calibration_loop",
+                                  "config_calibration_loop"])
+def test_early_stopping_reaches_the_trainer(name):
+    """A key at the top of the file does nothing unless the pipeline step
+    forwards it - the trainer reads it off its own config, not the root."""
+    _, tc = trainer_config(name)
+    assert tc.early_stopping_patience > 0
+    assert tc.early_stopping_min_delta >= 0
+
+
+@pytest.mark.parametrize("name", ["config_training_calibration_loop",
+                                  "config_calibration_loop"])
+def test_patience_exceeds_the_scheduler(name):
+    """A scheduled learning-rate drop must get a chance to work before the run
+    is abandoned, so early stopping has to be the slower of the two."""
+    cfg, tc = trainer_config(name)
+    assert tc.early_stopping_patience > cfg.lr_scheduler.patience
+
+
+@pytest.mark.parametrize("name", ["config_training_calibration_loop",
+                                  "config_calibration_loop"])
+def test_epochs_is_a_ceiling_not_a_target(name):
+    cfg, tc = trainer_config(name)
+    assert cfg.epochs > tc.early_stopping_patience

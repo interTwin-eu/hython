@@ -194,7 +194,10 @@ class Scaler:
         try:
             self.run_dir = Path(generate_run_folder(cfg))
             if not self.run_dir.exists():
-                self.run_dir.mkdir()
+                # `parents=True`: a work_dir whose parent does not exist used to
+                # raise here and fall through to the working directory below,
+                # silently writing statistics wherever the process started.
+                self.run_dir.mkdir(parents=True, exist_ok=True)
         except Exception as err:
             # Falling back to the working directory writes statistics wherever
             # the process happens to be started, which silently overwrites any

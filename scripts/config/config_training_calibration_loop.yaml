@@ -43,7 +43,21 @@ lr_scheduler:
 # ceiling rather than a target.
 early_stopping_patience: 20
 early_stopping_min_delta: 0.0
-seq_length: 240
+# Measured 2026-09-20 on the two-run archive, 12 epochs, against held-out
+# cells. `predict_steps: 0` means sequence-to-one, so the whole window is
+# warm-up for a single prediction and cost scales with this number.
+#
+#   seq   val RMSE   skill vs mean   sensitivity r   train time
+#    30     0.0383         47.7%           0.824          0.4 min
+#    60     0.0403         46.3%           0.800          0.5 min
+#   120     0.0338         53.6%           0.861          0.9 min
+#   240     0.0356         48.0%           0.824          1.5 min
+#
+# 240 was worse than 120 on both skill and parameter sensitivity while costing
+# 1.7x the time. A 4-epoch run agreed. The worry that slow parameters need a
+# long window to express themselves did not show up: sensitivity is flat from
+# 30 to 240.
+seq_length: 120
 learning_rate: 0.001
 batch: 512
 epochs: 100

@@ -70,6 +70,17 @@ lr_scheduler:
   mode: min
   factor: 0.5
   patience: 10
+# Early stopping for the parameter search (H7). Larger than the scheduler's
+# `patience: 10` above, so a learning-rate drop gets its chance before the
+# search is abandoned. `epochs: 60` becomes a ceiling rather than a target.
+#
+# Note this stops on surrogate(theta) vs satellite - the same quantity the
+# search optimises - not on wflow(theta) vs satellite, which is what
+# `score()` measures. Self-consistent, but it is not stopping on truth.
+# Restoring the best weights returns the best TransferNN, hence the best
+# parameters, not wherever epoch 60 happened to land.
+early_stopping_patience: 15
+early_stopping_min_delta: 0.0
 learning_rate: 0.001
 batch: 512
 epochs: 60
@@ -286,6 +297,8 @@ training_pipeline:
       static_inputs: ${static_inputs}
       optimizer: ${optimizer}
       lr_scheduler: ${lr_scheduler}
+      early_stopping_patience: ${early_stopping_patience}
+      early_stopping_min_delta: ${early_stopping_min_delta}
       target_weights: ${target_weights}
       dynamic_downsampler: ${dynamic_downsampler}
       model: ${model}

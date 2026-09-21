@@ -281,9 +281,17 @@ Two things the H2 section below gets wrong, left in place as a record:
       for 30 days, and is 8.5% faster than level 5. The rest is wflow's own
       serial computation.
 
-      Untested: whether concurrent runs actually scale, since nothing is
-      saturated it should, but it was not measured.
-- [x] Make parallel wflow a choice, not a rewrite (f). `wflow_parallel`
+      **Then measured, and it does not.** A smoke run with two concurrent
+      1-year runs at 12 threads each took **16m32s and 17m10s**, against
+      **8m42s** for the same run alone. Two at once is ~17 min of wall clock
+      for two runs; sequentially it is ~17.4 min. **No benefit.**
+
+      So the earlier reasoning here was wrong. "Nothing is saturated" did not
+      follow from flat thread scaling - flat scaling meant the bottleneck was
+      never the cores, and two processes contend for that same bottleneck
+      (memory bandwidth, most likely). Keep `wflow_parallel: 1`.
+- [x] Make parallel wflow a choice, not a rewrite (f). Measurement says leave
+      it at 1 - see above - but the switch exists and works. `wflow_parallel`
       (default **1**, sequential) and `julia_threads` as a **total** core
       budget split by `threads_per_run()`. Members run in waves, each wave
       ingested before the next starts, so memory still holds one run at a time
@@ -292,6 +300,43 @@ Two things the H2 section below gets wrong, left in place as a record:
       Ingestion stays sequential and in member order, so archive run indices do
       not depend on which wflow finished first.
 
+- [x] Choose what convergence is judged on. `CycleConfig.converge_on`:
+      `"wflow"` (default, the clean run scored against satellite - ground
+      truth, but costs a simulation per scored cycle), `"surrogate"` (what
+      calibration itself reported, already in `cal_metrics`, free and available
+      every cycle), or `"both"`.
+
+      The surrogate signal is the quantity the search actually minimises, so
+      its plateau is the optimiser's own convergence. It mixes parameter
+      quality with surrogate quality, but across cycles those improve jointly.
+      With `"surrogate"` the loop can stop early even at `score_every: 0`, so
+      ground truth is paid for only where it is wanted rather than to decide
+      when to stop.
+
+      **Checked against the source:** Tsai's released code
+      (`.../tsai/model_code/hydroDL/model/train.py`) has **no convergence test
+      at all** - `for iEpoch in range(1, nEpoch + 1)` with `nEpoch=500`, and no
+      `tol`/`early`/`stop` anywhere - and no outer round driver. So `rel_tol`
+      is inherited from Ahmad 2025 sec 2.4.1 alone, and which quantity Ahmad
+      stops on was not verifiable from here.
+- [x] Make the clean `theta_cal` run optional. `CycleConfig.score_every`:
+      1 every cycle (default), k every k-th, 0 never. It costs a **full wflow
+      simulation per cycle** - as much as a training member - and yields only
+      `score()`'s two numbers, after which `prune_cycle_outputs` deletes the
+      ~10 GB output. Over 8 cycles that is 8 wflow runs, about half the whole
+      wflow budget, spent on measurement rather than learning.
+
+      **It feeds nothing else.** The code comment claimed it was "the next
+      cycle's centre"; it is not - `theta` for cycle n+1 comes from
+      `calibrate()` (`run_dpl_cycle.py:681`), not from this run. Corrected.
+
+      The cost of switching it off is the stopping rule: `converged()` needs
+      two scores, so with `score_every: 0` there is no history and the loop
+      always runs the full `n_cycles`. `score_every: 2` keeps both - a real
+      uncontaminated score and half the runs. Scoring a *member* instead was
+      considered and rejected: its parameters carry deliberate per-cell jitter,
+      so the stopping rule would be reacting to noise that was added on
+      purpose.
 - [x] Lower `compressionlevel` from 5 to 1 (f). `CycleConfig.output_compression`,
       applied to the per-run TOML `run_wflow` already writes - **never to the
       shared template**, which every future run reads. 8.5% off each run for
@@ -333,6 +378,11 @@ Two things the H2 section below gets wrong, left in place as a record:
       found that assigning `trainer.strategy` silently replaces a stub via a
       property setter, so the distributed cases had to set `_strategy`
       directly or they would have passed without testing anything.
+- [ ] H8 — fix the temporal samplers so validation uses the same start days
+      every epoch. **Planned, not started; waits on a decision.** See H8 below.
+- [ ] H9 — more cells for the surrogate: `train_rows_target: 22000`,
+      `frac_time: 0.1`, and a NumPy sample-index build. **Values decided
+      2026-09-21, not applied yet.** See H9 below.
 
 ---
 
@@ -382,8 +432,11 @@ in both configs, and the target is never scaled at all. The risk is on the five
 inputs in point 3.
 
 `Hybrid.rescale_input` is `F.sigmoid(param)` (`hybrid.py:90-91`), not a
-`scaling_static_range` lookup. The conclusion is the same — no data-derived
-number is involved — but the reason is different.
+`scaling_static_range` lookup — **but it does not run.**
+`config_calibration_loop.yaml:17` sets `scale_head_input_parameter: false`, and
+`hybrid.py:52-53` only calls it when that is true. See the corrected note at
+the end of H4. The conclusion is unchanged — no data-derived number is involved
+— but the mechanism is not the sigmoid.
 
 Also: `run_dpl_cycle.py`'s docstring (lines 18-23) still describes the old
 design with a `cycle` dimension. It needs updating.
@@ -1119,9 +1172,29 @@ ranges in both configs. No data-derived number touches them, which is also why
 perturbing in scaled space is consistent from end to end.
 
 At calibration the parameters do not go through `BoundedScaler` at all.
-`Hybrid.rescale_input` is `F.sigmoid(param)` (`hybrid.py:90-91`), which maps the
-`TransferNN` output into (0, 1) — the same scaled space `BoundedScaler` uses in
-training. Different mechanism, same space, no data-derived number either way.
+
+**Corrected 2026-09-20.** An earlier draft said `Hybrid.rescale_input` is
+`F.sigmoid(param)` and that this maps the `TransferNN` output into (0, 1). The
+method exists, but `scale_head_input_parameter: false`
+(`config_calibration_loop.yaml:17`) means it never runs, and `TransferNN`'s
+output activation defaults to `"linear"`.
+
+**The bound is a soft one, in the loss, and that is deliberate.**
+`config_calibration_loop.yaml:45-65` applies `RangeBoundReg` with `factor:
+1000` and bounds `[0, 1]` on `output: param`. It is a hinge —
+`relu(x - ub) + relu(lb - x)` — zero inside the range and linear outside. A
+sigmoid would saturate and kill the gradient near the bounds; a penalty keeps
+it alive and lets the optimiser sit against the boundary.
+
+So the space is the same one `BoundedScaler` uses in training, and no
+data-derived number is involved either way. What changes is that the bound is
+approximate: measured on real cycle-0 output, a few cells per parameter land
+just outside, worst case 7.9% of the range, varying which parameter from run to
+run. That is the equilibrium between data fit and penalty, not a defect.
+
+`write_staticmaps` clamps to `CAL_PARAMS` before writing, so wflow never
+receives an invalid value such as a negative conductivity. The clamp does not
+touch the optimisation — only what is written out.
 
 ## H5 — check the files line up
 
@@ -1204,6 +1277,155 @@ Two notes. The counter must use the gathered `avg_val_loss`, not a per-worker
 one, or workers will stop at different epochs. And `patience: 10` in the
 configs belongs to the learning-rate scheduler — early stopping needs its own,
 larger, so a scheduled rate drop gets a chance to work first.
+
+## H8 — validation must use the same start days every epoch
+
+**File:** `hython/sampler/__init__.py` (the three `*TemporalDynamicDownsampler`
+classes), wired in `hython/itwinai/trainer.py:435-460`.
+
+**Status: planned, not started.** Found reading the 2026-09-21 smoke logs. We
+act on it when the user decides.
+
+**What happens today.** When `dynamic_downsampler` is set in the config (the
+training config sets `frac_time: 0.3`), the trainer wraps *both* loaders:
+
+    train  ->  RandomTemporalDynamicDownsampler
+    valid  ->  SequentialTemporalDynamicDownsampler
+
+Both call `random.sample` in `__iter__`, so both draw a **new** 30% of start
+days every epoch. The "sequential" one only sorts its draw. So H3 keeps the
+validation *cells* fixed, but the validation *days* still change per epoch.
+
+Three problems follow:
+
+1. **Validation loss is noisy.** It moves with the days drawn, not only with the
+   model. In the smoke, val RMSE jumps between 0.07 and 0.11 from one epoch to
+   the next. Early stopping (H7) and the learning-rate scheduler both read this
+   number, and the multicycle loop compares it between cycles.
+2. **The draw cannot be repeated.** `seed` goes to `np.random.seed`, but
+   `random.sample` uses Python's `random` module, which that seed does not
+   touch. (Not checked: whether itwinai seeds Python's `random` elsewhere.)
+3. **Global state.** `np.random.seed` in `__init__` resets numpy's global
+   generator for the whole process - the same fault as H6.
+
+**The yaml cannot fix it.** `frac_time` sets the size of the subset, one value
+for both loaders. Nothing makes the subset fixed. `dynamic_downsampler: null`
+gives validation every start day, but training too - about 3.3x longer epochs
+and no per-epoch variety of days in training.
+
+**Planned change** (in the sampler classes, not a Pool-only switch in the
+trainer):
+
+- **Validation:** draw the start days **once**, in `__init__`, from the
+  sampler's own `np.random.default_rng(seed)`. Use the same days every epoch.
+- **Training:** keep a new draw every epoch, but from its own seeded generator,
+  so a run repeats exactly.
+- **New optional key** `dynamic_downsampler.frac_time_valid`. Defaults to
+  `frac_time`, so existing configs keep today's validation size. `1.0` or
+  `null` means every start day.
+- Remove `np.random.seed(...)` from the constructors and the stray
+  `print(self.total_subset_size)`.
+- `DistributedTemporalDynamicDownsampler`: same seeding fix, and make
+  `shuffle=False` (validation) draw once.
+
+**Decisions still open:**
+
+- *Default validation fraction.* All start days (recommended: validation is
+  forward passes only, and the smoke has only ~60 start days per validation
+  cell, so 30% is ~18 days) or keep `frac_time`.
+- *Distributed variant.* Its `__iter__` never splits the samples by rank, so on
+  several GPUs every GPU gets every sample. Fix now, or leave for later.
+
+**Validation needs its own budget (agreed 2026-09-21).** Today the validation
+size follows the training settings twice over: `valid_downsampler.rows_target`
+is `${train_rows_target}`, and the day fraction is the shared `frac_time`. With
+the larger row budget of H9 that ties validation cost to training choices it
+has nothing to do with. Validation gets its own row target and its own day
+fraction, both fixed, chosen so one pass stays at a few hundred thousand
+windows.
+
+**Who else is affected.** `hython` is installed editable in the `emulator` env.
+`hython-itwinai-plugin` (its trainer imports `SamplerBuilder` and asks for
+`temporal-downsampling-sequential`) and the `notebooks/config/*.yaml` configs
+pick the change up. Intended: their validation becomes fixed too. But their
+random draws change, so old runs will not repeat exactly. The calibration
+config has `dynamic_downsampler: null` and is not affected.
+
+**Tests to add:**
+
+- Validation days are the same across epochs.
+- Training days change between epochs, and are the same for a given seed.
+- A fraction of `1.0` gives every start day.
+- The sample count equals cells x days in `spacetime_index`.
+
+## H9 — more cells for the surrogate
+
+**Files:** `config/config_training_calibration_loop.yaml:80` (`train_rows_target`)
+and `:105` (`dynamic_downsampler.frac_time`); `hython/datasets/wflow_sbm.py`
+(`WflowSBM_Pool.build_sample_index`).
+
+**Status: values decided 2026-09-21, not applied yet.**
+
+**Why.** The 2026-09-21 smoke surrogate was weak (validation NSE ~0.25) and
+calibration made wflow worse than not calibrating. A test on the finished smoke
+archive (`smoke_runs/rows_test/` on CEPH: 6 runs, 2-year window, trained from
+scratch, scored on one fixed held-out set of 1000 validation cells x 6 runs x
+every start day) showed the number of cells was the limit:
+
+| variant | cells per run | pooled NSE | RMSE | sensitivity r | epochs (best) | s per epoch |
+|---|---|---|---|---|---|---|
+| 600 rows, `frac_time` 0.3 | 100 | 0.31 | 0.075 | 0.54 | 12 (2) | 9 |
+| 6000 rows, 0.3 | 1000 | 0.63 | 0.055 | 0.73 | 30 (26) | 32 |
+| 12000 rows, 0.1 | 2000 | 0.62 | 0.056 | 0.71 | 30 (30) | 22 |
+| 24000 rows, 0.05 | 4000 | 0.61 | 0.056 | 0.72 | 30 (28) | 23 |
+
+From 100 to 1000 cells per run, skill doubles. Beyond that it holds, at a
+lower cost per epoch when start days are traded for places: windows one day
+apart are nearly the same sequence. The smoke's own cycle 4 model,
+warm-started over five cycles at 600 rows, scored the same as the 600-row one.
+The three large variants all reached the 30-epoch ceiling while still
+improving. Sensitivity slope was ~0.5 at best: the surrogate recovers only
+about half of theta's effect on vwc.
+
+**Decided.**
+
+- `train_rows_target: 22000` (was 6730). **Rows stay fixed across cycles**
+  (A2 b2), so cells per run still shrink as the archive grows: 5500 at 4 runs,
+  2000 at 11 - never below the ~1000 where skill stopped improving.
+- `frac_time: 0.1` (was 0.3): ~97 start days per cell per epoch on the
+  production training window (2017-2019, 975 start days).
+
+**Cost, estimated.** ~22000 x 975 x 0.1 = 2.1M training windows per epoch.
+At the ~55 us per window measured for the 12000-row variant, that is **~2 min
+per epoch**, plus validation, the same in every cycle. So 30 epochs is ~1 h
+and 50 epochs ~1.7 h. Linear scaling from the 2-year test to the 3-year
+window is an assumption; the first real cycle 0 measures it.
+
+**Epoch ceiling (decided 2026-09-21).** Longer surrogate training is
+accepted, because early stopping (H7) ends it. The training config already has
+`epochs: 100` as a ceiling and `early_stopping_patience: 20`; both stay. At ~2
+min per epoch the ceiling is ~3.3 h, reached only if validation keeps improving.
+Early stopping needs a steady validation loss to be trusted - one more reason
+H8 comes first.
+
+**Needed first: build the sample index with NumPy.** `build_sample_index`
+makes a Python list with one tuple per (row, start day) and rebuilds it every
+epoch (H3 resampling). Measured:
+
+| rows x start days | time | peak memory |
+|---|---|---|
+| 24000 x 317 (the test) | 2.2 s | 0.8 GB |
+| 52000 x 975 | 15 s | 5.2 GB |
+
+At 22000 x 975 (21M pairs) it is ~6 s and ~2 GB each epoch, on a machine
+that also runs 24 loader workers. `np.repeat`/`np.tile` give the same
+cell-major index in a fraction of a second, without Python objects.
+`tests/test_pool_epoch.py` already checks the index; add a check that the
+NumPy build equals the old one.
+
+**Validation** gets its own budget - see the H8 note. With
+`rows_target: ${train_rows_target}` and the shared `frac_time`, validation
+would otherwise be 22000 rows x ~25 days per epoch.
 
 ---
 

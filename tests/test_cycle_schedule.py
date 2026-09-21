@@ -275,3 +275,81 @@ def test_a_failure_in_one_job_still_raises(wflow, monkeypatch):
     with pytest.raises(sp.CalledProcessError):
         run_dpl_cycle.run_wflow_concurrently(jobs, cfg_with(wflow_parallel=4))
     assert sorted(done) == ["o0.nc", "o1.nc", "o3.nc"]
+
+
+# ==== the clean scoring run is optional (it costs a full wflow simulation)
+
+
+def test_scoring_every_second_cycle_is_the_default():
+    """Half the clean runs, and `rel_tol` still works on alternate cycles."""
+    cfg = CycleConfig()
+    assert cfg.score_every == 2
+    assert [c for c in range(cfg.n_cycles) if cfg.scores_cycle(c)] == [0, 2, 4, 6]
+
+
+def test_scoring_can_be_switched_off_entirely():
+    cfg = cfg_with(score_every=0)
+    assert not any(cfg.scores_cycle(c) for c in range(cfg.n_cycles))
+
+
+def test_scoring_can_be_thinned():
+    cfg = cfg_with(score_every=3)
+    assert [c for c in range(9) if cfg.scores_cycle(c)] == [0, 3, 6]
+
+
+def test_a_negative_value_is_treated_as_off():
+    assert not cfg_with(score_every=-1).scores_cycle(0)
+
+
+def test_wflow_runs_saved_over_a_campaign():
+    """The point of the switch: one wflow run per skipped cycle."""
+    cfg = CycleConfig()
+    default = sum(cfg.scores_cycle(c) for c in range(cfg.n_cycles))
+    every = sum(cfg_with(score_every=1).scores_cycle(c) for c in range(cfg.n_cycles))
+    never = sum(cfg_with(score_every=0).scores_cycle(c) for c in range(cfg.n_cycles))
+    assert (default, every, never) == (4, 8, 0)
+
+
+def test_convergence_cannot_fire_without_scores():
+    """`converged` needs two entries; with scoring off there are none, so the
+    loop runs the full n_cycles rather than stopping early."""
+    assert run_dpl_cycle.converged([], 0.01) is False
+    assert run_dpl_cycle.converged([{"rmse": 0.1, "bias": 0.0}], 0.01) is False
+
+
+def test_convergence_still_works_on_thinned_scores():
+    """With score_every > 1 the rule compares the cycles that were scored."""
+    h = [{"rmse": 0.100, "bias": 0.010}, {"rmse": 0.0999, "bias": 0.0100}]
+    assert run_dpl_cycle.converged(h, 0.01) is True
+
+
+def test_first_and_last_only():
+    """`score_every: 0` alone scores nothing - `score_first_last` is what gives
+    you the two endpoints."""
+    cfg = cfg_with(score_every=0, score_first_last=True)
+    scored = [c for c in range(cfg.n_cycles) if cfg.scores_cycle(c)]
+    assert scored == [0, cfg.n_cycles - 1]
+
+
+def test_first_last_is_off_by_default():
+    assert CycleConfig().score_first_last is False
+
+
+def test_first_last_adds_to_a_thinned_schedule():
+    """It is a floor, not a replacement: k-th cycles are still scored."""
+    cfg = cfg_with(score_every=3, score_first_last=True, n_cycles=8)
+    scored = [c for c in range(8) if cfg.scores_cycle(c)]
+    assert scored == [0, 3, 6, 7]
+
+
+def test_two_runs_instead_of_eight():
+    cfg = cfg_with(score_every=0, score_first_last=True)
+    assert sum(cfg.scores_cycle(c) for c in range(cfg.n_cycles)) == 2
+
+
+def test_convergence_cannot_stop_the_loop_early_in_this_mode():
+    """Only the last cycle produces a second score, so `converged()` is first
+    evaluated when there is nothing left to skip."""
+    cfg = cfg_with(score_every=0, score_first_last=True)
+    scored = [c for c in range(cfg.n_cycles) if cfg.scores_cycle(c)]
+    assert scored[-1] == cfg.n_cycles - 1 and len(scored) == 2
