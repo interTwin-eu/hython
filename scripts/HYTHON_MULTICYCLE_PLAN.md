@@ -31,8 +31,178 @@ comes out of that. Do it in this order.
    validation budget from H8. Keep `epochs: 100` and
    `early_stopping_patience: 20` - longer training is accepted because early
    stopping ends it.
-3. **Check on the smoke archive** - no new wflow runs except one. *Running
-   since 2026-09-21 15:55: `smoke_runs/step3/run_step3.py`, log `step3.log`.*
+3. **Check on the smoke archive** - no new wflow runs except one. *Done
+   2026-09-21 15:55-17:52: `smoke_runs/step3/run_step3.py`, log `step3.log`,
+   results in `state.json`.*
+
+   **Step 3 results.** 6-run smoke archive, 2-year window, production
+   training config (H8 samplers with shuffled batches, H9 22000 rows /
+   `frac_time` 0.1, `epochs` 100, patience 20), from scratch.
+
+   *Surrogate* - reached the 100-epoch ceiling still improving (best = last
+   epoch), 42.5 s/epoch, 71 min. On the fixed held-out set of
+   `smoke_runs/rows_test` (1000 validation cells x 6 runs x every start day):
+
+   | | smoke surrogate | best rows test (`r6000_f30`) | step 3 |
+   |---|---|---|---|
+   | RMSE | 0.073 | 0.055 | **0.044** |
+   | pooled NSE | 0.34 | 0.63 | **0.76** |
+   | per-cell NSE, median | -0.22 | 0.43 | **0.81** |
+   | per-cell KGE, median | 0.32 | 0.68 | **0.82** |
+   | spatial r | 0.64 | 0.80 | **0.87** |
+   | sensitivity r | 0.53 | 0.73 | **0.82** |
+   | sensitivity slope | 0.33 | 0.48 | **0.73** |
+
+   The surrogate now recovers ~73% of theta's effect on vwc (was about half).
+   On the production window, ~3x the samples per epoch, 100 epochs would be
+   ~3.5 h - the ceiling may need a decision.
+
+   *Calibration* - stopped at epoch 18, best validation loss at epoch 3.
+   Training KGE (pooled) rose 0.42 -> 0.60 and flattened; validation stayed
+   flat: correlation -0.10 .. +0.01, KGE -0.10 .. -0.20, NSE ~-0.15, RMSE
+   ~0.14. It learned the training period's level, not dynamics that carry
+   over.
+
+   *wflow with theta_cal*, against RT0 over the 2-year window:
+
+   | | RMSE | bias | error without bias |
+   |---|---|---|---|
+   | uncalibrated baseline | 0.101 | -0.053 | 0.086 |
+   | smoke cycle 0 (stale surrogate) | 0.116 | 0.003 | 0.116 |
+   | **step 3** | **0.105** | **-0.029** | **0.100** |
+
+   ("error without bias" = sqrt(RMSE^2 - bias^2).) **Still 3.3% worse than
+   not calibrating.** Half the bias is removed, but the day-to-day error grew
+   16% (0.086 -> 0.100): the calibrated parameters make the timing worse.
+   Writing theta_cal clamped `f` in 657 cells, `KsatVer` 248, `c` 9, `Sl` 7 -
+   `f` far more than in the smoke's cycles.
+
+   **First reading (superseded by the diagnostics below).** Read as "level
+   improves, timing gets worse", pointing at H10/H11. **Wrong on timing:**
+   per cell the correlation barely moved - what grew is the size of the
+   swings.
+
+   **Diagnostics D1-D3 (2026-09-21, `smoke_runs/diagnostics/`, scripts
+   `d1_d3_timing.py`, `d2_surrogate_vs_wflow.py`, results `*_results.json`).**
+
+   *D1 - how much timing signal is there?* Per-cell correlation of the
+   uncalibrated wflow run with RT0 (cells with >= 20 obs in the period):
+   median r 0.30 in the calibration training period (18% of cells above 0.5,
+   33% below 0.2), 0.42 in validation (34% / 18%), 0.36 over both years.
+   wflow and RT0 agree only moderately on timing even with sensible
+   parameters: a ceiling on what any calibration can gain.
+
+   *D3 - what calibration changed, per cell* (median over cells):
+
+   | | uncalibrated | step 3 |
+   |---|---|---|
+   | r, training | 0.30 | 0.36 |
+   | r, validation | 0.42 | 0.41 |
+   | KGE, training | 0.09 | **0.23** |
+   | KGE, validation | 0.18 | **0.23** |
+   | alpha (sd ratio), training | 0.49 | **0.83** |
+   | alpha, validation | 0.49 | **0.68** |
+   | bias, training | -0.052 | -0.029 |
+   | RMSE, validation | 0.105 | 0.108 |
+
+   Uncalibrated wflow swings about half as much as RT0 (alpha ~0.5);
+   calibration raised that towards 1 and **improved per-cell KGE in both
+   periods, validation included**. Timing unchanged. RMSE is worse in ~57% of
+   cells.
+
+   *D2 - does the surrogate agree with wflow at theta_cal?* The two runs not
+   in the archive, cut to the pool exactly as the archive cuts runs, surrogate
+   with full warm-up:
+
+   | surrogate vs wflow | validation (16800 cells) | training (3000 cells) |
+   |---|---|---|
+   | RMSE at the uncalibrated parameters | 0.024 | 0.029 |
+   | RMSE at theta_cal | 0.045 | 0.051 |
+   | wflow's mean change, apriori -> theta_cal | +0.021 | +0.031 |
+   | surrogate's predicted mean change | +0.022 | +0.032 |
+   | change: correlation / slope | 0.71 / 0.62 | 0.70 / 0.64 |
+
+   No gross exploitation: the surrogate gets the direction and the average
+   size of wflow's change almost exactly. But it is ~2x less accurate at
+   theta_cal than at the a-priori parameters, and captures ~62% of how the
+   change varies between cells - calibration moved into less familiar
+   territory, which the loop's later cycles address by adding that run to the
+   archive.
+
+   **Diagnosis.**
+   1. **Loss and score disagree.** Calibration optimises KGE and did raise
+      per-cell KGE in wflow; the loop judges by RMSE. With a timing
+      correlation of ~0.4, KGE's push to alpha = 1 raises RMSE, whose optimum
+      is alpha = r. The a-priori alpha ~0.5 happens to be near the RMSE
+      optimum. This, not the surrogate, is the main reason for "worse than
+      uncalibrated". **Decision for the user: which metric defines success -
+      and the loss and the loop's score (`score()`, `converged()`) should then
+      use the same one.**
+   2. **Ceiling:** wflow-RT0 per-cell r ~0.3-0.4.
+   3. **Surrogate** good enough to point the right way, underestimates change
+      by about a third; more cycles should help.
+   4. **H10/H11** are real flaws but secondary for this result; they mostly
+      explain why calibration's *logged* validation metrics (pooled, cold
+      start) sat near zero.
+
+   *D4 - dynamic RT0 mask* (`d4_dynamic_mask.py`, 2026-09-21). The masks in
+   `SSM-RT0-Masks/<year>_<orbit>/SMCS1_*.tif` (band `ESTIMATED_SM`, ~1 km,
+   one file per acquisition; 0 = masked for snow, frozen ground, forest -
+   user - or outside the swath) were mapped to the RT0 grid for 2017-2018
+   (2186 files; a cell is valid on a day if any pass that day is valid) and
+   applied in memory to `alps_rt0old_2017-2022_theta.nc`. Mask saved as
+   `diagnostics/d4/dynamic_mask_2017-2018.zarr`. Uncalibrated wflow vs RT0,
+   per-cell median r:
+
+   | season | unmasked, all cells | masked, all cells | shared cells: unmasked -> masked |
+   |---|---|---|---|
+   | DJF | 0.27 (277k cells) | 0.40 (100k) | 0.372 -> 0.396 |
+   | MAM | 0.37 | 0.56 | 0.536 -> 0.559 |
+   | JJA | 0.44 | 0.47 | 0.458 -> 0.465 |
+   | SON | 0.60 | 0.64 | 0.632 -> 0.641 |
+   | whole 2 years | 0.36 (280k, 201 obs/cell) | 0.45 (161k, 137 obs/cell) | 0.386 -> 0.454 (KGE 0.205 -> 0.250) |
+
+   It removes 50-71% of observations in every month (Sep-Oct ~50%, Dec-Jan
+   ~70%), and 43% of cells lose all of theirs (forest, presumably). Most of
+   the all-cells gain is *which cells remain*: the removed cells agreed worst.
+   On the same cells, removing days helps most in winter and spring (+0.02 r)
+   and little in summer/autumn (+0.01) - and over the whole period more
+   (+0.07 r, KGE +0.05), because the erratic winter values no longer distort
+   the seasonal cycle. Caveats: "any pass valid" is lenient; 0 also means
+   "outside the swath"; and better agreement with *wflow* could also mean
+   dropping real signal wflow misses (e.g. snowmelt). **Mask written 2026-09-21:**
+   `SSM-RT0-SIG0-R-CRRL/processed/alps_rt0old_dynamic_mask_2017-2022.nc`
+   (variable `valid`, uint8, 87 MB; 6002 mask files; same grid and days as
+   `alps_rt0old_2017-2022_theta.nc`; identical to the D4 mask for 2017-2018;
+   script `diagnostics/d5_write_mask.py`). Valid share ~17% of (cell, day) in
+   2017-2021 but 9.3% in 2022 - presumably Sentinel-1B's failure in Dec 2021
+   halving acquisitions. **The user may apply it only in DJF and MAM** (the
+   seasons where it helped most); all months are stored, the season choice is
+   made when applying it. Not yet used by calibration.
+
+   **Evaluation period (user, 2026-09-21): may extend calibration's evaluation
+   to 2021-2022.** RT0 observations per cell per year (median over cells with
+   any; the calibration target `_theta`):
+
+   | year | unmasked | mask in DJF+MAM only | mask all year |
+   |---|---|---|---|
+   | 2017 | 97 | 65 | 25 |
+   | 2018 | 104 | 68 | 26 |
+   | 2019 | 98 | 64 | 21 |
+   | 2020 | 100 | 69 | 21 |
+   | 2021 | 102 | 68 | 22 |
+   | 2022 | **49** | **30** | **12** |
+
+   RT0 itself halves in 2022 (Sentinel-1B lost in Dec 2021), not only the
+   mask. 2021+2022 together with the DJF+MAM mask give ~98 per cell - about
+   one normal year - so a two-year evaluation is as well supplied as the 2020
+   validation year. 2022 alone would be thin; H12's minimum-observations rule
+   matters there. The production config's `test_temporal_range` is 2022 only.
+
+   **Next test** after H10/H11 and the metric decision: rerun only
+   calibration and the wflow run with the same step 3 surrogate (`run_step3.py`
+   stages `calibrate`, `wflow`, `score`; ~1 h), and score per-cell KGE as well
+   as RMSE (`d1_d3_timing.py`).
 
    **Found before launching - the smoke's calibration used a stale
    surrogate.** `config_calibration_loop.yaml` names the surrogate through
@@ -61,6 +231,11 @@ comes out of that. Do it in this order.
    renamed aside (`emo1_*_cycle_old.zarr`) and are not to be reused.
 
 **Waiting on a decision, not blocking 1-3:**
+
+- **Success metric = per-cell KGE (H12, agreed 2026-09-21).** The loop's
+  `score()` / `converged()` still use RMSE and bias - the bias-driven metric
+  the user chose KGE to avoid. Two sub-decisions open: keep KGE's bias term
+  (beta) or not, and whether to rescale RT0 per cell first. See H12.
 
 - **Calibration KGE is pooled over the batch (H11).** One KGE over all
   512 cells x days together: in a two-cell test with inverted timing the
@@ -467,8 +642,13 @@ Two things the H2 section below gets wrong, left in place as a record:
       directly or they would have passed without testing anything.
 - [x] H8 — fix the temporal samplers so validation uses the same start days
       every epoch. **Done 2026-09-21, not committed.** See H8 below.
-- [ ] H10 — calibration scores the surrogate from a cold start. **Found
-      2026-09-21, waits on a decision** (option A recommended). See H10 below.
+- [ ] H10 — calibration scores the surrogate from a cold start. **Option A
+      decided 2026-09-21, scoring the training period from ~2017-05-01 for now;
+      not implemented.** See H10 below.
+- [ ] H12 — the loop judges calibration by RMSE/bias, not by the KGE it
+      optimises. **Agreed 2026-09-21: switch to per-cell KGE, scored per
+      period, with 2021-2022 as the test period; two sub-decisions open.**
+      See H12 below.
 - [ ] H11 — calibration KGE is pooled over the batch instead of per cell.
       **Found 2026-09-21, a flaw; fix waits on the user.** See H11 below.
 - [x] H9 — more cells for the surrogate: `train_rows_target: 22000`,
@@ -1623,11 +1803,32 @@ validation days would be affected.
   every scored day has full memory and none is lost - validation then scores
   all of 2018-03-14 .. 2018-09-11 (or all of 2020 in production). Smallest
   change, standard practice for LSTMs in hydrology, and makes calibration use
-  the surrogate the way it was trained. **To check first:** that the
-  calibration forcing store (`emo1_dynamic_calib.zarr`) covers 120 days before
-  each period's start - the training period starts 2017-01-01, so it needs
-  forcing from 2016-09. If it does not, the training sequence loses its first
-  120 scored days instead.
+  the surrogate the way it was trained. **Precedent: NeuralHydrology does exactly
+  this** (`~/dev/hybrid_models/neuralhydrology`): `datasetzoo/basedataset.py:
+  427-441` loads each period from `start_date - (seq_length - predict_last_n)`
+  - "add warmup period, so that we can make prediction at the first time step
+  specified by period" - and `training/loss.py` scores only the last
+  `predict_last_n` steps. No prediction is ever scored without its full
+  warm-up, in training or evaluation. **Warm-up before 2017-01-01
+  (checked 2026-09-21).** The calibration forcing store
+  `emo1_dynamic_calib.zarr` starts on 2017-01-01 (2191 daily steps to
+  2022-12-31). But wflow's own `Wflow/models/emo1/forcings.nc` covers
+  2000-01-01 .. 2022-12-31 on the same grid (coordinates named
+  `latitude`/`longitude`), and its `precip`, `temp`, `pet` are **identical** to
+  the calibration store where both exist (max |diff| 0 over 1.37M values on 4
+  dates, same NaN pattern). Two ways, the user's choice:
+  - *Extend the calibration store* back to 2016-09-03 from `forcings.nc`
+    (preferred: no scored days lost, no dataset code for a second source), or
+    have `WflowSBMCal` read its warm-up days from `forcings.nc`.
+  - *Start scoring 120 days later* (first scored day ~2017-05-01; the user's
+    first suggestion): no data work, but ~4 months of 2017 become warm-up only
+    - 437 -> ~317 scored days in the smoke's training period, 1092 -> ~972 in
+    production.
+  Validation and test take their warm-up from the days just before them,
+  always in the record either way.
+  **Decided 2026-09-21: start scoring later for now** (first scored day of
+  the calibration training period ~2017-05-01, warm-up 2017-01-01 onwards).
+  Extending the store back to 2016-09-03 stays on the table for later.
 - **B. Calibrate on 120-day windows, scored on the last day**, exactly as the
   surrogate is trained. **Poor fit for RT0's sparsity (user, 2026-09-21).**
   Only 29% of windows end on a day with an observation, and each usable window
@@ -1658,8 +1859,9 @@ the smoke validation observations fall in the surrogate's start-up.
 observations they hold; fine, but it makes the loss value hard to read.
 The pooled KGE (point 3) is its own item: H11.
 
-**Step 3's calibration and wflow result, running as this was found, include
-this effect.** Read it as the before-H10 number.
+**Step 3's calibration and wflow result include this effect** - the
+before-H10 number: wflow RMSE 0.105 against 0.101 uncalibrated, error without
+bias 0.100 against 0.086 (see "Step 3 results" in Next steps).
 
 ## H11 — the calibration KGE is pooled over the batch, not per cell
 
@@ -1704,6 +1906,75 @@ mask, "observed days" means observed days after the warm-up.
 **To decide:** the weighting (by count, or equal per cell), the minimum count,
 and whether to keep a small pooled term on purpose for the spatial pattern.
 H10 and H11 touch the same loss code and are best done together.
+
+## H12 — one success metric: per-cell KGE, for the loss, the score and the stop
+
+**Files:** `scripts/run_dpl_cycle.py` (`score`, `score_baseline`,
+`relative_to_baseline`, `converged`, `has_converged`, `CycleConfig`), and the
+calibration loss (H11).
+
+**Status: agreed 2026-09-21 - per-cell KGE is the success metric; two
+sub-decisions open; not implemented.**
+
+**Why KGE (user, 2026-09-21).** There is a systematic bias between RT0 and
+wflow, and the calibration should not be driven by it. RMSE is dominated by
+bias, so the loss is KGE.
+
+**The problem.** The loop judges and stops on the metric KGE was chosen to
+avoid: `score()` returns RMSE and bias of the clean theta_cal run,
+`relative_to_baseline` decides "better than uncalibrated" on RMSE, and
+`converged()` tracks `("rmse", "bias")`. Step 3 shows the conflict: per-cell
+KGE improved in both periods (validation 0.18 -> 0.23) while RMSE got 3%
+worse, so the loop reported failure. With timing correlation ~0.4, KGE's
+push to alpha = 1 raises RMSE, whose optimum is alpha = r (D3).
+
+**Change.**
+
+- `score()` returns per-cell KGE - the median over cells with at least N
+  observations in the scored period - **with its three parts**, median r,
+  alpha and beta, so a change can be traced to timing, variability or level.
+  RMSE and bias stay in the output for reference, but decide nothing.
+  `d1_d3_timing.py` already computes exactly this; move its `per_cell` into
+  `run_dpl_cycle.py`.
+- `relative_to_baseline` decides "better than uncalibrated" on that KGE.
+- `converged()` tracks KGE (and, if wanted, its parts) instead of
+  RMSE/bias; `has_converged`'s surrogate branch tracks the calibration's
+  per-cell KGE once H11 reports it.
+- Score calibration and validation periods separately, as D3 does - the
+  training-period number alone can hide overfitting. **And the test period
+  2021-2022 as a third, reported on its own** (agreed 2026-09-21, see below).
+- The calibration **loss uses the same definition** as the score - H11's
+  per-cell KGE - so the loop optimises what it judges.
+
+**Sub-decisions for the user.**
+
+1. **Keep beta or not.** KGE still weighs the mean ratio (beta) equally with r
+   and alpha: step 3 still moved the level towards RT0 (bias -0.053 ->
+   -0.029), so part of the parameter change went into matching RT0's mean.
+   Options: keep standard KGE; drop beta (score only r and alpha); or
+   remove each cell's mean offset from RT0 before comparing - the usual mean
+   rescaling when comparing satellite soil moisture with a model, which
+   keeps alpha meaningful.
+2. **How much to trust alpha.** RT0's variability includes retrieval noise, so
+   alpha = 1 may partly fit noise amplitude. wflow's `vwc` is layer 0 (top
+   50 mm, `thicknesslayers = [50, 300, 800]`), so depth is comparable; the
+   concern is noise. Options: standard weights, or more weight on r.
+
+Also to fix: N (minimum observations per cell) - D1-D3 used 20.
+
+**Test period: 2021-2022 (agreed 2026-09-21).** Change `test_temporal_range`
+from `2022-01-01 .. 2022-12-31` to `2021-01-01 .. 2022-12-31` in
+`config_calibration_loop.yaml` and `config_training_calibration_loop.yaml`.
+Checked: both models train on 2017-2019 and validate on 2020; the archive
+stores 2017-2022 (`pool_archive.ARCHIVE_TIME`) but every dataset cuts to its
+own period and the input scaling comes from the training period only, so
+neither model ever sees 2021-2022. 2020 is not fully independent (early
+stopping and the LR schedule read it); 2021-2022 is the only unseen period.
+The 2021 warm-up (H10) comes from late-2020 forcing - input only, no leak.
+Data: ~98 RT0 observations per cell over the two years with the DJF+MAM
+mask, about one normal year (2022 alone has half, Sentinel-1B lost). The
+production wflow window must cover 2022 (the smoke's is 2 years). Not
+applied yet.
 
 ---
 
