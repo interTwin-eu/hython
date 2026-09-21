@@ -678,8 +678,40 @@ class WflowSBM(BaseDataset):
 
         return {"xd": xd, "xs": xs, "y": y}
 
+def warmup_window(times, period_range: slice, warmup_steps: int):
+    """Find the time steps of a period plus the warm-up before it (H10).
+
+    The surrogate is trained with ``seq_length`` days of spin-up, so its first
+    days from a cold state are poor. Each sequence therefore starts
+    ``warmup_steps`` steps before the period and the warm-up is not scored.
+    If the data starts too late for a full warm-up, the first scored day moves
+    later, so that every scored day has the full warm-up.
+
+    :param times: sorted datetime64 array, the time axis of the forcing.
+    :param period_range: slice of two dates, the period to score.
+    :param warmup_steps: number of time steps before the first scored step.
+    :return: (first, scored_start, last), indices into ``times``: the sequence
+        is ``first..last`` and the scored part is ``scored_start..last``.
+    """
+    times = np.asarray(times)
+    start = np.datetime64(period_range.start, "ns")
+    end = np.datetime64(period_range.stop, "ns")
+    i0 = int(np.searchsorted(times, start, side="left"))
+    last = int(np.searchsorted(times, end, side="right")) - 1
+    scored_start = max(i0, warmup_steps)
+    if scored_start > last:
+        raise ValueError(
+            f"period {period_range.start}..{period_range.stop} has no step left to "
+            f"score after a warm-up of {warmup_steps} steps (data starts {times[0]})"
+        )
+    return scored_start - warmup_steps, scored_start, last
+
+
 class WflowSBMCal(BaseDataset):
     """Dataset returns sequences with length equal to calibration period
+
+    With ``warmup_steps`` > 0, each sequence starts that many steps before the
+    period, and the target of the warm-up steps is NaN, so it is not scored.
     """
 
     def __init__(self, cfg, scaler, is_train=True, period="train", scale_ontraining=False):
@@ -722,6 +754,23 @@ class WflowSBMCal(BaseDataset):
         
         if self.target_has_missing_dates is not None:
             self.xd = self.xd.sel(time=self.y.time)
+
+        # H10: warm-up. The sequences given to the model start `warmup_steps`
+        # before the period. self.xd and self.y above stay the period only,
+        # for the masks and the scaling statistics, which do not change.
+        self.warmup_steps = self.cfg.get("warmup_steps") or 0
+        if self.warmup_steps > 0:
+            times = data_dynamic.time.values
+            first, scored_start, last = warmup_window(times, self.period_range, self.warmup_steps)
+            self.xd_seq = data_dynamic[self.to_list(cfg.dynamic_inputs)].isel(time=slice(first, last + 1))
+            # Keep every forcing day, so the model sees consecutive days.
+            # Days missing from the target file become NaN.
+            y_seq = data_target[self.to_list(cfg.target_variables)].reindex(time=self.xd_seq.time)
+            self.y_seq = y_seq.where(y_seq.time >= times[scored_start])
+            LOGGER.info(
+                f"{period}: warm-up {times[first]} .. {times[scored_start - 1]}, "
+                f"scored {times[scored_start]} .. {times[last]}"
+            )
 
         # TODO: ensure they are all float32
         # head_layer mask
@@ -804,9 +853,17 @@ class WflowSBMCal(BaseDataset):
         )
         
         
-        self.scaler.load_or_compute( 
+        self.scaler.load_or_compute(
             self.xp, "head_model_inputs", is_train, axes=("lat","lon")
         )
+
+        # From here on the model needs the sequences with their warm-up
+        if self.warmup_steps > 0:
+            self.xd, self.y = self.xd_seq, self.y_seq
+            del self.xd_seq, self.y_seq
+            if not self.cfg.data_lazy_load:
+                self.xd = self.xd.load()
+                self.y = self.y.load()
 
         self.xd = self.scaler.transform(self.xd, "dynamic_inputs")
         self.xs = self.scaler.transform(self.xs, "static_inputs")

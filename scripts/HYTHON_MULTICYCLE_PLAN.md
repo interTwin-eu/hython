@@ -1829,6 +1829,19 @@ validation days would be affected.
   **Decided 2026-09-21: start scoring later for now** (first scored day of
   the calibration training period ~2017-05-01, warm-up 2017-01-01 onwards).
   Extending the store back to 2016-09-03 stays on the table for later.
+  **Implemented 2026-09-21, not committed.** `warmup_window()` and
+  `WflowSBMCal` in `hython/datasets/wflow_sbm.py`, config key
+  `warmup_steps: 120` in `config_calibration_loop.yaml`; `calibrate()` sets
+  it from a `seq_length` override. Each sequence starts `warmup_steps` before
+  its period; the warm-up target is NaN, so no loss (H11's `CellKGELoss`
+  included) scores it. If the forcing starts too late (train: 2017-01-01),
+  the first scored day moves later - 2017-05-01 - by itself, so extending the
+  forcing store later needs no config change. The masks and scaling
+  statistics still use the period only (unchanged). With warm-up on, the
+  sequences keep every forcing day and the target's 5 missing days become
+  NaN; before, `target_has_missing_dates` cut those days out of the forcing
+  too, so the LSTM saw jumps in time. `warmup_steps: 0` keeps the old
+  behaviour. Tests: `tests/test_cal_warmup.py` (synthetic data).
 - **B. Calibrate on 120-day windows, scored on the last day**, exactly as the
   surrogate is trained. **Poor fit for RT0's sparsity (user, 2026-09-21).**
   Only 29% of windows end on a day with an observation, and each usable window

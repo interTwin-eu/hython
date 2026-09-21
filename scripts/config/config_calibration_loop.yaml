@@ -88,6 +88,10 @@ gradient_clip:
   max_norm: 1
 target_weights: even
 predict_steps: all
+# H10: steps before each period that the surrogate runs but the loss does
+# not score - the surrogate's seq_length. If the forcing starts too late for
+# a full warm-up, the first scored day moves later (train: ~2017-05-01).
+warmup_steps: 120
 train_downsampler: null
 valid_downsampler: null
 test_downsampler: null
@@ -278,6 +282,7 @@ training_pipeline:
     test_downsampler: ${test_downsampler}
     min_sample_target: ${min_sample_target}
     target_has_missing_dates: ${target_has_missing_dates}
+    warmup_steps: ${warmup_steps}
   - _target_: hython.itwinai.trainer.RNNDistributedTrainer
     model: ${model}
     config:

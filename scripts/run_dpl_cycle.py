@@ -611,6 +611,9 @@ def calibrate(cycle: int, cfg: CycleConfig) -> tuple[Path, dict]:
         "scaling_use_cached": cycle > 0,
         "data_source.file.target_variables": str(OBS),
     }
+    # H10: the warm-up is the surrogate's seq_length; keep them together
+    if "seq_length" in cfg.config_overrides:
+        overrides["warmup_steps"] = cfg.config_overrides["seq_length"]
     overrides.update(cfg.config_overrides)
     out_dir, name = write_cycle_config("config_calibration_loop", cycle, overrides)
 
