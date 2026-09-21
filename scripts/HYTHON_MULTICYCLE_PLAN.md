@@ -18,7 +18,7 @@ cells per run) and calibration made wflow worse than not calibrating (RMSE
 archive showed more cells double the surrogate's skill (H9). The work below
 comes out of that. Do it in this order.
 
-1. **Code, in hython.**
+1. **Code, in hython.** *Done 2026-09-21, not committed.*
    - *NumPy sample-index build* (H9, prerequisite). Replace the Python tuple
      list in `WflowSBM_Pool.build_sample_index` with `np.repeat`/`np.tile`;
      test that the index is identical to the old one.
@@ -27,11 +27,30 @@ comes out of that. Do it in this order.
      generator; no global `np.random.seed`; tests. This goes in with, or before,
      the larger budget: early stopping is only as good as the validation loss
      it reads.
-2. **Config** (H9). `train_rows_target: 22000`, `frac_time: 0.1`, the new
+2. **Config** (H9). *Done 2026-09-21, not committed.* `train_rows_target: 22000`, `frac_time: 0.1`, the new
    validation budget from H8. Keep `epochs: 100` and
    `early_stopping_patience: 20` - longer training is accepted because early
    stopping ends it.
-3. **Check on the smoke archive** - no new wflow runs except one.
+3. **Check on the smoke archive** - no new wflow runs except one. *Running
+   since 2026-09-21 15:55: `smoke_runs/step3/run_step3.py`, log `step3.log`.*
+
+   **Found before launching - the smoke's calibration used a stale
+   surrogate.** `config_calibration_loop.yaml` names the surrogate through
+   `model_logger.CudaLSTM.model_uri`, which is the path of the *training
+   template*; `load_model` opens that file and reads the weights path from it,
+   with the template's production `work_dir`. The smoke overrides `work_dir`,
+   so its training wrote to `smoke_runs/overnight/runs/` while all five
+   calibrations loaded `hython_model_run/loop_train_multicycle/CudaLSTM.pt`
+   from 2026-09-19 (different checksum). **The smoke's calibration results -
+   worse than uncalibrated, flat validation loss - say nothing about the loop.**
+   Production is unaffected (both paths agree there). Fixed in
+   `run_dpl_cycle.py`: `surrogate_weights()` names the file once, and
+   `calibrate()` overrides `model_logger.CudaLSTM.model_uri` with it, raising if
+   it is missing. Tests in `tests/test_cycle_config.py`. `inference.py:98`'s
+   hard-coded config reads the same production statistics for the parameter
+   inverse transform; checked, their numbers equal the smoke's (fixed bounds),
+   so it is harmless today but still worth removing.
+
    - Train once with the new code and config; score with
      `smoke_runs/rows_test/eval_rows_test.py`. Confirms the fixes, and gives
      the real seconds per epoch.
@@ -42,6 +61,10 @@ comes out of that. Do it in this order.
    renamed aside (`emo1_*_cycle_old.zarr`) and are not to be reused.
 
 **Waiting on a decision, not blocking 1-3:**
+
+- ~~Training batches are not shuffled~~ - **fixed 2026-09-21** (H8): the
+  training sampler now permutes its indices each epoch. Was ~6 cells per batch
+  of 512, now ~350.
 
 - `compute_nse` (`hython/metrics/custom.py:127`) subtracts `y_pred.mean()`
   where NSE needs the mean of the observations. It makes the logged NSE a
@@ -431,11 +454,11 @@ Two things the H2 section below gets wrong, left in place as a record:
       found that assigning `trainer.strategy` silently replaces a stub via a
       property setter, so the distributed cases had to set `_strategy`
       directly or they would have passed without testing anything.
-- [ ] H8 — fix the temporal samplers so validation uses the same start days
-      every epoch. **Agreed 2026-09-21, not started.** See H8 below.
-- [ ] H9 — more cells for the surrogate: `train_rows_target: 22000`,
-      `frac_time: 0.1`, and a NumPy sample-index build. **Values decided
-      2026-09-21, not applied yet.** See H9 below.
+- [x] H8 — fix the temporal samplers so validation uses the same start days
+      every epoch. **Done 2026-09-21, not committed.** See H8 below.
+- [x] H9 — more cells for the surrogate: `train_rows_target: 22000`,
+      `frac_time: 0.1`, and a NumPy sample-index build. **Done 2026-09-21, not
+      committed.** See H9 below.
 
 ---
 
@@ -1336,8 +1359,38 @@ larger, so a scheduled rate drop gets a chance to work first.
 **File:** `hython/sampler/__init__.py` (the three `*TemporalDynamicDownsampler`
 classes), wired in `hython/itwinai/trainer.py:435-460`.
 
-**Status: planned, not started.** Found reading the 2026-09-21 smoke logs. We
-act on it when the user decides.
+**Status: done 2026-09-21, not committed.** Found reading the 2026-09-21
+smoke logs.
+
+**What was done.** `hython/sampler/__init__.py`: the three samplers share one
+`_TemporalDraw` helper with its own `np.random.default_rng(seed)`. Validation
+(`SequentialTemporalDynamicDownsampler`, and the distributed one with
+`shuffle=False`) draws its days once in `__init__`, sorted, and returns the same
+indices every epoch; its size is `frac_time_valid`, falling back to `frac_time`
+when the key is absent, and `null`/`1.0` means every start day. Training draws
+new days at every `__iter__` from the same generator. No global
+`np.random.seed`, no Python `random`, no stray `print`; index building is
+vectorised, same cell-major order as `generate_time_idx`. Tests:
+`tests/test_temporal_sampler.py` (19). A 3-epoch real training on the smoke
+archive ran clean: validation over 6000 rows x every start day (372k windows)
+took ~12 s, ~32 us a window.
+
+**Found while doing it - fixed 2026-09-21, on the user's go-ahead.** The
+training sampler handed
+the loader its indices **cell-major and unshuffled**: all of one cell's days,
+then the next cell's. With batch 512, a batch holds only 512 / days-per-cell
+cells - ~5 at `frac_time` 0.3 in the smoke, ~5 at 0.1 on the production window
+(~97 days per cell). Batches are highly correlated, which usually hurts SGD.
+Kept as it was, because the order is a modelling choice. The seq sweep, which
+did shuffle (`DataLoader(shuffle=True)`), reached val RMSE 0.034; the rows test,
+which did not, reached 0.055 - not a clean comparison (different loop, data and
+epochs), but it points the same way. Now `_indices` returns
+`self.rng.permutation(...)` of the flat index for training: measured on the
+smoke window, distinct cells per batch of 512 went from 6 to ~350.
+Validation keeps its sorted order. Test: `test_training_batches_mix_cells`.
+This only applied with `dynamic_downsampler` set; without it the trainer uses
+a plain `RandomSampler`, which always shuffled. The smoke and the rows test
+both trained unshuffled, so their numbers are a lower bound.
 
 **What happens today.** When `dynamic_downsampler` is set in the config (the
 training config sets `frac_time: 0.3`), the trainer wraps *both* loaders:
@@ -1381,7 +1434,7 @@ trainer):
 - `DistributedTemporalDynamicDownsampler`: same seeding fix, and make
   `shuffle=False` (validation) draw once.
 
-**Agreed 2026-09-21** (the plan above, and the recommended answers to the two
+**Agreed and confirmed 2026-09-21** (the plan above, and the recommended answers to the two
 questions it raised - correct here if that is wrong):
 
 - *Validation fraction.* Validation gets its own fixed subset of days, drawn
@@ -1420,7 +1473,13 @@ config has `dynamic_downsampler: null` and is not affected.
 and `:105` (`dynamic_downsampler.frac_time`); `hython/datasets/wflow_sbm.py`
 (`WflowSBM_Pool.build_sample_index`).
 
-**Status: values decided 2026-09-21, not applied yet.**
+**Status: done 2026-09-21, not committed.** `build_sample_index` uses
+`np.repeat`/`np.tile` (test: `test_numpy_index_matches_the_old_tuple_list`).
+Config: `train_rows_target: 22000`, `frac_time: 0.1`, and a new top-level
+`valid_rows_target: 6000` that `valid_downsampler.rows_target` now reads, with
+`frac_time_valid: null` (every start day). Validation cells per run follow
+6000 // runs: 1500 at 4 runs, 545 at 11. The ~50 s per validation pass is
+extrapolated from the 2-year smoke check to the 2020 year.
 
 **Why.** The 2026-09-21 smoke surrogate was weak (validation NSE ~0.25) and
 calibration made wflow worse than not calibrating. A test on the finished smoke

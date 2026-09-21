@@ -77,7 +77,14 @@ regularization:
 # `valid_frac` partition the pool once and must stay identical in both blocks,
 # or a cell could be trained on in one cycle and validated on in the next.
 pool_size: 16800
-train_rows_target: 6730
+# H9. Rows stay fixed across cycles (A2 b2), so cells per run = rows // runs:
+# 5500 at 4 runs, 2000 at 11. A test on the smoke archive (2026-09-21) found
+# skill doubles from 100 to 1000 cells per run and holds above that.
+train_rows_target: 22000
+# H8/H9. Validation has its own budget, not the training one: 6000 rows x every
+# start day (`frac_time_valid: null` below) is ~1.5M windows, ~50 s a pass on
+# the 2020 validation year.
+valid_rows_target: 6000
 train_downsampler:
   _target_: hython.sampler.downsampler.PoolDownsampler
   pool_size: ${pool_size}
@@ -93,7 +100,7 @@ valid_downsampler:
   _target_: hython.sampler.downsampler.PoolDownsampler
   pool_size: ${pool_size}
   runs: 1
-  rows_target: ${train_rows_target}
+  rows_target: ${valid_rows_target}
   split: valid
   valid_frac: 0.2
   split_seed: 0
@@ -101,8 +108,13 @@ valid_downsampler:
   seed: ${sampling_seed}
   frac_time: null
 test_downsampler: null
+# `frac_time`: share of start days each training epoch, redrawn every epoch
+# (H9: ~97 of 975 per cell; windows a day apart are nearly the same sequence,
+# so days are traded for places). `frac_time_valid`: validation's share, drawn
+# once and kept for every epoch; null = every start day (H8).
 dynamic_downsampler:
-  frac_time: 0.3
+  frac_time: 0.1
+  frac_time_valid: null
   frac_space: null
   seed: ${sampling_seed}
 data_lazy_load: false

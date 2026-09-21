@@ -1,8 +1,5 @@
 import numpy as np
 import xarray as xr
-import random
-
-from hython.utils import generate_time_idx
 
 from torch.utils.data import Dataset
 from torch.utils.data import Sampler as TorchSampler
@@ -14,120 +11,142 @@ from torch.utils.data import (
 )
 
 
+# == TEMPORAL DOWNSAMPLING (H8)
+#
+# The dataset holds every start day; these samplers pick which ones the loader
+# visits. Training draws a new subset every epoch, validation draws one subset
+# once and keeps it, so its loss only moves when the model does - early
+# stopping, the learning-rate scheduler and the multicycle loop all read it.
+#
+# Each sampler owns a generator seeded from `dynamic_downsampler.seed`. The
+# earlier code seeded the *global* numpy state (changing it for everything
+# else in the process) and then drew with Python's `random`, which that seed
+# never touched, so no draw could be repeated.
 
-class RandomTemporalDynamicDownsampler(RandomSampler):
-    """Every epoch generate a random subset of temporal indices.
-    The generated indices (idx) are used by the dataloader to sample the dataset getitem[idx] """
+
+def _n_start_days(data_source) -> int:
+    return data_source.time_size - data_source.seq_len
+
+
+def _n_cells(data_source) -> int:
+    return len(data_source.cell_coords[data_source.cell_linear_index])
+
+
+def _subset_size(n_start: int, frac) -> int:
+    """`frac` of the start days; None or >= 1 means all of them."""
+    if frac is None or frac >= 1:
+        return n_start
+    return int(n_start * frac)
+
+
+def _draw_days(rng, n_start: int, size: int, replacement: bool) -> np.ndarray:
+    if size >= n_start and not replacement:
+        return np.arange(n_start)
+    if replacement:
+        return rng.integers(0, n_start, size)
+    return rng.choice(n_start, size, replace=False)
+
+
+def _flat_index(days: np.ndarray, n_start: int, n_cells: int) -> np.ndarray:
+    """Dataset indices for `days` of every cell, cell-major.
+
+    Same order as `hython.utils.generate_time_idx`: all chosen days of cell 0,
+    then of cell 1, and so on - index `c * n_start + day`, which is where
+    `spacetime_index` keeps (cell c, day).
+    """
+    return (np.arange(n_cells)[:, None] * n_start + np.asarray(days)[None, :]).ravel()
+
+
+def _valid_frac(dynamic_downsampler):
+    """`frac_time_valid` if the config sets it, else the shared `frac_time`."""
+    if "frac_time_valid" in dynamic_downsampler:
+        return dynamic_downsampler.get("frac_time_valid")
+    return dynamic_downsampler.get("frac_time")
+
+
+class _TemporalDraw:
+    """What the three samplers below share.
+
+    `fixed=True` draws the days once, here, and returns the same sorted indices
+    every epoch (validation). `fixed=False` draws new days at every `__iter__`
+    and shuffles the result across cells (training), from the same generator,
+    so a run still repeats exactly.
+    """
+
+    def _setup(self, data_source, dynamic_downsampler, replacement, fixed):
+        self.data_source = data_source
+        self.replacement = replacement
+        self.fixed = fixed
+        self.seq_len = data_source.seq_len
+        self.time_size = data_source.time_size
+        self.cell_size = _n_cells(data_source)
+        self.seed = dynamic_downsampler.get("seed")
+        self.rng = np.random.default_rng(self.seed)
+
+        frac = _valid_frac(dynamic_downsampler) if fixed else dynamic_downsampler.get("frac_time")
+        self.n_start = _n_start_days(data_source)
+        self.temporal_subset_size = _subset_size(self.n_start, frac)
+        self.total_subset_size = self.temporal_subset_size * self.cell_size
+
+        self.time_indices = None
+        if fixed:
+            self.time_indices = np.sort(self._draw())
+            self._fixed_index = _flat_index(self.time_indices, self.n_start, self.cell_size)
+
+    def _draw(self) -> np.ndarray:
+        return _draw_days(self.rng, self.n_start, self.temporal_subset_size, self.replacement)
+
+    def _indices(self) -> np.ndarray:
+        if self.fixed:
+            return self._fixed_index
+        # Shuffled across cells and days. The loader keeps a sampler's order
+        # as given, and the flat index is cell-major, so without this a batch
+        # of 512 held only ~6 cells (H8).
+        self.time_indices = self._draw()
+        return self.rng.permutation(_flat_index(self.time_indices, self.n_start, self.cell_size))
+
+    def __iter__(self):
+        return iter(self._indices().tolist())
+
+    def __len__(self):
+        return self.total_subset_size
+
+
+class RandomTemporalDynamicDownsampler(_TemporalDraw, RandomSampler):
+    """Training: a new random subset of start days every epoch, the same for
+    every cell, visited in random order across cells. `frac_time` sets its
+    size."""
+
     def __init__(self, data_source, dynamic_downsampler, replacement=False):
-        super(RandomTemporalDynamicDownsampler, self).__init__(data_source)
+        RandomSampler.__init__(self, data_source)
+        self._setup(data_source, dynamic_downsampler, replacement, fixed=False)
 
-        self.data_source = data_source
-        self.replacement = replacement
-        self.spacetime_index = self.data_source.spacetime_index
-        self.cell_size  = len(self.data_source.cell_coords[self.data_source.cell_linear_index ])
-        self.seq_len = self.data_source.seq_len
-        self.time_size = self.data_source.time_size
-        self.seed = dynamic_downsampler.get("seed") 
 
-        if self.seed is not None:
-            np.random.seed(self.seed)
+class SequentialTemporalDynamicDownsampler(_TemporalDraw, RandomSampler):
+    """Validation: one subset of start days, drawn once and kept for every
+    epoch, visited in order. `frac_time_valid` sets its size (None = every
+    start day); without it, the shared `frac_time`."""
 
-        frac_time = dynamic_downsampler.get("frac_time")
-        self.temporal_subset_size = int( (self.time_size -self.seq_len)*frac_time)
-
-        
-        # the total samples
-        self.total_subset_size = self.temporal_subset_size*self.cell_size
-
-    def __iter__(self):
-        if self.replacement:
-            self.time_indices = np.random.randint(0, self.time_size - self.seq_len, self.temporal_subset_size)
-        else:
-            self.time_indices = random.sample(range(self.time_size - self.seq_len), self.temporal_subset_size)
-            
-        indeces = generate_time_idx(self.time_indices, self.time_size - self.seq_len, self.seq_len, self.cell_size )
-
-        return iter(indeces)
-    
-    def __len__(self):
-        return self.total_subset_size
-    
-class SequentialTemporalDynamicDownsampler(RandomSampler):
-    """Every epoch generate a random subset of temporal indices.
-    The generated indices (idx) are used by the dataloader to sample the dataset getitem[idx] """
     def __init__(self, data_source, dynamic_downsampler, replacement=False):
-        super(SequentialTemporalDynamicDownsampler, self).__init__(data_source)
-        self.data_source = data_source
-        self.replacement = replacement
-        self.spacetime_index = self.data_source.spacetime_index
-        self.cell_size  = len(self.data_source.cell_coords[self.data_source.cell_linear_index ])
-        self.seq_len = self.data_source.seq_len
-        self.seed = dynamic_downsampler.get("seed") 
+        RandomSampler.__init__(self, data_source)
+        self._setup(data_source, dynamic_downsampler, replacement, fixed=True)
 
-        if self.seed is not None:
-            np.random.seed(self.seed)
 
-        self.time_size = self.data_source.time_size
+class DistributedTemporalDynamicDownsampler(_TemporalDraw, DistributedSampler):
+    """The two above under a distributed strategy: `shuffle=True` behaves as
+    training, `shuffle=False` as validation.
 
-        frac_time = dynamic_downsampler.get("frac_time")
-        self.temporal_subset_size = int( (self.time_size - self.seq_len)*frac_time)
+    Not checked: `__iter__` does not split the indices by rank, so every
+    worker visits every sample. Left for later - runs are on one GPU (H8).
+    """
 
-        # the total samples
-        self.total_subset_size = self.temporal_subset_size*self.cell_size
-        print(self.total_subset_size)
+    def __init__(self, data_source, dynamic_downsampler, shuffle=True,
+                 replacement=False, **sampling_kwargs):
+        DistributedSampler.__init__(self, dataset=data_source, shuffle=shuffle,
+                                    **sampling_kwargs)
+        self._setup(data_source, dynamic_downsampler, replacement, fixed=not shuffle)
 
-    def __iter__(self):
-        if self.replacement:
-            time_indices = np.random.randint(0, self.time_size - self.seq_len, self.temporal_subset_size)
-        else:
-            time_indices = random.sample(range(self.time_size - self.seq_len), self.temporal_subset_size)
-            
-        indeces = generate_time_idx(time_indices, self.time_size - self.seq_len,self.seq_len, self.cell_size )
-        indeces = np.sort(indeces)
-        return iter(indeces)
 
-    def __len__(self):
-        return self.total_subset_size
-    
-class DistributedTemporalDynamicDownsampler(DistributedSampler):
-    """Every epoch generate a random subset of temporal indices.
-    The generated indices (idx) are used by the dataloader to sample the dataset getitem[idx] """
-    def __init__(self, data_source, dynamic_downsampler, shuffle = True, replacement=False,**sampling_kwargs):
-        super(DistributedTemporalDynamicDownsampler, self).__init__(
-            dataset=data_source, 
-            shuffle= shuffle,
-            **sampling_kwargs)
-                   
-        self.data_source = data_source
-        self.replacement = replacement
-        self.spacetime_index = self.data_source.spacetime_index
-        self.cell_size  = len(self.data_source.cell_coords[self.data_source.cell_linear_index])
-        self.seq_len = self.data_source.seq_len
-        self.seed = dynamic_downsampler.get("seed") 
-
-        if self.seed is not None:
-            np.random.seed(self.seed)
-        
-        self.time_size = self.data_source.time_size
-
-        frac_time = dynamic_downsampler.get("frac_time")
-        self.temporal_subset_size = int( (self.time_size -self.seq_len)*frac_time)
-        # the total samples
-        self.total_subset_size = self.temporal_subset_size*self.cell_size
-
-    def __iter__(self):
-        if self.replacement:
-            time_indices = np.random.randint(0, self.time_size - self.seq_len, self.temporal_subset_size)
-        else:
-            time_indices = random.sample(range(self.time_size - self.seq_len), self.temporal_subset_size)
-            
-        ind = generate_time_idx(time_indices, self.time_size - self.seq_len, self.seq_len, self.cell_size )
-
-        return iter(ind)
-    
-    def __len__(self):
-        return self.total_subset_size
-    
 class SubsetSequentialSampler:
     r"""Samples elements sequentially, always in the same order.
 

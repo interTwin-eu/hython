@@ -102,6 +102,22 @@ def test_train_and_valid_stay_disjoint_every_epoch():
         assert overlap.size == 0
 
 
+def test_numpy_index_matches_the_old_tuple_list():
+    """H9: the NumPy build must give exactly what `itertools.product` gave -
+    same pairs, same cell-major order, same integer dtype."""
+    import itertools
+
+    ds = make_dataset(pool_downsampler())
+    for epoch in range(3):
+        ds.set_epoch(epoch)
+        old = np.array(list(itertools.product(
+            ds.cell_linear_index.tolist(), ds.time_index.tolist()
+        )))
+        np.testing.assert_array_equal(ds.spacetime_index, old)
+        assert ds.spacetime_index.dtype == old.dtype
+        assert ds.spacetime_index.shape == (len(ds.cell_linear_index) * len(ds.time_index), 2)
+
+
 def test_set_epoch_is_a_noop_without_a_downsampler():
     ds = make_dataset(None)
     before = ds.cell_linear_index.copy()

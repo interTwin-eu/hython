@@ -446,12 +446,15 @@ class WflowSBM_Pool(BaseDataset):
         if self.period == "test":
             self.spacetime_index = self.cell_linear_index
         else:
-            # (cell, time) pairs. itertools.product is cell-major, which is the
-            # order `create_xarray_data` reshapes predictions back with.
-            self.spacetime_index = np.array(
-                list(itertools.product(
-                    self.cell_linear_index.tolist(), self.time_index.tolist()
-                ))
+            # (cell, time) pairs, cell-major: the order of
+            # `itertools.product(cells, times)`, which `create_xarray_data`
+            # reshapes predictions back with. Built with NumPy because it is
+            # rebuilt every epoch (H9): the tuple list took 15 s and 5 GB at
+            # 52,000 rows x 975 days.
+            cells = np.asarray(self.cell_linear_index, dtype=np.int64)
+            times = np.asarray(self.time_index, dtype=np.int64)
+            self.spacetime_index = np.column_stack(
+                [np.repeat(cells, len(times)), np.tile(times, len(cells))]
             )
 
     def set_epoch(self, epoch: int):

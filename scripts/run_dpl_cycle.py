@@ -550,6 +550,15 @@ def exec_pipeline(out_dir: Path, name: str) -> str:
     return log
 
 
+def surrogate_weights() -> Path:
+    """Where `train_surrogate` leaves the weights, and `calibrate` reads them.
+
+    Read at call time, not import time, so a redirected `WD_RUN` (the smoke
+    test) is followed.
+    """
+    return WD_RUN / "loop_train_multicycle" / "CudaLSTM.pt"
+
+
 def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
     """Retrain on the full archive, warm-started from the previous cycle.
 
@@ -579,14 +588,24 @@ def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
 
     exec_pipeline(out_dir, name)
 
-    keep = WD_RUN / "loop_train_multicycle" / "model_sequence"
+    keep = surrogate_weights().parent / "model_sequence"
     keep.mkdir(parents=True, exist_ok=True)
-    shutil.copy(WD_RUN / "loop_train_multicycle" / "CudaLSTM.pt", keep / f"CudaLSTM_{cycle}.pt")
+    shutil.copy(surrogate_weights(), keep / f"CudaLSTM_{cycle}.pt")
 
 
 def calibrate(cycle: int, cfg: CycleConfig) -> tuple[Path, dict]:
     """Run dPL against the observations, returning the calibrated parameter file."""
+    # The calibration config names the surrogate through the path of the
+    # training *template* (`model_logger.CudaLSTM.model_uri`), and `load_model`
+    # reads the weights path out of that file - with the template's own
+    # `work_dir`. Any `work_dir` override then goes unseen: the 2026-09-21
+    # smoke calibrated all five cycles against a stale production surrogate
+    # from 2026-09-19. Point at the weights `train_surrogate` just wrote.
+    weights = surrogate_weights()
+    if not weights.exists():
+        raise FileNotFoundError(f"no trained surrogate at {weights}")
     overrides = {
+        "model_logger.CudaLSTM.model_uri": str(weights),
         "experiment_run": "cal_multicycle",
         "model_logger.TransferNN.load": cycle > 0,
         "scaling_use_cached": cycle > 0,

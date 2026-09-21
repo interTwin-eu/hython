@@ -84,3 +84,39 @@ def test_template_is_not_mutated(cycle_configs):
     """A dead run must not leave the shared template in a cycle-n state."""
     template = OmegaConf.load(run_dpl_cycle.WD_CONFIG / f"{TEMPLATE}.yaml")
     assert template.train_downsampler.runs == 1
+
+
+# ==== calibration must load the surrogate training just wrote
+
+
+class _Stop(Exception):
+    pass
+
+
+def test_calibration_loads_the_surrogate_training_wrote(tmp_path, monkeypatch):
+    """The calibration template names the surrogate through the training
+    template's path, which carries the production `work_dir`. The 2026-09-21
+    smoke redirected `work_dir` and so calibrated against a stale production
+    surrogate. `calibrate` must point at `surrogate_weights()` explicitly."""
+    monkeypatch.setattr(run_dpl_cycle, "WD_RUN", tmp_path / "runs")
+    monkeypatch.setattr(run_dpl_cycle, "WD_CYCLE", tmp_path / "cycles")
+    weights = run_dpl_cycle.surrogate_weights()
+    weights.parent.mkdir(parents=True)
+    weights.write_bytes(b"")
+
+    def stop(out_dir, name):
+        raise _Stop
+
+    monkeypatch.setattr(run_dpl_cycle, "exec_pipeline", stop)
+    with pytest.raises(_Stop):
+        run_dpl_cycle.calibrate(0, run_dpl_cycle.CycleConfig())
+
+    cfg = OmegaConf.load(tmp_path / "cycles" / "cycle_0" / "config_calibration_loop_c0.yaml")
+    assert cfg.model_logger.CudaLSTM.model_uri == str(weights)
+
+
+def test_calibration_refuses_to_run_without_a_surrogate(tmp_path, monkeypatch):
+    monkeypatch.setattr(run_dpl_cycle, "WD_RUN", tmp_path / "runs")
+    monkeypatch.setattr(run_dpl_cycle, "WD_CYCLE", tmp_path / "cycles")
+    with pytest.raises(FileNotFoundError):
+        run_dpl_cycle.calibrate(0, run_dpl_cycle.CycleConfig())
