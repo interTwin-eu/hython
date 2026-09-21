@@ -62,6 +62,17 @@ comes out of that. Do it in this order.
 
 **Waiting on a decision, not blocking 1-3:**
 
+- **Calibration KGE is pooled over the batch (H11).** One KGE over all
+  512 cells x days together: in a two-cell test with inverted timing the
+  per-cell KGE is -1.0 and the pooled one +0.98. Proposed: per-cell KGE,
+  averaged, weighted by observation count, with a minimum count. Do with H10.
+- **Calibration scores the surrogate from a cold start (H10).** Every
+  calibration sequence starts with an empty LSTM state and is scored from day
+  1, while the surrogate was trained to be right only after 120 days of
+  history. Its error is 2.4x higher in the first 10 days. Likely why
+  calibration's validation correlation stays near zero. Option A (score only
+  after a 120-day warm-up) recommended. Step 3's result includes this effect.
+
 - ~~Training batches are not shuffled~~ - **fixed 2026-09-21** (H8): the
   training sampler now permutes its indices each epoch. Was ~6 cells per batch
   of 512, now ~350.
@@ -456,6 +467,10 @@ Two things the H2 section below gets wrong, left in place as a record:
       directly or they would have passed without testing anything.
 - [x] H8 — fix the temporal samplers so validation uses the same start days
       every epoch. **Done 2026-09-21, not committed.** See H8 below.
+- [ ] H10 — calibration scores the surrogate from a cold start. **Found
+      2026-09-21, waits on a decision** (option A recommended). See H10 below.
+- [ ] H11 — calibration KGE is pooled over the batch instead of per cell.
+      **Found 2026-09-21, a flaw; fix waits on the user.** See H11 below.
 - [x] H9 — more cells for the surrogate: `train_rows_target: 22000`,
       `frac_time: 0.1`, and a NumPy sample-index build. **Done 2026-09-21, not
       committed.** See H9 below.
@@ -1541,6 +1556,154 @@ NumPy build equals the old one.
 **Validation** gets its own budget - see the H8 note. With
 `rows_target: ${train_rows_target}` and the shared `frac_time`, validation
 would otherwise be 22000 rows x ~25 days per epoch.
+
+## H10 — calibration scores the surrogate from a cold start
+
+**Files:** `hython/datasets/wflow_sbm.py` (`WflowSBMCal`),
+`hython/trainer/cal.py`, `hython/trainer/base.py` (`_compute_batch_loss`,
+`predict_step`, `target_step`), `config/config_calibration_loop.yaml`
+(`predict_steps: all`).
+
+**Status: found 2026-09-21 during step 3, waits on a decision.**
+
+**How the calibration loss is computed today.**
+
+1. **One sample is one grid cell over the whole period** (`WflowSBMCal`:
+   "sequences with length equal to calibration period"; `seq_length` is not
+   used). With the smoke window that is 437 days for training and 182 days
+   (2018-03-14 to 2018-09-11) for validation. A batch is 512 cells.
+2. TransferNN maps the cell's predictors to the 5 parameters; the frozen
+   surrogate runs over the whole sequence **from an empty LSTM state** and
+   predicts every day (`predict_steps: all`). Days without an observation are
+   masked.
+3. **Loss = -KGE** (`hython.losses.KGELoss` -> `compute_kge_torch`), computed
+   once over every valid (cell, day) of the batch **pooled together**, so its
+   correlation term mixes differences between cells with changes in time.
+4. **The loss is multiplied by the batch's share of valid observations**
+   (`data_loss_scale_proportional_valid_target_timesteps: true`) - why the
+   loss sits near -0.1 while the training KGE is ~0.6: only ~11% of (cell,
+   day) values have an observation (41% of cells have any RT0, and those on
+   ~27% of days).
+5. Plus `RangeBoundReg` (factor 1000) on the parameters, bounds [0, 1] in
+   normalised space.
+
+**The mismatch.** The surrogate was trained sequence-to-one: 120-day windows,
+only the last day scored (`predict_steps: 0`), so the first 119 days are
+warm-up. Calibration scores every day from day 1, where the surrogate has
+little or no history. Measured with the step 3 surrogate over the smoke
+validation period (surrogate against wflow's own vwc - its training target -
+6000 rows, cold start):
+
+| days since sequence start | RMSE |
+|---|---|
+| 1-10 | 0.105 |
+| 11-30 | 0.081 |
+| 31-60 | 0.063 |
+| 61-90 | 0.058 |
+| 91-120 | 0.048 |
+| 121-182 | 0.045 |
+| **all days (what calibration scores)** | **0.060** |
+| reference: seq-to-one, 120-day warm-up (held-out) | 0.044 |
+
+The surrogate needs ~120 days of history to be as good as it was trained to
+be. In the 182-day validation sequence about two thirds of the days are in
+that start-up; in the 437-day training sequence the first few months are.
+Calibration therefore partly fits the surrogate's start-up error rather than
+the effect of the parameters, and that error has nothing to do with theta.
+**Likely why calibration's validation correlation stayed near zero in step 3**
+(training KGE rose 0.42 -> 0.59 in 4 epochs; validation correlation stayed
+~0.0). On the production window (validation = 2020, 366 days) a third of the
+validation days would be affected.
+
+**Options** (a modelling choice - the user's):
+
+- **A. Score only after a warm-up (recommended).** Leave the first
+  `seq_length` (120) days of every calibration sequence out of the loss and
+  the metrics. Start each period's sequence 120 days *before* the period, so
+  every scored day has full memory and none is lost - validation then scores
+  all of 2018-03-14 .. 2018-09-11 (or all of 2020 in production). Smallest
+  change, standard practice for LSTMs in hydrology, and makes calibration use
+  the surrogate the way it was trained. **To check first:** that the
+  calibration forcing store (`emo1_dynamic_calib.zarr`) covers 120 days before
+  each period's start - the training period starts 2017-01-01, so it needs
+  forcing from 2016-09. If it does not, the training sequence loses its first
+  120 scored days instead.
+- **B. Calibrate on 120-day windows, scored on the last day**, exactly as the
+  surrogate is trained. **Poor fit for RT0's sparsity (user, 2026-09-21).**
+  Only 29% of windows end on a day with an observation, and each usable window
+  gives exactly one: no per-window KGE is possible, ~70% of windows are
+  wasted, and ~119 forward-pass days are spent per observation. Scoring every
+  day after the warm-up inside a window turns it into A with overlapping
+  sequences. Also a larger change to `WflowSBMCal` and the trainer.
+- **C. Train the surrogate to be accurate from day 1** (score every day in
+  surrogate training). Changes the surrogate and its cost, and weakens what the
+  rows test and step 3 established.
+
+**RT0 observation density** (`alps_rt0old_2017-2022_theta.nc`, counted
+2026-09-21). 41% of cells have any observation; those have one on ~27% of
+days:
+
+| period | days | obs per cell, median | 10th pct |
+|---|---|---|---|
+| smoke train | 436 | 121 | 63 |
+| smoke valid | 182 | 47 | 21 |
+| prod train (2017-2019) | 1092 | 298 | 158 |
+| prod valid (2020) | 365 | 100 | 51 |
+| one 120-day window (prod train) | 120 | 34 | 15 |
+
+A scores every one of them with a warm surrogate. Today about two thirds of
+the smoke validation observations fall in the surrogate's start-up.
+
+**Also:** the valid-fraction scaling (point 4) weights batches by how many
+observations they hold; fine, but it makes the loss value hard to read.
+The pooled KGE (point 3) is its own item: H11.
+
+**Step 3's calibration and wflow result, running as this was found, include
+this effect.** Read it as the before-H10 number.
+
+## H11 — the calibration KGE is pooled over the batch, not per cell
+
+**Files:** `hython/trainer/base.py:64-97` (`_compute_batch_loss`),
+`hython/losses/standard.py:56-94` (`compute_kge_torch`, `KGELoss`).
+
+**Status: found 2026-09-21, a flaw - waits on the user's decision on the fix.**
+
+**What the code does.** `_compute_batch_loss` indexes the `(cells, days)`
+target with the mask - `target[..., i][imask]` - which flattens the whole
+batch into one vector, and `KGELoss` computes **one** KGE over it: one
+correlation, one variance ratio, one mean ratio across all 512 cells and all
+their days together.
+
+**Why it is wrong for dPL.** Differences *between* cells (wet vs dry) are much
+larger than changes *in time within* a cell, so the pooled correlation mostly
+measures whether cells are ranked wet to dry correctly. Demonstrated with the
+real `KGELoss` on two cells with the right level but exactly inverted timing:
+
+    per-cell KGE:  -1.0, -1.0     (the worst possible)
+    pooled KGE:    +0.98          (what the loss sees - nearly perfect)
+
+So the loss can reward parameters whose dynamics are wrong in every cell. Two
+more effects: the loss depends on which cells share a batch (a wet/dry mix
+scores well almost regardless of timing - noise, since batches are random),
+and only 41% of cells have any RT0 at all, so the mix is uneven. The logged
+calibration metrics (`val_ssm_kge_epoch` etc.) are pooled the same way, over
+the whole epoch.
+
+The spatial pattern is not worthless - parameters vary in space and each
+cell's level matters - but the per-cell KGE keeps that through its bias term
+(beta) while also scoring the timing.
+
+**Proposed fix.** KGE per cell over its observed days, then the mean over the
+batch's cells - weighted by each cell's observation count, so a cell with 5
+observations does not count as much as one with 100. Cells below a minimum
+count (e.g. 10) get no weight, because r and alpha are meaningless on a
+handful of points. Report the logged calibration KGE per cell too (median),
+as `eval_rows_test.py` already does for the surrogate. With H10's warm-up
+mask, "observed days" means observed days after the warm-up.
+
+**To decide:** the weighting (by count, or equal per cell), the minimum count,
+and whether to keep a small pooled term on purpose for the spatial pattern.
+H10 and H11 touch the same loss code and are best done together.
 
 ---
 
