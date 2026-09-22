@@ -26,21 +26,34 @@ parse = run_dpl_cycle.parse_cal_metrics
 # ==== comparing against the uncalibrated run
 
 
-BASE = {"rmse": 0.1007, "bias": -0.0524}
+BASE = {"rmse": 0.1007, "bias": -0.0524, "kge_train": 0.20, "kge_valid": 0.18}
 
 
 def test_an_improvement_is_reported_as_positive():
-    out = rel({"rmse": 0.0900, "bias": -0.0100}, BASE)
+    out = rel({"rmse": 0.0900, "bias": -0.0100, "kge_train": 0.3, "kge_valid": 0.25}, BASE)
     assert out["rmse_vs_baseline_pct"] > 0
+    assert out["kge_valid_vs_baseline"] == pytest.approx(0.07)
     assert out["better_than_uncalibrated"] is True
 
 
 def test_a_regression_is_caught():
     """The failure `converged()` cannot see: tidy convergence on something
     worse than the starting point."""
-    out = rel({"rmse": 0.1078, "bias": 0.0029}, BASE)
-    assert out["rmse_vs_baseline_pct"] < 0
+    out = rel({"rmse": 0.0900, "bias": 0.0029, "kge_valid": 0.15}, BASE)
+    assert out["kge_valid_vs_baseline"] < 0
     assert out["better_than_uncalibrated"] is False
+
+
+def test_kge_decides_not_rmse():
+    """H12, the step 3 case: KGE up while RMSE got worse is an improvement."""
+    out = rel({"rmse": 0.105, "bias": -0.029, "kge_valid": 0.23}, BASE)
+    assert out["rmse_vs_baseline_pct"] < 0
+    assert out["better_than_uncalibrated"] is True
+
+
+def test_no_validation_score_means_no_verdict():
+    out = rel({"rmse": 0.09, "bias": 0.0}, BASE)
+    assert out["better_than_uncalibrated"] is None
 
 
 def test_bias_is_compared_on_magnitude():

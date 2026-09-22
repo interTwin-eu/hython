@@ -109,7 +109,7 @@ def test_calibration_loads_the_surrogate_training_wrote(tmp_path, monkeypatch):
 
     monkeypatch.setattr(run_dpl_cycle, "exec_pipeline", stop)
     with pytest.raises(_Stop):
-        run_dpl_cycle.calibrate(0, run_dpl_cycle.CycleConfig())
+        run_dpl_cycle.calibrate(0, run_dpl_cycle.CycleConfig(pretrain_transfer=False))
 
     cfg = OmegaConf.load(tmp_path / "cycles" / "cycle_0" / "config_calibration_loop_c0.yaml")
     assert cfg.model_logger.CudaLSTM.model_uri == str(weights)
@@ -120,3 +120,82 @@ def test_calibration_refuses_to_run_without_a_surrogate(tmp_path, monkeypatch):
     monkeypatch.setattr(run_dpl_cycle, "WD_CYCLE", tmp_path / "cycles")
     with pytest.raises(FileNotFoundError):
         run_dpl_cycle.calibrate(0, run_dpl_cycle.CycleConfig())
+
+
+def _calibration_config(tmp_path, monkeypatch, cycle, cfg):
+    """Run `calibrate` up to the pipeline call and return the config it wrote."""
+    monkeypatch.setattr(run_dpl_cycle, "WD_RUN", tmp_path / "runs")
+    monkeypatch.setattr(run_dpl_cycle, "WD_CYCLE", tmp_path / "cycles")
+    weights = run_dpl_cycle.surrogate_weights()
+    weights.parent.mkdir(parents=True, exist_ok=True)
+    weights.write_bytes(b"")
+
+    def stop(out_dir, name):
+        raise _Stop
+
+    monkeypatch.setattr(run_dpl_cycle, "exec_pipeline", stop)
+    with pytest.raises(_Stop):
+        run_dpl_cycle.calibrate(cycle, cfg)
+    return OmegaConf.load(tmp_path / "cycles" / f"cycle_{cycle}" / f"config_calibration_loop_c{cycle}.yaml")
+
+
+def test_later_cycles_start_from_the_previous_parameter_network(tmp_path, monkeypatch):
+    """`TransferNN.load` alone only names the file; the trainer loads it only
+    with `mt_load_pretrained`. Until 2026-09-22 every cycle started from a
+    fresh network."""
+    cfg = _calibration_config(tmp_path, monkeypatch, 1, run_dpl_cycle.CycleConfig())
+    assert cfg.mt_load_pretrained is True
+    assert cfg.model_logger.TransferNN.load is True
+
+
+def test_cycle_zero_starts_fresh_without_pretraining(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(run_dpl_cycle, "pretrain_transfer", lambda *a, **k: called.append(1))
+    ccfg = run_dpl_cycle.CycleConfig(pretrain_transfer=False)
+    cfg = _calibration_config(tmp_path, monkeypatch, 0, ccfg)
+    assert cfg.mt_load_pretrained is False
+    assert cfg.mt_bias is False
+    assert not called
+
+
+def test_cycle_zero_pretrains_when_asked(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake(dest, bias=False):
+        seen.update(dest=dest, bias=bias)
+        return {"bias": bias}
+
+    monkeypatch.setattr(run_dpl_cycle, "pretrain_transfer", fake)
+    ccfg = run_dpl_cycle.CycleConfig(pretrain_transfer=True, transfer_bias=True)
+    cfg = _calibration_config(tmp_path, monkeypatch, 0, ccfg)
+    assert seen == {"dest": run_dpl_cycle.transfer_weights(), "bias": True}
+    assert cfg.mt_load_pretrained is True
+    assert cfg.mt_bias is True
+    # the pretrained weights are where calibration reads them
+    assert cfg.model_logger.TransferNN.model_uri == str(run_dpl_cycle.transfer_weights())
+    assert (tmp_path / "cycles" / "cycle_0" / "transfer_pretrain.json").exists()
+
+
+def _training_config(tmp_path, monkeypatch, cycle):
+    """Run `train_surrogate` up to the pipeline call and return the config it wrote."""
+    monkeypatch.setattr(run_dpl_cycle, "WD_RUN", tmp_path / "runs")
+    monkeypatch.setattr(run_dpl_cycle, "WD_CYCLE", tmp_path / "cycles")
+    monkeypatch.setattr(run_dpl_cycle.pool_archive, "next_run_index", lambda: 4 + cycle)
+
+    def stop(out_dir, name):
+        raise _Stop
+
+    monkeypatch.setattr(run_dpl_cycle, "exec_pipeline", stop)
+    with pytest.raises(_Stop):
+        run_dpl_cycle.train_surrogate(cycle, run_dpl_cycle.CycleConfig())
+    return OmegaConf.load(tmp_path / "cycles" / f"cycle_{cycle}" / f"{TEMPLATE}_c{cycle}.yaml")
+
+
+def test_surrogate_warm_starts_after_cycle_zero(tmp_path, monkeypatch):
+    """`CudaLSTM.load` alone never loaded anything: until 2026-09-22 every
+    cycle trained the surrogate from scratch."""
+    first = _training_config(tmp_path, monkeypatch, 0)
+    assert first.model_load_pretrained is False
+    later = _training_config(tmp_path, monkeypatch, 1)
+    assert later.model_load_pretrained is True
+    assert later.model_logger.CudaLSTM.model_uri == str(run_dpl_cycle.surrogate_weights())

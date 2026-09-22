@@ -314,12 +314,12 @@ def test_convergence_cannot_fire_without_scores():
     """`converged` needs two entries; with scoring off there are none, so the
     loop runs the full n_cycles rather than stopping early."""
     assert run_dpl_cycle.converged([], 0.01) is False
-    assert run_dpl_cycle.converged([{"rmse": 0.1, "bias": 0.0}], 0.01) is False
+    assert run_dpl_cycle.converged([{"kge_valid": 0.2}], 0.01) is False
 
 
 def test_convergence_still_works_on_thinned_scores():
     """With score_every > 1 the rule compares the cycles that were scored."""
-    h = [{"rmse": 0.100, "bias": 0.010}, {"rmse": 0.0999, "bias": 0.0100}]
+    h = [{"kge_valid": 0.230, "rmse": 0.10}, {"kge_valid": 0.2301, "rmse": 0.12}]
     assert run_dpl_cycle.converged(h, 0.01) is True
 
 

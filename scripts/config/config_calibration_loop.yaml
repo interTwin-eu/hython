@@ -8,7 +8,7 @@ valid_temporal_range:
 - '2020-01-01'
 - '2020-12-31'
 test_temporal_range:
-- '2022-01-01'
+- '2021-01-01'
 - '2022-12-31'
 seed: 10532
 device: cuda:0
@@ -21,6 +21,8 @@ mt_hidden_dim: 60
 mt_output_dim: 1
 mt_n_layers: 3
 mt_load_pretrained: false
+# bias terms in TransferNN's linear layers (run_dpl_cycle: CycleConfig.transfer_bias)
+mt_bias: false
 model_head: CudaLSTM
 model_head_hidden_size: 128
 model_head_dropout: 0.2
@@ -34,6 +36,9 @@ log_calib_parameters: null
 hython_trainer: caltrainer
 loss_fn:
   _target_: hython.losses.CellKGELoss
+  # H12: false drops KGE's mean-ratio term. run_dpl_cycle sets it from
+  # CycleConfig.kge_use_beta, together with KGECellMetric's, so loss and score agree.
+  use_beta: true
 data_loss_scale_proportional_valid_target_timesteps: true
 metric_fn:
   _target_: hython.metrics.MetricCollection
@@ -42,6 +47,10 @@ metric_fn:
   - _target_: hython.metrics.KGEMetric
   - _target_: hython.metrics.NSEMetric
   - _target_: hython.metrics.PearsonMetric
+  # H12: median per-cell KGE - what converge_on "surrogate" tracks
+  - _target_: hython.metrics.KGECellMetric
+    min_obs: 20
+    use_beta: true
 regularization:
 - _target_: hython.regularizations.RegCollection
   collection:
@@ -309,6 +318,9 @@ training_pipeline:
       model: ${model}
       model_head: ${model_head}
       head_model_inputs: ${head_model_inputs}
+      # read by ParameterInference to turn the network's output back into
+      # physical values (it used to read a hard-coded article config)
+      scaling_static_range: ${scaling_static_range}
       freeze_head: ${freeze_head}
       scale_head_input_parameter: ${scale_head_input_parameter}
       scale_head_output: ${scale_head_output}
@@ -318,6 +330,7 @@ training_pipeline:
       mt_hidden_dim: ${mt_hidden_dim}
       mt_n_layers: ${mt_n_layers}
       mt_load_pretrained: ${mt_load_pretrained}
+      mt_bias: ${mt_bias}
       log_calib_parameters: ${log_calib_parameters}
       hidden_size: ${model_head_hidden_size}
       dropout: ${model_head_dropout}

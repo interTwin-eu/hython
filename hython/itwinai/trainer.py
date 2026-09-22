@@ -125,12 +125,14 @@ class RNNDistributedTrainer(TorchTrainer):
             # LOAD MODEL
             self.model_logger = self.model_api.get_model_logger("model")
             self.model = self.model_class(self.config)
+            self._load_pretrained_model()
 
             self.hython_trainer = RNNTrainer(self.config)
         elif self.config.hython_trainer == "rnntrainer_hpc":    
             # LOAD MODEL
             self.model_logger = self.model_api.get_model_logger("model")
             self.model = self.model_class(self.config)
+            self._load_pretrained_model()
 
             self.hython_trainer = RNNTrainerHPC(self.config)
 
@@ -173,6 +175,7 @@ class RNNDistributedTrainer(TorchTrainer):
                 self.config.mt_output_dim, # output
                 self.config.mt_hidden_dim,
                 self.config.mt_n_layers,
+                bias=getattr(self.config, "mt_bias", False),
             )
 
             if self.config.mt_load_pretrained is True:
@@ -180,10 +183,11 @@ class RNNDistributedTrainer(TorchTrainer):
                 # load pretrained weights
                 try:
                     transfer_nn = self.model_api.load_model("transfernn", transfer_nn)
-                except:
+                except FileNotFoundError:
                     # this could happen when running the calibration loop, the first iteration does not
-                    # have transfenn weights
-                    print("model transfernn weights not found") 
+                    # have transfenn weights. Only a missing file falls back to a random start: a
+                    # shape mismatch (e.g. weights saved with a different `mt_bias`) must raise.
+                    print("model transfernn weights not found")
 
 
             self.model = self.model_class(
@@ -197,6 +201,18 @@ class RNNDistributedTrainer(TorchTrainer):
             self.hython_trainer = CalTrainer(self.config)
 
         self.hython_trainer.init_trainer(self.model)
+
+    def _load_pretrained_model(self) -> None:
+        """Start training from saved weights when `model_load_pretrained` is true.
+
+        `model_logger.<model>.load` alone never loaded anything here: it only
+        registers a name. A missing file raises instead of falling back to
+        random weights, which is what hid that for so long.
+        """
+        if getattr(self.config, "model_load_pretrained", False) is not True:
+            return
+        print("loading model from pretrained weights")
+        self.model = self.model_api.load_model("model", self.model)
 
     def create_model_loss_optimizer(self) -> None:
         distribute_kwargs = {}

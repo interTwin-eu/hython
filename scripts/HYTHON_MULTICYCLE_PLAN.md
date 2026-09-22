@@ -1,7 +1,10 @@
 # Multi-cycle dPL — what to change before running it
 
 What must change before `run_dpl_cycle.py` can run more than one cycle.
-**A1 is built** (`scripts/pool_archive.py`); everything else is still to do.
+**Status 2026-09-22:** A1, A2, H1-H5 and H7-H12 are done; H6 is deferred;
+H13 (warm starts, pretraining) is done. Everything not yet committed is
+listed in "Next steps" below. What is left before production is a few
+decisions (see "Before production").
 
 Two places need work. **A1 and A2** are in `run_dpl_cycle.py`. **H1 to H7** are
 in `hython` (`/home/iferrario/dev/hython`). A1 came first because it decides
@@ -10,7 +13,7 @@ that.
 
 ---
 
-## Next steps (written 2026-09-21, after the overnight smoke)
+## Next steps (written 2026-09-21, after the overnight smoke; updated 2026-09-22)
 
 The 5-cycle smoke ran end to end, but its surrogate was too weak (100-300
 cells per run) and calibration made wflow worse than not calibrating (RMSE
@@ -137,7 +140,7 @@ comes out of that. Do it in this order.
       optimum. This, not the surrogate, is the main reason for "worse than
       uncalibrated". **Decision for the user: which metric defines success -
       and the loss and the loop's score (`score()`, `converged()`) should then
-      use the same one.**
+      use the same one.** *Decided 2026-09-21: per-cell KGE (H12).*
    2. **Ceiling:** wflow-RT0 per-cell r ~0.3-0.4.
    3. **Surrogate** good enough to point the right way, underestimates change
       by about a third; more cycles should help.
@@ -199,7 +202,7 @@ comes out of that. Do it in this order.
    validation year. 2022 alone would be thin; H12's minimum-observations rule
    matters there. The production config's `test_temporal_range` is 2022 only.
 
-   **Next test** after H10/H11 and the metric decision: rerun only
+   **Next test** (*done 2026-09-21 as step 3b, see below*) after H10/H11 and the metric decision: rerun only
    calibration and the wflow run with the same step 3 surrogate (`run_step3.py`
    stages `calibrate`, `wflow`, `score`; ~1 h), and score per-cell KGE as well
    as RMSE (`d1_d3_timing.py`).
@@ -227,37 +230,134 @@ comes out of that. Do it in this order.
    - Calibrate against that surrogate, then one clean wflow run to score it
      against the 0.101 baseline (~40 min). Shows whether a better surrogate
      fixes calibration before hours of production wflow time go in.
+
+   **Steps 3b-3f: calibration variants (2026-09-21 to 2026-09-22).** Same
+   step 3 surrogate each time; only calibration, one clean wflow run and the
+   score were redone (`run_step3.py --rerun-cal --tag <tag>`). Each earlier
+   result is kept in `state.json` under `before_<next tag>`, and its
+   parameters in `cycles/cycle_0/theta_cal_before_<next tag>.nc`. The score
+   is always the standard per-cell KGE (H12), so the rows compare.
+
+   | run | what changed | KGE train | KGE valid | KGE test | r valid | alpha valid | beta valid | RMSE |
+   |---|---|---|---|---|---|---|---|---|
+   | uncalibrated | - | 0.093 | 0.183 | 0.278 | 0.417 | 0.49 | 0.81 | 0.101 |
+   | step 3 | before H10-H12 | 0.228 | 0.225 | 0.302 | 0.412 | - | - | 0.105 |
+   | 3b | H10-H12, KGE weights (1,1,1) | **0.253** | **0.240** | **0.388** | 0.411 | 0.71 | 0.83 | 0.107 |
+   | 3c | weights (1,0,1): no alpha term | 0.189 | **0.240** | 0.376 | 0.427 | 0.60 | **0.88** | **0.094** |
+   | 3d | weights (1,0,0): r only | 0.090 | 0.121 | 0.270 | 0.398 | 0.52 | 0.76 | 0.120 |
+   | 3e | (1,0,1), parameter network pretrained to the a priori maps (H13) | 0.181 | 0.231 | 0.372 | 0.430 | 0.60 | 0.85 | 0.097 |
+   | 3f | as 3e, plus bias terms in the parameter network | 0.187 | 0.230 | 0.361 | 0.425 | 0.60 | 0.86 | 0.096 |
+   | 3g | production settings: weights (1,0.25,0.75), pretrained, new `inference.py` | 0.183 | 0.227 | 0.366 | 0.423 | 0.60 | 0.85 | 0.100 |
+
+   Calibrated parameters, median over cells:
+
+   | run | KsatVer | f | c | RootingDepth | cells with RootingDepth < 10 mm | Sl |
+   |---|---|---|---|---|---|---|
+   | a priori | 570 | 0.0023 | 9.7 | 260 | 0.5% | 0.076 |
+   | 3b | 50 | 0.0020 | 5.7 | **6** | **63%** | 0.087 |
+   | 3c | 49 | 0.0007 | 7.1 | 514 | 10.5% | 0.038 |
+   | 3d | 55 | 0.0002 | 3.3 | 438 | 11.1% | 0.055 |
+   | 3e | 56 | 0.0008 | 6.9 | 519 | **0%** | 0.049 |
+   | 3f | 55 | 0.0011 | 6.8 | 489 | **0%** | 0.048 |
+   | 3g | 50 | 0.0011 | 6.2 | 441 | **0%** | 0.036 |
+
+   What the variants show:
+   - **The alpha term made the roots very shallow.** With KGE weights
+     (1,1,1), calibration raised the size of the swings (alpha) by making
+     RootingDepth ~5 mm in 63% of cells. Without the alpha term (3c) most
+     roots stay realistic, at the same validation KGE.
+   - **The random start of the parameter network caused the rest of the
+     shallow roots.** The untrained network puts every parameter at its lower
+     bound (H13). Started from the a priori maps (3e), no cell has roots
+     under 10 mm, and f and Sl stay nearer their a priori values.
+   - **KsatVer drops from ~570 to ~50 in every variant**: with or without the
+     beta (bias) term (3d), and from the a priori start (3e). Its spatial
+     pattern has no correlation with the a priori map. Not settled whether
+     RT0 really wants this, or whether calibration pushes too far because the
+     surrogate under-responds to KsatVer (the article measured a response
+     slope of 0.27 for its surrogate). Only wflow can tell: one wflow run with
+     the a priori parameters and only KsatVer at the calibrated values.
+     Deferred by the user 2026-09-22.
+   - **Bias terms in the parameter network change nothing** (3e vs 3f).
+   - **Very different parameter maps give the same score** (valid KGE
+     0.23-0.24 in 3b, 3c, 3e, 3f). This fits the identifiability evidence in
+     the article's review response (`article/param_estimation/
+     REV2_response_C6.md`, C6.2): wflow's top-layer soil moisture reacts
+     strongly to KsatVer, less to RootingDepth and c, weakly to f, and hardly
+     at all to Sl.
+   - r only (3d) is worse than not calibrating.
+
 4. **Production.** Rebuild the archive from a real cycle 0. The old stores are
    renamed aside (`emo1_*_cycle_old.zarr`) and are not to be reused.
 
-**Waiting on a decision, not blocking 1-3:**
+**Before production - decisions (user, 2026-09-22):**
 
-- **Success metric = per-cell KGE (H12, agreed 2026-09-21).** The loop's
-  `score()` / `converged()` still use RMSE and bias - the bias-driven metric
-  the user chose KGE to avoid. Two sub-decisions open: keep KGE's bias term
-  (beta) or not, and whether to rescale RT0 per cell first. See H12.
+- **KGE weights: (1, 0.25, 0.75)** (`CycleConfig.kge_weights` default).
+  Alpha is kept but weak, beta counts less than timing. The user will explain
+  the choice in the article rather than test other combinations. Not run yet
+  as a variant: the closest tested runs are 3b (1,1,1) and 3c/3e (1,0,1).
+  Note: loss, logged metric, `score()` and `converged()` all use these
+  weights, so the loop's KGE numbers are the scaled KGE. For the article,
+  compute the standard KGE separately (as `run_step3.py` does).
+- **Pretrain the parameter network at cycle 0: yes**
+  (`CycleConfig.pretrain_transfer` default True).
+- **Sl: keep calibrating it (user, 2026-09-22).** The user asked why fix it. Reasons given: wflow's top-layer
+  soil moisture hardly reacts to Sl (so the data says almost nothing about
+  it), the surrogate reacts to it ~12x more than wflow (so calibration
+  follows a surrogate error), and Sl controls interception and therefore
+  evaporation and runoff, which the score does not check. Reasons to keep:
+  no harm to the soil-moisture fit, same parameter set as the article.
+- **Surrogate epoch ceiling: 70** (`epochs` in the training config, was
+  100). Step 3 reached 100 while still improving; on the production window
+  100 epochs is ~3.5 h, 70 about 2.5 h.
+- **Surrogate early-stopping patience: 15** (user, 2026-09-22; was 20),
+  learning-rate scheduler patience stays 10. Replayed on step 3's training
+  curve: stops at epoch 68 (patience 20: runs to the 70 ceiling), validation
+  loss ~1.5% worse than at epoch 70. Saves ~5 epochs per warm-started cycle.
+  Rule kept: early-stopping patience > scheduler patience.
 
-- **Calibration KGE is pooled over the batch (H11).** One KGE over all
-  512 cells x days together: in a two-cell test with inverted timing the
-  per-cell KGE is -1.0 and the pooled one +0.98. Proposed: per-cell KGE,
-  averaged, weighted by observation count, with a minimum count. Do with H10.
-- **Calibration scores the surrogate from a cold start (H10).** Every
-  calibration sequence starts with an empty LSTM state and is scored from day
-  1, while the surrogate was trained to be right only after 120 days of
-  history. Its error is 2.4x higher in the first 10 days. Likely why
-  calibration's validation correlation stays near zero. Option A (score only
-  after a 120-day warm-up) recommended. Step 3's result includes this effect.
+- **The last cycle is always scored** (user, 2026-09-22, option B). Before,
+  only cycles picked by `score_every` got a clean wflow run, so with
+  `score_every: 2` the result of cycle 7 - or of an early stop at an odd
+  cycle - never ran cleanly in wflow. `main()` now scores the cycle it stops
+  at if it was not scored (`score_cycle()`, the old step 6 as a function).
+  New `CycleState` fields: `scored_cycles`, and `finished`, so a rerun after
+  a crash in that final scoring does not start another cycle. Not committed;
+  tests in `tests/test_final_scoring.py`.
+- **Member outputs deleted after ingestion** (user, 2026-09-22):
+  `CycleConfig.keep_member_outputs`, default False. Each member's full-map
+  output (~10 GB) goes as soon as its pool cells are in the archive, cycle 0
+  included. Disk after a full 8-cycle run: baseline + cycle 0 clean run +
+  final clean run ~30 GB of outputs (was ~70), + ~5 GB staticmaps + ~4.3 GB
+  archive; peak ~50 GB. Note: `output_baseline_apriori.nc` is overwritten by
+  the production baseline (it holds the smoke's 2-year baseline now).
 
-- ~~Training batches are not shuffled~~ - **fixed 2026-09-21** (H8): the
-  training sampler now permutes its indices each epoch. Was ~6 cells per batch
-  of 512, now ~350.
+`test_itwinai.py` removed (user, 2026-09-22): its two tests could never
+pass. Suite now 207 pass, no failures.
+
+**Other open points:**
 
 - `compute_nse` (`hython/metrics/custom.py:127`) subtracts `y_pred.mean()`
   where NSE needs the mean of the observations. It makes the logged NSE a
-  little high. Logged NSE/KGE are also pooled over the whole batch, not per
-  cell.
+  little high. Only a logged metric; the loss and the score use KGE.
 - Turning off the clean/baseline wflow scoring runs at cycle 0 - deferred by
   the user. `smoke_multicycle.py` has no flag for `score_baseline`.
+- ~~`inference.py:98` reads a hard-coded config in the article folder for
+  the parameters' inverse scaling~~ - **fixed 2026-09-22, not committed.**
+  `ParameterInference` now takes the parameter names from
+  `head_model_inputs.cal_param` and the bounds from `scaling_static_range`,
+  both passed in the calibration trainer's config block
+  (`unscale_parameters()`, same formula as `BoundedScaler`; tests in
+  `tests/test_inference_unscale.py`). The 4 article calibration configs
+  (`config_calibration_{workflow,seeds,loop,advanced}.yaml`) need
+  `scaling_static_range: ${scaling_static_range}` in their trainer block
+  before they are run again, or `ParameterInference` raises. Not yet run in a
+  real calibration.
+- The dynamic RT0 mask (D4) is written but not used by calibration.
+
+**Not committed (2026-09-22):** H12 (loss, metrics, score, tests), the KGE
+weights, H13 (trainer, `run_dpl_cycle.py`, both loop configs, tests), and
+this plan, the defaults above, the removal of `test_itwinai.py`.
 
 **Worth a look later:**
 
@@ -641,19 +741,22 @@ Two things the H2 section below gets wrong, left in place as a record:
       property setter, so the distributed cases had to set `_strategy`
       directly or they would have passed without testing anything.
 - [x] H8 — fix the temporal samplers so validation uses the same start days
-      every epoch. **Done 2026-09-21, not committed.** See H8 below.
-- [ ] H10 — calibration scores the surrogate from a cold start. **Option A
-      decided 2026-09-21, scoring the training period from ~2017-05-01 for now;
-      not implemented.** See H10 below.
-- [ ] H12 — the loop judges calibration by RMSE/bias, not by the KGE it
-      optimises. **Agreed 2026-09-21: switch to per-cell KGE, scored per
-      period, with 2021-2022 as the test period; two sub-decisions open.**
-      See H12 below.
-- [ ] H11 — calibration KGE is pooled over the batch instead of per cell.
-      **Found 2026-09-21, a flaw; fix waits on the user.** See H11 below.
+      every epoch. **Done 2026-09-21, committed (`de71f01`).** See H8 below.
+- [x] H10 — calibration scores the surrogate from a cold start. **Done
+      2026-09-21 (option A, scoring the training period from ~2017-05-01),
+      committed (`3377cd2`).** See H10 below.
+- [x] H12 — the loop judges calibration by RMSE/bias, not by the KGE it
+      optimises. **Done 2026-09-21: per-cell KGE for loss, score and stop,
+      scored per period, 2021-2022 as the test period; not committed.** See
+      H12 below.
+- [x] H11 — calibration KGE is pooled over the batch instead of per cell.
+      **Done 2026-09-21, committed (`3ed9d2c`).** See H11 below.
 - [x] H9 — more cells for the surrogate: `train_rows_target: 22000`,
-      `frac_time: 0.1`, and a NumPy sample-index build. **Done 2026-09-21, not
-      committed.** See H9 below.
+      `frac_time: 0.1`, and a NumPy sample-index build. **Done 2026-09-21,
+      committed (`de71f01`).** See H9 below.
+- [x] H13 — neither network was ever warm-started between cycles; the
+      parameter network starts every parameter at its lower bound. **Done
+      2026-09-22, not committed.** See H13 below.
 
 ---
 
@@ -1081,7 +1184,10 @@ and it is the number to watch if the surrogate stops improving.
 ### (c) Do not retrain from scratch every cycle
 
 Training runs `epochs: 100` and calibration `epochs: 60` every cycle, both
-starting from the previous weights (`CudaLSTM.load`, `TransferNN.load`). With
+meant to start from the previous weights (`CudaLSTM.load`, `TransferNN.load`).
+**Correction 2026-09-22: they never did** - those flags do not load anything;
+both networks started from scratch every cycle, in this loop and in the
+article's `run_workflow_REFERENCE.py`. Fixed under H13. With
 one run per cycle, cycle 5 does 100 epochs to take in about 7% more data.
 
 Cycle 0 needs the full amount. Later cycles are just tuning: about 25 and 20
@@ -1744,7 +1850,7 @@ would otherwise be 22000 rows x ~25 days per epoch.
 `predict_step`, `target_step`), `config/config_calibration_loop.yaml`
 (`predict_steps: all`).
 
-**Status: found 2026-09-21 during step 3, waits on a decision.**
+**Status: done 2026-09-21 (option A), committed (`3377cd2`).** Found during step 3.
 
 **How the calibration loss is computed today.**
 
@@ -1881,7 +1987,7 @@ bias 0.100 against 0.086 (see "Step 3 results" in Next steps).
 **Files:** `hython/trainer/base.py:64-97` (`_compute_batch_loss`),
 `hython/losses/standard.py:56-94` (`compute_kge_torch`, `KGELoss`).
 
-**Status: implemented 2026-09-21, not committed.** `CellKGELoss` and
+**Status: implemented 2026-09-21, committed (`3ed9d2c`).** `CellKGELoss` and
 `compute_kge_per_cell` in `hython/losses/standard.py`; `_compute_batch_loss`
 gives a loss with `per_cell = True` the `(N, T)` tensors, with NaN where not
 valid; `config_calibration_loop.yaml` uses `CellKGELoss`; tests in
@@ -1936,8 +2042,9 @@ H10 and H11 touch the same loss code and are best done together.
 `relative_to_baseline`, `converged`, `has_converged`, `CycleConfig`), and the
 calibration loss (H11).
 
-**Status: agreed 2026-09-21 - per-cell KGE is the success metric; two
-sub-decisions open; not implemented.**
+**Status: agreed and implemented 2026-09-21 - per-cell KGE is the success
+metric; the sub-decisions are made (see below); not committed.** Scaled KGE
+weights added 2026-09-22 (below).
 
 **Why KGE (user, 2026-09-21).** There is a systematic bias between RT0 and
 wflow, and the calibration should not be driven by it. RMSE is dominated by
@@ -1985,6 +2092,42 @@ push to alpha = 1 raises RMSE, whose optimum is alpha = r (D3).
 
 Also to fix: N (minimum observations per cell) - D1-D3 used 20.
 
+**Decided 2026-09-21 (user).** (1) Standard KGE, with an option to turn beta
+off - one switch, used by both the loss (`CellKGELoss`) and `score()`, so the
+loop still optimises what it judges. (2) Alpha: standard weights. (3) Minimum
+observations per cell for the score: a user parameter, default 20 (as D1-D3).
+The loss keeps its fixed floor of 2 for now (H11).
+
+**Implemented 2026-09-21, not committed.**
+- `hython/metrics/custom.py`: `compute_kge_per_cell_np` (the one NumPy
+  definition: per-cell KGE, r, alpha, beta, n; NaN below `min_obs`;
+  `use_beta`) and `KGECellMetric` (median per-cell KGE, logged as
+  `val_<target>_kgecell_epoch`). `CellKGELoss(use_beta=...)`.
+- `run_dpl_cycle.py`: `CycleConfig.kge_use_beta` (True) and
+  `min_obs_per_cell` (20); `calibrate()` passes both to the loss and the
+  metric. `score(output_nc, cfg)` returns per period (train/valid/test,
+  from the calibration config) `kge_`, `r_`, `alpha_`, `beta_` medians and
+  `cells_`; a period outside the simulated window is left out; RMSE/bias
+  kept for reference. `relative_to_baseline` decides on `kge_valid`
+  (None if missing). `converged` tracks `WFLOW_KEYS = ("kge_valid",)`, the
+  surrogate branch `SURROGATE_KEYS = ("kgecell",)`.
+- Configs: `test_temporal_range` 2021-01-01 .. 2022-12-31 in both;
+  `KGECellMetric` added to the calibration metrics.
+- The wflow score uses the whole configured period (wflow is warm-started,
+  no H10 warm-up needed).
+
+**Bug found and fixed on the way: calibration's logged metrics were day 0
+only.** `metric_decorator` (`hython/metrics/base.py`) indexed `y[:, idx]`,
+which on calibration's `(N, T, C)` arrays is *day* `idx`, not target `idx`.
+So every logged calibration metric - `val_rmse`, `val_kge`, `val_pearson`,
+the `cal_metrics` that `converge_on: surrogate` used - was computed on each
+cell's first day, from a cold start. Fixed to `[..., idx]`; identical on 2-D
+`(N, C)` arrays (surrogate training, `predict_steps: 0`), checked on 3600
+values. The validation *loss* used every day, so early stopping was right.
+**Step 3's "validation correlation -0.10 .. +0.01" and the smoke's
+calibration metrics are therefore day-0 numbers and say nothing about the
+calibration period** - the D1-D3 diagnostics (computed separately) stand.
+
 **Test period: 2021-2022 (agreed 2026-09-21).** Change `test_temporal_range`
 from `2022-01-01 .. 2022-12-31` to `2021-01-01 .. 2022-12-31` in
 `config_calibration_loop.yaml` and `config_training_calibration_loop.yaml`.
@@ -1996,8 +2139,89 @@ stopping and the LR schedule read it); 2021-2022 is the only unseen period.
 The 2021 warm-up (H10) comes from late-2020 forcing - input only, no leak.
 Data: ~98 RT0 observations per cell over the two years with the DJF+MAM
 mask, about one normal year (2022 alone has half, Sentinel-1B lost). The
-production wflow window must cover 2022 (the smoke's is 2 years). Not
-applied yet.
+production wflow window must cover 2022 (the smoke's is 2 years). Applied
+in both configs.
+
+**Scaled KGE weights (2026-09-22).** `CycleConfig.kge_weights = (r, alpha,
+beta)`, default (1, 1, 1) = the standard KGE. `calibrate()` passes them to
+`CellKGELoss(weights)` and `KGECellMetric(weights)`;
+`compute_kge_per_cell*` take `weights`. The wflow score in `run_step3.py`
+always uses (1, 1, 1), so variants compare. Used for steps 3c-3f: (1, 0, 1)
+removes the alpha term, which in step 3b bought larger swings with very
+shallow roots. Which weights production uses is still the user's decision.
+
+---
+
+## H13 — warm starts never happened; the parameter network starts at the lower bounds
+
+**Files:** `hython/itwinai/trainer.py`, `scripts/run_dpl_cycle.py`
+(`calibrate`, `train_surrogate`, `pretrain_transfer`, `transfer_weights`,
+`CycleConfig`), `scripts/config/config_calibration_loop.yaml`,
+`scripts/config/config_training_calibration_loop.yaml`.
+
+**Status: done 2026-09-22, not committed.** Tests:
+`tests/test_trainer_warm_start.py` (3), `tests/test_cycle_config.py` (4 new).
+
+**1. Neither network was ever warm-started.** `calibrate()` set
+`model_logger.TransferNN.load: cycle > 0` and `train_surrogate()` set
+`model_logger.CudaLSTM.load: cycle > 0`. Those flags only put a name in a
+list (`ModelLogAPI.model_load_names`). The trainer loads the parameter
+network only when `mt_load_pretrained` is true, and it was never set. The
+surrogate's training branches (`rnntrainer`, `rnntrainer_hpc`) never loaded
+weights at all - checked in every version of `trainer.py` back to 2024-09.
+So every cycle trained both networks from scratch, also in the article's
+`run_workflow_REFERENCE.py`. The overnight smoke agrees: in cycles 1-4 the
+first-epoch validation loss was 0.074-0.113, against a best of 0.060 in
+cycle 0.
+
+Fixed:
+- Parameter network: `calibrate()` sets `mt_load_pretrained: cycle > 0`
+  and the weights path explicitly (`transfer_weights()`).
+- Surrogate: new trainer key `model_load_pretrained` (default false) in the
+  `rnntrainer` and `rnntrainer_hpc` branches; `train_surrogate()` sets it to
+  `cycle > 0` and the weights path explicitly (`surrogate_weights()`). A
+  missing file raises. A new key, not the old `load` flag, so the other
+  configs that use this trainer (notebooks, `hython-itwinai-plugin`) do not
+  change behaviour.
+- The parameter network's load in the trainer now falls back to random
+  weights only if the file is missing (`except FileNotFoundError`); a shape
+  mismatch raises.
+
+Warm start was chosen by the user 2026-09-22. Known risk: a warm-started
+network can generalise worse than one trained from scratch on the grown
+data (Ash & Adams 2020). Here the new data per cycle is small and every run
+keeps being sampled (A2 b2), so the risk is small. If it shows, the fix is
+"shrink and perturb" of the loaded weights. The user decided not to measure
+it now. Not yet run on real data: the first cycle-1 training will show
+`loading model from pretrained weights` in its log.
+
+**2. The untrained parameter network puts every parameter at its lower
+bound.** `TransferNN` is one small MLP per parameter, with no bias terms and
+a linear output. Untrained, it outputs ~0 +/- 0.05 in scaled space (3 seeds,
+20000 cells), and the scaling is linear between the bounds, so calibration
+started from KsatVer 1 mm/d, RootingDepth 5 mm, c 1 and so on.
+
+Added, both off by default:
+- `CycleConfig.pretrain_transfer`: at cycle 0, `pretrain_transfer()` first
+  fits the network to the a priori maps (MSE in scaled space, full-map
+  MinMax01 predictors - checked equal to calibration's own statistics - and
+  the `CAL_PARAMS` bounds), saves it through `ModelLogAPI`, and calibration
+  loads it. ~1 min. Fit on 10% held-out cells, R^2: KsatVer 0.98, c 0.95,
+  f 0.87, RootingDepth 0.55, Sl 0.58 (land use, which these two likely come
+  from, is not among the 12 predictors). The fit is written to
+  `cycles/cycle_0/transfer_pretrain.json`.
+- `CycleConfig.transfer_bias` (config key `mt_bias`): bias terms in the
+  network's linear layers. Pretrained and loaded weights must use the same
+  setting.
+
+Result (steps 3e, 3f above): pretraining removes the very shallow roots and
+keeps f and Sl nearer their a priori values, at the same score. KsatVer
+still drops to ~55, so its drop is not caused by the start. Bias terms change
+nothing.
+
+Not done: a log scale for KsatVer and f in the network's output (they span
+3-4 orders of magnitude; the linear scale puts 90% of a priori KsatVer in the
+bottom 14% of its range). Discussed, not decided.
 
 ---
 

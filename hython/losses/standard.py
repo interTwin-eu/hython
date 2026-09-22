@@ -77,12 +77,17 @@ def compute_kge_torch(true, pred, eps=1e-8):
 
     return kge
 
-def compute_kge_per_cell(true, pred, eps=1e-8):
+def compute_kge_per_cell(true, pred, eps=1e-8, use_beta=True, weights=None):
     """
     Compute the KGE of each cell over its own time series.
 
     :param true: torch tensor (N, T). NaN marks a missing observation.
     :param pred: torch tensor (N, T).
+    :param use_beta: if False, the KGE has no mean-ratio term:
+        1 - sqrt((r-1)^2 + (alpha-1)^2).
+    :param weights: optional (w_r, w_alpha, w_beta), the scaled KGE
+        1 - sqrt((w_r(r-1))^2 + (w_alpha(alpha-1))^2 + (w_beta(beta-1))^2).
+        None means (1, 1, 1).
     :return: tuple (kge, count). kge is (M,) and holds only the cells with
         2 or more observations, because the standard deviation needs 2.
         count is (M,), the number of observations of each of these cells.
@@ -113,7 +118,11 @@ def compute_kge_per_cell(true, pred, eps=1e-8):
     # Mean ratio (β)
     beta = pred_mean / (true_mean + eps)
 
-    kge = 1 - torch.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
+    w_r, w_a, w_b = weights if weights is not None else (1.0, 1.0, 1.0)
+    terms = (w_r * (r - 1)) ** 2 + (w_a * (alpha - 1)) ** 2
+    if use_beta:
+        terms = terms + (w_b * (beta - 1)) ** 2
+    kge = 1 - torch.sqrt(terms)
 
     return kge, n
 
@@ -124,6 +133,8 @@ class CellKGELoss(_Loss):
     Each cell's KGE is weighted by its number of observations: a cell with
     few observations represents its time series less well, so it has less
     effect on the loss. Cells with fewer than 2 observations get no weight.
+    ``use_beta: false`` drops the mean-ratio term (H12). ``weights``
+    (w_r, w_alpha, w_beta) scales the three terms; None means (1, 1, 1).
 
     The trainer gives this loss the (N, T) tensors, not the flattened valid
     values (see ``per_cell``).
@@ -132,11 +143,13 @@ class CellKGELoss(_Loss):
     # Tells the trainer to keep the (N, T) shape and set the invalid values to NaN
     per_cell = True
 
-    def __init__(self):
+    def __init__(self, use_beta: bool = True, weights=None):
         super(CellKGELoss, self).__init__()
+        self.use_beta = use_beta
+        self.weights = None if weights is None else tuple(float(w) for w in weights)
 
     def forward(self, target, y_pred):
-        kge, n = compute_kge_per_cell(target, y_pred)
+        kge, n = compute_kge_per_cell(target, y_pred, use_beta=self.use_beta, weights=self.weights)
         if kge.numel() == 0:
             # No cell with enough observations: a zero loss that keeps the graph
             return y_pred.nan_to_num().sum() * 0.0

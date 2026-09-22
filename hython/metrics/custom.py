@@ -65,6 +65,77 @@ class NSEMetric(CustomMetric):
         )()
 
 
+def compute_kge_per_cell_np(y_true, y_pred, min_obs=20, use_beta=True, weights=None):
+    """
+    Compute the KGE of each cell over its own time series (H12).
+
+    The same definition as the calibration loss (``CellKGELoss``), in NumPy,
+    so that the logged metric and the wflow score use it too.
+
+    :param y_true: array (N, T). NaN marks a missing observation.
+    :param y_pred: array (N, T).
+    :param min_obs: cells with fewer observations get NaN.
+    :param use_beta: if False, the KGE has no mean-ratio term:
+        1 - sqrt((r-1)^2 + (alpha-1)^2).
+    :param weights: optional (w_r, w_alpha, w_beta), as in ``CellKGELoss``.
+    :return: dict of arrays (N,): "kge", "r", "alpha", "beta", "n".
+    """
+    y_true = np.asarray(y_true, dtype="float64")
+    y_pred = np.asarray(y_pred, dtype="float64")
+    valid = np.isfinite(y_true) & np.isfinite(y_pred)
+    n = valid.sum(-1)
+    t = np.where(valid, y_true, 0.0)
+    p = np.where(valid, y_pred, 0.0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        t_mean = t.sum(-1) / n
+        p_mean = p.sum(-1) / n
+        dt = np.where(valid, t - t_mean[:, None], 0.0)
+        dp = np.where(valid, p - p_mean[:, None], 0.0)
+        ss_t = (dt**2).sum(-1)
+        ss_p = (dp**2).sum(-1)
+        r = (dt * dp).sum(-1) / np.sqrt(ss_t * ss_p)
+        alpha = np.sqrt(ss_p / ss_t)
+        beta = p_mean / t_mean
+        w_r, w_a, w_b = weights if weights is not None else (1.0, 1.0, 1.0)
+        terms = (w_r * (r - 1)) ** 2 + (w_a * (alpha - 1)) ** 2
+        if use_beta:
+            terms = terms + (w_b * (beta - 1)) ** 2
+        kge = 1 - np.sqrt(terms)
+    few = n < max(min_obs, 2)
+    out = {"kge": kge, "r": r, "alpha": alpha, "beta": beta}
+    for k in out:
+        out[k] = np.where(few, np.nan, out[k])
+    out["n"] = n
+    return out
+
+
+class KGECellMetric(CustomMetric):
+    """
+    Median over cells of the per-cell KGE (H12). Needs (N, T, C) arrays.
+
+    Unlike ``KGEMetric``, which pools all cells and days into one series,
+    each cell is scored on its own time series. Cells with fewer than
+    ``min_obs`` observations do not count.
+    """
+
+    def __init__(self, min_obs: int = 20, use_beta: bool = True, weights=None):
+        self.min_obs = min_obs
+        self.use_beta = use_beta
+        self.weights = None if weights is None else tuple(float(w) for w in weights)
+
+    def __call__(self, y_true, y_pred, target_names: list[str] | None = None, valid_mask=None):
+        metrics = {}
+        for idx, target in enumerate(target_names):
+            iytrue = np.asarray(y_true[..., idx], dtype="float64")
+            if valid_mask is not None:
+                iytrue = np.where(valid_mask[..., idx], iytrue, np.nan)
+            kge = compute_kge_per_cell_np(
+                iytrue, y_pred[..., idx], self.min_obs, self.use_beta, self.weights
+            )["kge"]
+            metrics[target] = float(np.nanmedian(kge)) if np.isfinite(kge).any() else np.nan
+        return metrics
+
+
 # == METRICS
 # The metrics below should work for both numpy or xarray inputs. The usage of xarray inputs is supported as it is handy for lazy computations
 # e.g. compute_mse(y_true.chunk(lat=100,lon=100), y_pred.chunk(lat=100,lon=100)).compute()

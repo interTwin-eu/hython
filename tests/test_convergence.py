@@ -23,8 +23,12 @@ CycleState = run_dpl_cycle.CycleState
 converged = run_dpl_cycle.converged
 has_converged = run_dpl_cycle.has_converged
 
-FLAT = [{"rmse": 0.100, "bias": 0.010}, {"rmse": 0.1001, "bias": 0.0100}]
-MOVING = [{"rmse": 0.100, "bias": 0.010}, {"rmse": 0.080, "bias": 0.005}]
+# wflow scores (H12: per-cell KGE on the validation period) ...
+FLAT = [{"kge_valid": 0.230, "rmse": 0.10}, {"kge_valid": 0.2301, "rmse": 0.12}]
+MOVING = [{"kge_valid": 0.180, "rmse": 0.10}, {"kge_valid": 0.230, "rmse": 0.10}]
+# ... and what calibration logged (KGECellMetric)
+CAL_FLAT = [{"kgecell": 0.40, "rmse": 0.10}, {"kgecell": 0.4001, "rmse": 0.2}]
+CAL_MOVING = [{"kgecell": 0.30, "rmse": 0.10}, {"kgecell": 0.40, "rmse": 0.10}]
 
 
 def state(history=(), cal=()):
@@ -52,10 +56,15 @@ def test_one_entry_is_never_convergence():
 
 
 def test_a_missing_key_is_skipped_not_assumed():
-    """Calibration metrics have no `bias`, so the rule must not treat its
-    absence as 'converged'."""
+    """A key absent from the history must not count as 'converged'."""
     h = [{"rmse": 0.100}, {"rmse": 0.080}]
     assert converged(h, 0.01, keys=("rmse", "bias")) is False
+
+
+def test_rmse_no_longer_decides():
+    """H12: RMSE moving does not stop a KGE plateau from converging."""
+    assert converged(FLAT, 0.01) is True
+    assert has_converged(state(cal=CAL_FLAT), cfg(converge_on="surrogate")) is True
 
 
 def test_no_usable_keys_means_not_converged():
@@ -76,26 +85,26 @@ def test_rel_tol_zero_disables_stopping():
 
 
 def test_wflow_ignores_the_surrogate():
-    st = state(history=FLAT, cal=MOVING)
+    st = state(history=FLAT, cal=CAL_MOVING)
     assert has_converged(st, cfg(converge_on="wflow")) is True
 
 
 def test_surrogate_ignores_wflow():
-    st = state(history=MOVING, cal=FLAT)
+    st = state(history=MOVING, cal=CAL_FLAT)
     assert has_converged(st, cfg(converge_on="surrogate")) is True
 
 
 def test_both_requires_agreement():
-    st = state(history=FLAT, cal=MOVING)
+    st = state(history=FLAT, cal=CAL_MOVING)
     assert has_converged(st, cfg(converge_on="both")) is False
-    st = state(history=FLAT, cal=FLAT)
+    st = state(history=FLAT, cal=CAL_FLAT)
     assert has_converged(st, cfg(converge_on="both")) is True
 
 
 def test_surrogate_can_stop_the_loop_with_no_wflow_scores_at_all():
     """The point of the option: ground truth is paid for only where wanted,
     not to decide when to stop."""
-    st = state(history=[], cal=FLAT)
+    st = state(history=[], cal=CAL_FLAT)
     assert has_converged(st, cfg(converge_on="surrogate", score_every=0)) is True
     assert has_converged(st, cfg(converge_on="wflow", score_every=0)) is False
 

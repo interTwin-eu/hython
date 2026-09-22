@@ -8,10 +8,12 @@ def metric_decorator(y_true, y_pred, target_names, valid_mask=None, sample_weigh
         def wrapper():
             metrics = {}
             for idx, target in enumerate(target_names):
-                iypred = y_pred[:, idx]
-                iytrue = y_true[:, idx]
+                # Target on the last axis: (N, C) or (N, T, C). `[:, idx]`
+                # took day `idx` of an (N, T, C) array instead of target `idx`.
+                iypred = y_pred[..., idx]
+                iytrue = y_true[..., idx]
                 if valid_mask is not None:
-                    imask = valid_mask[:, idx]
+                    imask = valid_mask[..., idx]
                     iypred = iypred[imask]
                     iytrue = iytrue[imask]
                 if issubclass(wrapped.__class__, TorchMetric):

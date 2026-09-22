@@ -185,8 +185,15 @@ class CycleConfig:
     # cycle's *score*, which lives in the state JSON and is never a netCDF.
     prune_outputs: bool = True
 
+    # A member's full-map output (~10 GB on the 2017-2022 window) has no
+    # reader once `ingest_member` has copied its pool cells into the archive.
+    # False deletes it right after ingestion, cycle 0 included; the clean
+    # `theta_cal` runs and the baseline are not affected. Any member can be
+    # recreated from its kept staticmaps with one wflow run.
+    keep_member_outputs: bool = False
+
     # The clean `theta_cal` run costs a full wflow simulation - as much as a
-    # training member - and yields only the two numbers in `score()`. It feeds
+    # training member - and yields only the numbers in `score()`. It feeds
     # nothing else: the next cycle's centre comes from `calibrate()`, not from
     # this run. So it is optional.
     #
@@ -211,6 +218,34 @@ class CycleConfig:
     # Score the uncalibrated parameters once, as a reference for every cycle.
     # One wflow run for the whole campaign.
     score_baseline: bool = True
+
+    # H12: the success metric is per-cell KGE - the loss, the score and the
+    # stopping rule all use it. `kge_use_beta: False` drops the mean-ratio
+    # term everywhere at once (loss, logged metric, wflow score), for when the
+    # systematic RT0-wflow level difference should not drive the calibration.
+    # `min_obs_per_cell`: a cell counts in a score only with at least this
+    # many observations in the scored period (D1-D3 used 20).
+    kge_use_beta: bool = True
+    min_obs_per_cell: int = 20
+    # Scaled KGE: weights on the (r, alpha, beta) terms, for loss, logged
+    # metric and score alike. (1, 1, 1) is the standard KGE.
+    # Chosen 2026-09-22 (user): (1, 0.25, 0.75). Alpha is kept but weak -
+    # with full weight (step 3b) calibration bought larger swings with ~5 mm
+    # roots - and beta counts less than timing.
+    kge_weights: tuple = (1.0, 0.25, 0.75)
+
+    # The parameter network (TransferNN). Untrained, it outputs ~0 in scaled
+    # space for every parameter, i.e. every parameter starts at its lower
+    # bound (checked 2026-09-22: KsatVer 1 mm/d, RootingDepth 5 mm).
+    # `pretrain_transfer` first fits it to the a priori maps, so cycle 0
+    # calibration starts from the a priori parameters instead. Later cycles
+    # start from the previous cycle's network either way.
+    # `transfer_bias` adds bias terms to its linear layers; the pretrained
+    # and the loaded weights must have been made with the same setting.
+    # Chosen 2026-09-22 (user): pretrain. Steps 3e/3f: no ~5 mm roots, f and
+    # Sl nearer their a priori values, same score. Bias terms changed nothing.
+    pretrain_transfer: bool = True
+    transfer_bias: bool = False
 
     # Test hooks. All None/empty in a real run, so nothing below changes.
     # `wflow_starttime`/`wflow_endtime` shorten the simulation window for a
@@ -265,6 +300,12 @@ class CycleState:
     # second time. Members ingest in order, so a count is enough.
     members_done: int = 0
     stages_done: list = field(default_factory=list)  # "train", "calibrate"
+
+    # Cycles whose `theta_cal` has had its clean wflow run and score.
+    scored_cycles: list = field(default_factory=list)
+    # Set when the loop has stopped - converged or at `n_cycles` - so a rerun
+    # after a crash in the final scoring does not start another cycle.
+    finished: bool = False
 
     @classmethod
     def load(cls, path: Path) -> "CycleState":
@@ -559,8 +600,108 @@ def surrogate_weights() -> Path:
     return WD_RUN / "loop_train_multicycle" / "CudaLSTM.pt"
 
 
+def transfer_weights() -> Path:
+    """Where calibration reads and writes the parameter network's weights."""
+    return WD_RUN / "loop_cal_multicycle" / "TransferNN.pt"
+
+
+def pretrain_transfer(dest: Path, bias: bool = False, epochs: int = 100,
+                      holdout: float = 0.1) -> dict:
+    """Fit the parameter network to the a priori maps and save it at `dest`.
+
+    Inputs and targets are scaled the way calibration scales them: the
+    predictors by MinMax01 over the full map (the same numbers calibration
+    computes - checked against its cached statistics when they exist), the
+    parameters linearly between their `CAL_PARAMS` bounds. The loss is MSE
+    in that scaled space, on every cell where both are defined. Returns the
+    fit on `holdout` of the cells, per parameter.
+    """
+    import torch
+    import yaml
+    from hython.models import ModelLogAPI
+    from hython.models.transferNN import TransferNN
+
+    ccfg = OmegaConf.load(WD_CONFIG / "config_calibration_loop.yaml")
+    files = ccfg.data_source.file
+    preds = list(ccfg.static_inputs)
+    params = list(ccfg.head_model_inputs.cal_param)
+    for p in params:
+        if tuple(ccfg.scaling_static_range[p]) != CAL_PARAMS[p]:
+            raise ValueError(f"{p}: calibration scales by {ccfg.scaling_static_range[p]}, CAL_PARAMS says {CAL_PARAMS[p]}")
+
+    xds = xr.open_zarr(files.static_inputs)[preds].load()
+    lo = xds.min().compute()
+    span = xds.max().compute() - lo
+    cached = WD_RUN / "loop_cal_multicycle" / "static_inputs.yaml"
+    if cached.exists():
+        stats = yaml.load(cached.read_text(), Loader=yaml.Loader)
+        c, s = (xr.Dataset.from_dict(stats[k]) for k in ("center", "scale"))
+        for v in preds:
+            if not (np.isclose(float(c[v]), float(lo[v])) and np.isclose(float(s[v]), float(span[v]))):
+                raise ValueError(f"{v}: full-map min/max differ from calibration's cached statistics")
+    x = np.stack([((xds[v] - lo[v]) / span[v]).values.ravel() for v in preds], -1)
+
+    tds = xr.open_zarr(files.static_parameter_inputs)[params].load()
+    y = np.stack([((tds[p] - CAL_PARAMS[p][0]) / (CAL_PARAMS[p][1] - CAL_PARAMS[p][0])).values.ravel()
+                  for p in params], -1)
+
+    ok = np.isfinite(x).all(-1) & np.isfinite(y).all(-1)
+    x, y = x[ok].astype("float32"), y[ok].astype("float32")
+
+    torch.manual_seed(int(ccfg.seed))
+    rng = np.random.default_rng(int(ccfg.seed))
+    order = rng.permutation(len(x))
+    n_val = int(len(x) * holdout)
+    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    xt, yt = torch.from_numpy(x).to(dev), torch.from_numpy(y).to(dev)
+    tr, va = torch.from_numpy(order[n_val:]).to(dev), torch.from_numpy(order[:n_val]).to(dev)
+
+    model = TransferNN(params, len(preds), ccfg.mt_output_dim, ccfg.mt_hidden_dim,
+                       ccfg.mt_n_layers, bias=bias).to(dev)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=5)
+    loss_fn = torch.nn.MSELoss()
+    best, best_state = np.inf, None
+    for epoch in range(epochs):
+        model.train()
+        for b in tr[torch.randperm(len(tr), device=dev)].split(1024):
+            opt.zero_grad()
+            loss_fn(model(xt[b]), yt[b]).backward()
+            opt.step()
+        model.eval()
+        with torch.no_grad():
+            val = loss_fn(model(xt[va]), yt[va]).item()
+        sched.step(val)
+        if val < best:
+            best, best_state = val, {k: v.detach().clone() for k, v in model.state_dict().items()}
+        if epoch % 10 == 0:
+            logger.info(f"pretrain_transfer: epoch {epoch}, holdout MSE {val:.5f}")
+    model.load_state_dict(best_state)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # saved the way calibration's trainer saves and loads it
+    ccfg.model_logger.TransferNN.model_uri = str(dest)
+    ModelLogAPI(ccfg).log_model("transfernn", model.cpu())
+
+    with torch.no_grad():
+        pv = model(xt[va].cpu()).numpy()
+    yv = y[order[:n_val]]
+    fit = {"bias": bias, "cells": int(len(x)), "holdout_mse": best}
+    for i, p in enumerate(params):
+        lo_p, hi_p = CAL_PARAMS[p]
+        fit[p] = {
+            "r2": float(1 - np.mean((pv[:, i] - yv[:, i]) ** 2) / np.var(yv[:, i])),
+            "apriori_p50": float(lo_p + np.median(yv[:, i]) * (hi_p - lo_p)),
+            "fit_p50": float(lo_p + np.median(pv[:, i]) * (hi_p - lo_p)),
+        }
+    logger.info(f"pretrain_transfer: saved {dest}: {fit}")
+    return fit
+
+
 def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
     """Retrain on the full archive, warm-started from the previous cycle.
+
+    Until 2026-09-22 the warm start never happened: `CudaLSTM.load` only names
+    the file, and the trainer reads it only with `model_load_pretrained`.
 
     Scaler statistics are computed once at cycle 0 and cached thereafter. The
     vwc distribution shifts as theta moves, so refitting MinMax01Scaler every
@@ -570,6 +711,9 @@ def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
     overrides = {
         "experiment_run": "train_multicycle",
         "model_logger.CudaLSTM.load": cycle > 0,
+        # the key the trainer actually reads; `.load` alone only names the file
+        "model_load_pretrained": cycle > 0,
+        "model_logger.CudaLSTM.model_uri": str(surrogate_weights()),
         "scaling_use_cached": cycle > 0,
         "data_source.file.static_inputs": str(STATIC_ARCHIVE),
         # Both keys name the same store on purpose: WflowSBM_Pool opens
@@ -593,6 +737,15 @@ def train_surrogate(cycle: int, cfg: CycleConfig) -> None:
     shutil.copy(surrogate_weights(), keep / f"CudaLSTM_{cycle}.pt")
 
 
+def _metric_index(template: str, target: str) -> int:
+    """Position of the metric `target` in a template's `metric_fn.metrics`."""
+    metrics = OmegaConf.load(WD_CONFIG / f"{template}.yaml").metric_fn.metrics
+    for i, m in enumerate(metrics):
+        if m["_target_"] == target:
+            return i
+    raise KeyError(f"{target} is not in {template}.metric_fn.metrics")
+
+
 def calibrate(cycle: int, cfg: CycleConfig) -> tuple[Path, dict]:
     """Run dPL against the observations, returning the calibrated parameter file."""
     # The calibration config names the surrogate through the path of the
@@ -604,13 +757,34 @@ def calibrate(cycle: int, cfg: CycleConfig) -> tuple[Path, dict]:
     weights = surrogate_weights()
     if not weights.exists():
         raise FileNotFoundError(f"no trained surrogate at {weights}")
+    # `model_logger.TransferNN.load` only names the file; the trainer reads it
+    # only when `mt_load_pretrained` is true. Until 2026-09-22 that key was
+    # never set, so every cycle started the network from scratch.
+    pretrained = cycle > 0
+    if cycle == 0 and cfg.pretrain_transfer:
+        fit = pretrain_transfer(transfer_weights(), bias=cfg.transfer_bias)
+        (WD_CYCLE / f"cycle_{cycle}").mkdir(parents=True, exist_ok=True)
+        (WD_CYCLE / f"cycle_{cycle}" / "transfer_pretrain.json").write_text(json.dumps(fit, indent=1))
+        pretrained = True
     overrides = {
         "model_logger.CudaLSTM.model_uri": str(weights),
         "experiment_run": "cal_multicycle",
-        "model_logger.TransferNN.load": cycle > 0,
+        # explicit for the same reason as the surrogate's: pretraining writes
+        # here, and a redirected `WD_RUN` must be followed
+        "model_logger.TransferNN.model_uri": str(transfer_weights()),
+        "model_logger.TransferNN.load": pretrained,
+        "mt_load_pretrained": pretrained,
+        "mt_bias": cfg.transfer_bias,
         "scaling_use_cached": cycle > 0,
         "data_source.file.target_variables": str(OBS),
     }
+    # H12: loss and logged metric use the same KGE as score()
+    overrides["loss_fn.use_beta"] = cfg.kge_use_beta
+    i = _metric_index("config_calibration_loop", "hython.metrics.KGECellMetric")
+    overrides[f"metric_fn.metrics.{i}.use_beta"] = cfg.kge_use_beta
+    overrides[f"metric_fn.metrics.{i}.min_obs"] = cfg.min_obs_per_cell
+    overrides["loss_fn.weights"] = list(cfg.kge_weights)
+    overrides[f"metric_fn.metrics.{i}.weights"] = list(cfg.kge_weights)
     # H10: the warm-up is the surrogate's seq_length; keep them together
     if "seq_length" in cfg.config_overrides:
         overrides["warmup_steps"] = cfg.config_overrides["seq_length"]
@@ -724,13 +898,39 @@ def prune_cycle_outputs(cycle: int, cfg: CycleConfig) -> None:
         logger.info(f"pruned cycle {cycle} outputs: {freed / 2**30:.1f} GB freed")
 
 
-def score(output_nc: Path) -> dict:
-    """RMSE and bias of the clean theta_cal run against the observations.
+# What the wflow score and the two stopping signals track (H12). The
+# validation period, because the calibration period alone can hide overfitting.
+WFLOW_KEYS = ("kge_valid",)
+# Calibration's logged `val_<target>_kgecell_epoch` (KGECellMetric)
+SURROGATE_KEYS = ("kgecell",)
+
+
+def score_periods(cfg: CycleConfig) -> dict:
+    """The calibration's train/valid/test periods, overrides applied."""
+    tpl = OmegaConf.load(WD_CONFIG / "config_calibration_loop.yaml")
+    out = {}
+    for name in ("train", "valid", "test"):
+        key = f"{name}_temporal_range"
+        out[name] = tuple(cfg.config_overrides.get(key, tpl[key]))
+    return out
+
+
+def score(output_nc: Path, cfg: CycleConfig) -> dict:
+    """Per-cell KGE of a wflow run against the observations, per period (H12).
+
+    For each of the calibration's periods: the median over cells of the
+    per-cell KGE and of its parts r, alpha and beta, so a change can be traced
+    to timing, variability or level; and how many cells counted (those with
+    at least `min_obs_per_cell` observations in the period). A period outside
+    the simulated window is left out. RMSE and bias over the whole window are
+    kept for reference; they decide nothing.
 
     Scored on the unperturbed parameters. The perturbed members exist to train
     the surrogate; they are not the calibration result and must not drive the
     stopping rule.
     """
+    from hython.metrics.custom import compute_kge_per_cell_np
+
     sim = xr.open_dataset(output_nc).sel(lat=slice(None, None, -1))
     sim = _unpack_layer(sim, "vwc")["vwc"]
     obs = xr.open_dataset(OBS)
@@ -739,10 +939,30 @@ def score(output_nc: Path) -> dict:
     sim, obs = xr.align(sim, obs, join="inner")
     diff = (sim - obs).values
     valid = np.isfinite(diff)
-    return {
+    out = {
         "rmse": float(np.sqrt(np.nanmean(diff[valid] ** 2))),
         "bias": float(np.nanmean(diff[valid])),
     }
+
+    for name, (start, end) in score_periods(cfg).items():
+        s = sim.sel(time=slice(start, end))
+        if s.sizes["time"] == 0:
+            continue
+        o = obs.sel(time=slice(start, end))
+        n_t = s.sizes["time"]
+        parts = compute_kge_per_cell_np(
+            o.transpose(..., "time").values.reshape(-1, n_t),
+            s.transpose(..., "time").values.reshape(-1, n_t),
+            min_obs=cfg.min_obs_per_cell,
+            use_beta=cfg.kge_use_beta,
+            weights=cfg.kge_weights,
+        )
+        counted = np.isfinite(parts["kge"])
+        out[f"cells_{name}"] = int(counted.sum())
+        if counted.any():
+            for part in ("kge", "r", "alpha", "beta"):
+                out[f"{part}_{name}"] = float(np.nanmedian(parts[part][counted]))
+    return out
 
 
 def score_baseline(cfg: CycleConfig) -> dict:
@@ -759,7 +979,7 @@ def score_baseline(cfg: CycleConfig) -> dict:
         logger.info("baseline: scoring the uncalibrated parameters (one run)")
         run_wflow(static, out_nc, cfg)
 
-    result = score(out_nc)
+    result = score(out_nc, cfg)
     logger.info(f"baseline (uncalibrated): {result}")
     return result
 
@@ -769,6 +989,11 @@ def relative_to_baseline(current: dict, baseline: dict) -> dict:
 
     `converged()` only looks at consecutive cycles, so without this the loop
     can settle on a result worse than the starting point and report success.
+
+    Decided on the validation per-cell KGE (H12); None when either side has
+    no validation score. The KGE differences are absolute (KGE can be
+    negative, so a percentage is meaningless); RMSE and bias stay as
+    percentages, for reference.
     """
     if not baseline:
         return {}
@@ -778,13 +1003,18 @@ def relative_to_baseline(current: dict, baseline: dict) -> dict:
             out[f"{key}_vs_baseline_pct"] = round(
                 100.0 * (abs(baseline[key]) - abs(current[key])) / abs(baseline[key]), 2
             )
-    out["better_than_uncalibrated"] = bool(
-        abs(current.get("rmse", float("inf"))) <= abs(baseline.get("rmse", 0.0))
+    for name in ("train", "valid", "test"):
+        key = f"kge_{name}"
+        if key in current and key in baseline:
+            out[f"{key}_vs_baseline"] = round(current[key] - baseline[key], 4)
+    key = WFLOW_KEYS[0]
+    out["better_than_uncalibrated"] = (
+        bool(current[key] >= baseline[key]) if key in current and key in baseline else None
     )
     return out
 
 
-def converged(history: list, rel_tol: float, keys=("rmse", "bias")) -> bool:
+def converged(history: list, rel_tol: float, keys=WFLOW_KEYS) -> bool:
     """Ahmad 2025: stop when every tracked quantity improves by less than
     `rel_tol`. Needs two entries; a missing key is skipped rather than assumed
     converged, and if none of the keys are present the answer is False."""
@@ -804,8 +1034,8 @@ def converged(history: list, rel_tol: float, keys=("rmse", "bias")) -> bool:
 
 def has_converged(state: "CycleState", cfg: CycleConfig) -> bool:
     """Whether the loop should stop, by whichever signal `converge_on` names."""
-    wflow = converged(state.history, cfg.rel_tol)
-    surrogate = converged(state.cal_metrics, cfg.rel_tol, keys=("rmse",))
+    wflow = converged(state.history, cfg.rel_tol, keys=WFLOW_KEYS)
+    surrogate = converged(state.cal_metrics, cfg.rel_tol, keys=SURROGATE_KEYS)
 
     if cfg.converge_on == "surrogate":
         return surrogate
@@ -822,6 +1052,37 @@ def has_converged(state: "CycleState", cfg: CycleConfig) -> bool:
 # ==== DRIVER
 
 
+def score_cycle(n: int, theta_path: Path, state: "CycleState", cfg: CycleConfig,
+                state_path: Path) -> dict:
+    """Clean wflow run with cycle `n`'s calibrated parameters, scored.
+
+    Scores the uncalibrated baseline first if that has not been done.
+    """
+    eval_static = WD_WFLOW / f"staticmaps_cycle{n}_cal.nc"
+    eval_out = WD_WFLOW / "run_default" / f"output_cycle{n}_cal.nc"
+    write_staticmaps(read_theta(theta_path), eval_static)
+    if not cfg.skip_wflow:
+        run_wflow(eval_static, eval_out, cfg)
+
+    if cfg.score_baseline and not state.baseline:
+        state.baseline = score_baseline(cfg)
+
+    result = score(eval_out, cfg)
+    state.history.append(result)
+    state.scored_cycles.append(n)
+    state.save(state_path)
+    rel = relative_to_baseline(result, state.baseline)
+    logger.info(f"cycle {n}: {result}{(' | vs uncalibrated: ' + str(rel)) if rel else ''}")
+    if rel and rel["better_than_uncalibrated"] is False:
+        key = WFLOW_KEYS[0]
+        logger.warning(
+            f"cycle {n} is WORSE than not calibrating "
+            f"({key} {result[key]:.4f} vs baseline "
+            f"{state.baseline[key]:.4f})"
+        )
+    return result
+
+
 def main(cfg: CycleConfig | None = None) -> None:
     cfg = CycleConfig() if cfg is None else cfg
     state_path = WD_CYCLE / "state.json"
@@ -835,7 +1096,7 @@ def main(cfg: CycleConfig | None = None) -> None:
         if prev.exists():
             theta_path = prev
 
-    while state.cycle < cfg.n_cycles:
+    while not state.finished and state.cycle < cfg.n_cycles:
         n = state.cycle
         cycle_dir = WD_CYCLE / f"cycle_{n}"
         cycle_dir.mkdir(parents=True, exist_ok=True)
@@ -874,6 +1135,11 @@ def main(cfg: CycleConfig | None = None) -> None:
                 ingest_member(static_nc, out_nc, cycle=n, member=m, state=state)
                 state.members_done = m + 1
                 state.save(state_path)
+                if not cfg.keep_member_outputs and out_nc.exists():
+                    size = out_nc.stat().st_size
+                    out_nc.unlink()
+                    logger.info(f"cycle {n} member {m}: output deleted after ingestion "
+                                f"({size / 2**30:.1f} GB)")
 
         pool_archive.verify()
 
@@ -897,27 +1163,10 @@ def main(cfg: CycleConfig | None = None) -> None:
 
         # 6. clean theta_cal run: the evaluation, and nothing else. The next
         # cycle's centre comes from `calibrate()` above, not from here, so
-        # skipping this costs only the score.
-        if cfg.scores_cycle(n):
-            eval_static = WD_WFLOW / f"staticmaps_cycle{n}_cal.nc"
-            eval_out = WD_WFLOW / "run_default" / f"output_cycle{n}_cal.nc"
-            write_staticmaps(read_theta(theta_path), eval_static)
-            if not cfg.skip_wflow:
-                run_wflow(eval_static, eval_out, cfg)
-
-            if cfg.score_baseline and not state.baseline:
-                state.baseline = score_baseline(cfg)
-
-            result = score(eval_out)
-            state.history.append(result)
-            rel = relative_to_baseline(result, state.baseline)
-            logger.info(f"cycle {n}: {result}{(' | vs uncalibrated: ' + str(rel)) if rel else ''}")
-            if rel and not rel["better_than_uncalibrated"]:
-                logger.warning(
-                    f"cycle {n} is WORSE than not calibrating "
-                    f"(rmse {result['rmse']:.4f} vs baseline "
-                    f"{state.baseline['rmse']:.4f})"
-                )
+        # skipping this costs only the score. The cycle the loop stops at is
+        # always scored, below.
+        if cfg.scores_cycle(n) and n not in state.scored_cycles:
+            score_cycle(n, theta_path, state, cfg, state_path)
         else:
             logger.info(
                 f"cycle {n}: not scored (score_every={cfg.score_every}); "
@@ -936,6 +1185,17 @@ def main(cfg: CycleConfig | None = None) -> None:
         if has_converged(state, cfg):
             logger.info(f"converged after cycle {n} (on {cfg.converge_on})")
             break
+
+    state.finished = True
+    state.save(state_path)
+
+    # The last cycle's parameters are the result, so they always get a clean
+    # wflow run - also when the loop stopped at a cycle `score_every` skips.
+    last = state.cycle - 1
+    last_theta = WD_CYCLE / f"cycle_{last}" / "theta_cal.nc"
+    if last >= 0 and last not in state.scored_cycles and last_theta.exists():
+        logger.info(f"final: scoring the last cycle ({last})")
+        score_cycle(last, last_theta, state, cfg, state_path)
 
     logger.info(f"history: {json.dumps(state.history, indent=2)}")
 

@@ -8,7 +8,7 @@ valid_temporal_range:
 - '2020-01-01'
 - '2020-12-31'
 test_temporal_range:
-- '2022-01-01'
+- '2021-01-01'
 - '2022-12-31'
 seed: 10
 sampling_seed: 10
@@ -23,6 +23,8 @@ model_head_activation: linear
 model_head_kwargs: {}
 strategy: null
 hython_trainer: rnntrainer_hpc
+# start from the weights at model_logger.CudaLSTM.model_uri (run_dpl_cycle: cycles > 0)
+model_load_pretrained: false
 loss_fn:
   _target_: hython.losses.RMSELoss
 metric_fn:
@@ -37,11 +39,13 @@ lr_scheduler:
   mode: min
   factor: 0.5
   patience: 10
-# Early stopping (H7). Deliberately larger than the scheduler's `patience: 10`
+# Early stopping (H7). Must stay larger than the scheduler's `patience: 10`
 # above: a scheduled learning-rate drop must get a chance to work before the
-# run is abandoned. Set to 0 or null to disable. `epochs: 100` is now a
-# ceiling rather than a target.
-early_stopping_patience: 20
+# run is abandoned. Set to 0 or null to disable. `epochs` is a ceiling
+# rather than a target. 15 chosen 2026-09-22 (user), was 20: the lower
+# learning rate gets ~5 epochs. In step 3 a new best came 5 epochs after a
+# drop (epoch 69); 15 would have stopped at 68 - borderline, accepted.
+early_stopping_patience: 15
 early_stopping_min_delta: 0.0
 # Measured 2026-09-20 on the two-run archive, 12 epochs, against held-out
 # cells. `predict_steps: 0` means sequence-to-one, so the whole window is
@@ -60,7 +64,11 @@ early_stopping_min_delta: 0.0
 seq_length: 120
 learning_rate: 0.001
 batch: 512
-epochs: 100
+# A ceiling: early stopping (patience 15) usually ends training first.
+# 70 chosen 2026-09-22 (user): step 3 reached 100 still improving, but on
+# the production window 100 epochs is ~3.5 h. Matters mostly at cycle 0;
+# later cycles start from the previous surrogate (H13).
+epochs: 70
 gradient_clip:
   max_norm: 1
 target_weights: even
@@ -313,6 +321,7 @@ training_pipeline:
       num_workers_dataloader: ${num_workers_dataloader}
       num_workers_dataloader_eval: ${num_workers_dataloader_eval}
       hython_trainer: ${hython_trainer}
+      model_load_pretrained: ${model_load_pretrained}
       regularization: ${regularization}
       dynamic_downsampler: ${dynamic_downsampler}
       seq_length: ${seq_length}
