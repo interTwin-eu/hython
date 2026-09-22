@@ -139,6 +139,8 @@ def _cfg(**kw):
         "train_temporal_range": ["2017-01-01", "2017-12-31"],
         "valid_temporal_range": ["2018-01-01", "2018-12-31"],
         "test_temporal_range": ["2021-01-01", "2022-12-31"],  # outside the window
+        # the real mask is on the RT0 grid; test_dynamic_mask.py covers it
+        "data_source.file.target_variables_dynamic_mask": None,
     }
     # the standard KGE, so the references below hold whatever the default
     # weights are (1, 0.25, 0.75 since 2026-09-22)

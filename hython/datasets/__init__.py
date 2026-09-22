@@ -10,6 +10,7 @@ from hython.config import Config
 from hython.utils import rescale_target
 from hython.regularizations import *
 from hython.utils import (
+    apply_dynamic_mask,
     compute_cubelet_spatial_idxs,
     compute_cubelet_time_idxs,
     cbs_mapping_idx_slice,

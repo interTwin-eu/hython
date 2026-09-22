@@ -353,7 +353,16 @@ pass. Suite now 207 pass, no failures.
   `scaling_static_range: ${scaling_static_range}` in their trainer block
   before they are run again, or `ParameterInference` raises. Not yet run in a
   real calibration.
-- The dynamic RT0 mask (D4) is written but not used by calibration.
+- The dynamic RT0 mask (D4) is used by calibration since 2026-09-22 (user):
+  months DJFMA (`target_dynamic_mask_months: [12, 1, 2, 3, 4]` in
+  `config_calibration_loop.yaml`, null = all year), path in
+  `data_source.file.target_variables_dynamic_mask`. It replaces the static
+  `alps_rt0old_mask.nc` (key removed): cells with no observation left are
+  dropped. `score()` applies the same mask (`score_mask()`), so the loss,
+  the score and the stopping rule see the same days. Helper
+  `hython.utils.apply_dynamic_mask`; tests `tests/test_dynamic_mask.py`.
+  Real data, 2017: DJFMA keeps 32% of observations, the year 72%. Not yet
+  run in a real calibration. Not committed.
 
 **Not committed (2026-09-22):** H12 (loss, metrics, score, tests), the KGE
 weights, H13 (trainer, `run_dpl_cycle.py`, both loop configs, tests), and

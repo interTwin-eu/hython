@@ -117,7 +117,9 @@ data_source:
     mask_variables: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_static_calib.zarr
     static_inputs_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/param_learning_input/predictor_emo1_alps.zarr
     static_parameter_inputs: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_input/emo1_static_calib.zarr/
-    target_variables_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/alps_rt0old_mask.nc
+    # Dynamic RT0 mask (D4), replaces the static alps_rt0old_mask.nc: with no
+    # target_variables_mask, cells with no observation left are dropped.
+    target_variables_dynamic_mask: /mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/SSM-RT0-SIG0-R-CRRL/processed/alps_rt0old_dynamic_mask_2017-2022.nc
 scaling_use_cached: false
 # H4: the five statics scaled by MinMax01 in BOTH configs read their
 # numbers from here, worked out once on the full map. Without it the
@@ -206,6 +208,9 @@ static_inputs_mask:
 - newmask
 min_sample_target: 10
 target_has_missing_dates: true
+# Months (1-12) where the dynamic RT0 mask applies; null = all year.
+# Also read by run_dpl_cycle.score(), so the score masks the same days.
+target_dynamic_mask_months: [12, 1, 2, 3, 4]
 preprocessor: null
 scaler:
   static_inputs:
@@ -291,6 +296,7 @@ training_pipeline:
     test_downsampler: ${test_downsampler}
     min_sample_target: ${min_sample_target}
     target_has_missing_dates: ${target_has_missing_dates}
+    target_dynamic_mask_months: ${target_dynamic_mask_months}
     warmup_steps: ${warmup_steps}
   - _target_: hython.itwinai.trainer.RNNDistributedTrainer
     model: ${model}

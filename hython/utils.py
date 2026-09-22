@@ -468,6 +468,29 @@ def get_temporal_steps(steps):
     return selection
 
 
+def apply_dynamic_mask(obs, mask_path, months=None):
+    """Set the observations to NaN where the dynamic mask marks them invalid.
+
+    The mask file holds ``valid`` (time, lat, lon): 1 where the observation is
+    usable that day, 0 where it is not (snow, frozen ground, forest, outside
+    the swath). The mask applies only in ``months`` (1-12); ``None`` applies it
+    all year. The mask must have the same grid and days as ``obs``: a mismatch
+    raises instead of masking the wrong cells.
+
+    :param obs: xr.Dataset or xr.DataArray with (time, lat, lon).
+    :param mask_path: path to the mask netCDF.
+    :param months: list of months where the mask applies, or None.
+    :return: ``obs`` with the masked values set to NaN.
+    """
+    valid = xr.open_dataset(mask_path, chunks="auto")["valid"]
+    valid = valid.drop_vars([c for c in valid.coords if c not in valid.dims])
+    # sel raises on a missing day, join="exact" on a different lat/lon
+    valid, _ = xr.align(valid.sel(time=obs.time), obs, join="exact")
+    keep = valid.astype(bool)
+    if months is not None:
+        keep = keep | ~obs.time.dt.month.isin(list(months))
+    return obs.where(keep)
+
 
 def get_source_url_old(cfg):
     

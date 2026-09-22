@@ -734,6 +734,13 @@ class WflowSBMCal(BaseDataset):
         data_dynamic = read_from_zarr(url=urls["dynamic_inputs"], chunks="auto", **xarray_kwargs)
         data_static = read_from_zarr(url=urls["static_inputs"], chunks="auto", **xarray_kwargs)
         data_target = read_from_zarr(url=urls["target_variables"], chunks="auto", **xarray_kwargs)
+        # Dynamic RT0 mask: invalid days become NaN, before both the period
+        # target and the warm-up sequence are cut from data_target.
+        if urls.get("target_variables_dynamic_mask", None):
+            data_target = apply_dynamic_mask(
+                data_target, urls["target_variables_dynamic_mask"],
+                self.cfg.get("target_dynamic_mask_months"),
+            )
 
         data_head_input = read_from_zarr(url=urls["static_parameter_inputs"], chunks="auto", **xarray_kwargs)
    
@@ -781,8 +788,14 @@ class WflowSBMCal(BaseDataset):
         # target mask, observation
         if urls.get("target_variables_mask", None):
             self.target_mask = xr.open_dataset(urls["target_variables_mask"]).mask
+            LOGGER.info(f"{period}: target mask from {urls['target_variables_mask']}")
         else:
             self.target_mask = self.y.isnull().all("time")[self.to_list(cfg.target_variables)[0]]
+            LOGGER.info(
+                f"{period}: target mask from the observations (cells with none left), "
+                f"dynamic mask {urls.get('target_variables_dynamic_mask')} "
+                f"in months {self.cfg.get('target_dynamic_mask_months')}"
+            )
         
         # static mask, predictors
         if urls.get("static_inputs_mask", None):

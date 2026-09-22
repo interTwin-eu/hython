@@ -915,6 +915,19 @@ def score_periods(cfg: CycleConfig) -> dict:
     return out
 
 
+MASK_KEYS = ("data_source.file.target_variables_dynamic_mask", "target_dynamic_mask_months")
+
+
+def score_mask(cfg: CycleConfig) -> tuple:
+    """The calibration's dynamic RT0 mask and its months, overrides applied.
+
+    Read from the calibration config so the score masks the same days as the
+    loss. (None, None) when the config has no dynamic mask.
+    """
+    tpl = OmegaConf.load(WD_CONFIG / "config_calibration_loop.yaml")
+    return tuple(cfg.config_overrides.get(k, OmegaConf.select(tpl, k)) for k in MASK_KEYS)
+
+
 def score(output_nc: Path, cfg: CycleConfig) -> dict:
     """Per-cell KGE of a wflow run against the observations, per period (H12).
 
@@ -923,18 +936,23 @@ def score(output_nc: Path, cfg: CycleConfig) -> dict:
     to timing, variability or level; and how many cells counted (those with
     at least `min_obs_per_cell` observations in the period). A period outside
     the simulated window is left out. RMSE and bias over the whole window are
-    kept for reference; they decide nothing.
+    kept for reference; they decide nothing. The observations are masked with
+    the calibration's dynamic RT0 mask (`score_mask`), as the loss sees them.
 
     Scored on the unperturbed parameters. The perturbed members exist to train
     the surrogate; they are not the calibration result and must not drive the
     stopping rule.
     """
     from hython.metrics.custom import compute_kge_per_cell_np
+    from hython.utils import apply_dynamic_mask
 
     sim = xr.open_dataset(output_nc).sel(lat=slice(None, None, -1))
     sim = _unpack_layer(sim, "vwc")["vwc"]
     obs = xr.open_dataset(OBS)
     obs = obs[list(obs.data_vars)[0]]
+    mask_path, months = score_mask(cfg)
+    if mask_path:
+        obs = apply_dynamic_mask(obs, mask_path, months)
 
     sim, obs = xr.align(sim, obs, join="inner")
     diff = (sim - obs).values
