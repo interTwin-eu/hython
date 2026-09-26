@@ -157,37 +157,42 @@ def names(d):
     return {p.name for p in d.iterdir()}
 
 
+def _pruning():
+    import dataclasses
+    return dataclasses.replace(CycleConfig(), prune_outputs=True)
+
+
 def test_cycle_zero_is_never_pruned(run_dir):
     """Kept for figures and for checking the surrogate against the full map."""
-    run_dpl_cycle.prune_cycle_outputs(0, CycleConfig())
+    run_dpl_cycle.prune_cycle_outputs(0, _pruning())
     assert "output_cycle0_m0.nc" in names(run_dir)
     assert "output_cycle0_cal.nc" in names(run_dir)
 
 
 def test_a_finished_cycle_loses_its_netcdfs(run_dir):
-    run_dpl_cycle.prune_cycle_outputs(2, CycleConfig())
+    run_dpl_cycle.prune_cycle_outputs(2, _pruning())
     assert "output_cycle2_m0.nc" not in names(run_dir)
     assert "output_cycle2_cal.nc" not in names(run_dir)
 
 
 def test_the_csv_survives(run_dir):
     """Small, and it holds the gauge discharge."""
-    run_dpl_cycle.prune_cycle_outputs(2, CycleConfig())
+    run_dpl_cycle.prune_cycle_outputs(2, _pruning())
     assert "output_cycle2_m0.csv" in names(run_dir)
     assert "output_cycle2_cal.csv" in names(run_dir)
 
 
 def test_other_cycles_are_untouched(run_dir):
     before = {n for n in names(run_dir) if "cycle2" not in n}
-    run_dpl_cycle.prune_cycle_outputs(2, CycleConfig())
+    run_dpl_cycle.prune_cycle_outputs(2, _pruning())
     assert {n for n in names(run_dir) if "cycle2" not in n} == before
 
 
-def test_pruning_can_be_switched_off(run_dir):
-    import dataclasses
-    cfg = dataclasses.replace(CycleConfig(), prune_outputs=False)
-    run_dpl_cycle.prune_cycle_outputs(2, cfg)
+def test_pruning_is_off_by_default(run_dir):
+    """Every cycle's clean output is kept for the C6 analysis (2026-09-26)."""
+    run_dpl_cycle.prune_cycle_outputs(2, CycleConfig())
     assert "output_cycle2_m0.nc" in names(run_dir)
+    assert "output_cycle2_cal.nc" in names(run_dir)
 
 
 def test_pruning_a_cycle_that_left_nothing_is_harmless(run_dir):

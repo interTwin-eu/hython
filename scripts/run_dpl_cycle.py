@@ -200,7 +200,9 @@ class CycleConfig:
     # file has no reader afterwards. Kept: cycle 0 and the last cycle (for
     # figures and for checking the surrogate against the full map), and every
     # cycle's *score*, which lives in the state JSON and is never a netCDF.
-    prune_outputs: bool = True
+    # Off since 2026-09-26 (user): with `top_layer_only` a clean output is
+    # ~2.2 GB, and every cycle's output is kept for the C6 analysis.
+    prune_outputs: bool = False
 
     # A member's full-map output (~10 GB on the 2017-2022 window) has no
     # reader once `ingest_member` has copied its pool cells into the archive.
