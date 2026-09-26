@@ -150,7 +150,17 @@ class CycleConfig:
     # two numbers that happened to land close together. `rel_tol: 0` disables
     # stopping entirely (any change clears the threshold), which is the way to
     # force a full-length run.
-    converge_on: str = "surrogate"
+    #
+    # Changed 2026-09-25 to "wflow": the production run stopped after cycle 1
+    # on a 0.6% surrogate change while the wflow score still rose 0.020 in
+    # valid KGE per cycle. The surrogate figures come from a different
+    # surrogate each cycle, so their difference is a weak signal.
+    converge_on: str = "wflow"
+
+    # How many consecutive steps must each change by less than `rel_tol`
+    # before the loop stops. 1 is the plain Ahmad rule; 2 keeps two scores
+    # that land close together by chance from stopping the loop.
+    converge_patience: int = 2
 
     seed: int = 42
     skip_wflow: bool = False
@@ -177,6 +187,13 @@ class CycleConfig:
     # 8.5% less time. Level 0 is not the alternative: it is 318 MB, 2.5x.
     # Set on the per-run TOML, never on the shared template.
     output_compression: int = 1
+
+    # Wflow 0.8.1 cannot pick a layer for gridded output, so a clean run
+    # writes vwc for all 4 soil layers (~10 GB). Scoring, ingestion and the
+    # analyses only read the top layer (`LAYER`), so the clean and baseline
+    # outputs are cut to it right after the run (~1/4 of the size). Members
+    # are not cut: their outputs are deleted after ingestion anyway.
+    top_layer_only: bool = True
 
     # A full 8-cycle run leaves ~190 GB of full-map netCDFs for an archive that
     # reads ~4 GB of them. The pool cells are taken at ingestion, so the big
@@ -205,7 +222,9 @@ class CycleConfig:
     # With 0 there is no history, so `converged()` can never fire and the loop
     # always runs the full `n_cycles`. With k > 1 convergence is still checked,
     # but only against the cycles that were scored.
-    score_every: int = 2
+    # Set to 1 on 2026-09-25 with converge_on "wflow": at 2 the wflow rule
+    # can only stop on even cycles and compares cycle n with n-2.
+    score_every: int = 1
 
     # Score the first and last cycle whatever `score_every` says. With
     # `score_every: 0` this gives exactly two scores - where the campaign
@@ -996,6 +1015,8 @@ def score_baseline(cfg: CycleConfig) -> dict:
     if not cfg.skip_wflow:
         logger.info("baseline: scoring the uncalibrated parameters (one run)")
         run_wflow(static, out_nc, cfg)
+        if cfg.top_layer_only:
+            keep_top_layer(out_nc, cfg)
 
     result = score(out_nc, cfg)
     logger.info(f"baseline (uncalibrated): {result}")
@@ -1032,28 +1053,36 @@ def relative_to_baseline(current: dict, baseline: dict) -> dict:
     return out
 
 
-def converged(history: list, rel_tol: float, keys=WFLOW_KEYS) -> bool:
+def converged(history: list, rel_tol: float, keys=WFLOW_KEYS, patience: int = 1) -> bool:
     """Ahmad 2025: stop when every tracked quantity improves by less than
-    `rel_tol`. Needs two entries; a missing key is skipped rather than assumed
-    converged, and if none of the keys are present the answer is False."""
-    if len(history) < 2:
+    `rel_tol`, on each of the last `patience` steps. Needs `patience + 1`
+    entries; a missing key is skipped rather than assumed converged, and if
+    none of the keys are present the answer is False."""
+    if patience < 1:
+        raise ValueError(f"patience must be >= 1, got {patience}")
+    if len(history) < patience + 1:
         return False
-    prev, curr = history[-2], history[-1]
-    seen = False
-    for key in keys:
-        if key not in prev or key not in curr:
-            continue
-        seen = True
-        denom = abs(prev[key])
-        if denom > 0 and abs(prev[key] - curr[key]) / denom >= rel_tol:
+    for i in range(len(history) - patience, len(history)):
+        prev, curr = history[i - 1], history[i]
+        seen = False
+        for key in keys:
+            if key not in prev or key not in curr:
+                continue
+            seen = True
+            denom = abs(prev[key])
+            if denom > 0 and abs(prev[key] - curr[key]) / denom >= rel_tol:
+                return False
+        if not seen:
             return False
-    return seen
+    return True
 
 
 def has_converged(state: "CycleState", cfg: CycleConfig) -> bool:
     """Whether the loop should stop, by whichever signal `converge_on` names."""
-    wflow = converged(state.history, cfg.rel_tol, keys=WFLOW_KEYS)
-    surrogate = converged(state.cal_metrics, cfg.rel_tol, keys=SURROGATE_KEYS)
+    wflow = converged(state.history, cfg.rel_tol, keys=WFLOW_KEYS,
+                      patience=cfg.converge_patience)
+    surrogate = converged(state.cal_metrics, cfg.rel_tol, keys=SURROGATE_KEYS,
+                          patience=cfg.converge_patience)
 
     if cfg.converge_on == "surrogate":
         return surrogate
@@ -1070,6 +1099,35 @@ def has_converged(state: "CycleState", cfg: CycleConfig) -> bool:
 # ==== DRIVER
 
 
+def keep_top_layer(out_nc: Path, cfg: CycleConfig) -> None:
+    """Cut a wflow output down to vwc at layer `LAYER`, in place.
+
+    The layer axis is kept with length 1, so `_unpack_layer` and anything that
+    selects `layer=0` read the file as before. Written to a temporary file and
+    renamed over the original only once complete, so an interruption never
+    leaves a half-written output. Does nothing if the file has no layer axis
+    or already has one layer.
+    """
+    with xr.open_dataset(out_nc, engine="netcdf4", chunks={"time": 100}) as ds:
+        if "layer" not in ds.dims or ds.sizes["layer"] == 1:
+            return
+        cut = ds.isel(layer=[LAYER])
+        encoding = {
+            v: {"zlib": True, "complevel": max(1, cfg.output_compression)}
+            for v in cut.data_vars
+        }
+        for v in cut.data_vars:
+            fill = ds[v].encoding.get("_FillValue")
+            if fill is not None:
+                encoding[v]["_FillValue"] = fill
+        tmp = out_nc.with_name(out_nc.stem + ".top_layer.tmp.nc")
+        before = out_nc.stat().st_size
+        cut.to_netcdf(tmp, engine="netcdf4", encoding=encoding)
+    tmp.replace(out_nc)
+    logger.info(f"{out_nc.name}: kept layer {LAYER} only, "
+                f"{before / 2**30:.1f} -> {out_nc.stat().st_size / 2**30:.1f} GB")
+
+
 def score_cycle(n: int, theta_path: Path, state: "CycleState", cfg: CycleConfig,
                 state_path: Path) -> dict:
     """Clean wflow run with cycle `n`'s calibrated parameters, scored.
@@ -1081,6 +1139,8 @@ def score_cycle(n: int, theta_path: Path, state: "CycleState", cfg: CycleConfig,
     write_staticmaps(read_theta(theta_path), eval_static)
     if not cfg.skip_wflow:
         run_wflow(eval_static, eval_out, cfg)
+        if cfg.top_layer_only:
+            keep_top_layer(eval_out, cfg)
 
     if cfg.score_baseline and not state.baseline:
         state.baseline = score_baseline(cfg)

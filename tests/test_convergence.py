@@ -36,7 +36,10 @@ def state(history=(), cal=()):
 
 
 def cfg(**kw):
+    """Patience 1 unless a test asks otherwise, so the two-entry fixtures test
+    the plain rule; patience has its own tests below."""
     import dataclasses
+    kw.setdefault("converge_patience", 1)
     return dataclasses.replace(CycleConfig(), **kw)
 
 
@@ -74,9 +77,11 @@ def test_no_usable_keys_means_not_converged():
 # ==== choosing the signal
 
 
-def test_surrogate_is_the_default():
-    """Free, available every cycle, and the quantity the search minimises."""
-    assert CycleConfig().converge_on == "surrogate"
+def test_wflow_is_the_default():
+    """Changed 2026-09-25: the surrogate signal stopped production after cycle
+    1 while the wflow score was still rising."""
+    assert CycleConfig().converge_on == "wflow"
+    assert CycleConfig().converge_patience == 2
 
 
 def test_rel_tol_zero_disables_stopping():
@@ -112,3 +117,44 @@ def test_surrogate_can_stop_the_loop_with_no_wflow_scores_at_all():
 def test_an_unknown_setting_is_refused():
     with pytest.raises(ValueError, match="converge_on"):
         has_converged(state(history=FLAT), cfg(converge_on="magic"))
+
+
+# ==== patience
+
+
+FLAT3 = [{"kge_valid": 0.230}, {"kge_valid": 0.2301}, {"kge_valid": 0.2302}]
+# a big step, then one flat step: the production cycle 0 -> 1 -> 2 shape
+JUMP_THEN_FLAT = [{"kge_valid": 0.347}, {"kge_valid": 0.367}, {"kge_valid": 0.368}]
+
+
+def test_patience_two_needs_three_entries():
+    assert converged(FLAT, 0.01, patience=2) is False
+    assert converged(FLAT3, 0.01, patience=2) is True
+
+
+def test_patience_two_needs_both_steps_flat():
+    """One flat step after a real improvement is not enough."""
+    assert converged(JUMP_THEN_FLAT, 0.01, patience=1) is True
+    assert converged(JUMP_THEN_FLAT, 0.01, patience=2) is False
+
+
+def test_patience_looks_only_at_the_last_steps():
+    """An early jump does not block a later plateau."""
+    h = [{"kge_valid": 0.30}] + FLAT3
+    assert converged(h, 0.01, patience=2) is True
+
+
+def test_patience_missing_key_in_one_step_is_not_converged():
+    h = [{"kge_valid": 0.230}, {"rmse": 0.1}, {"kge_valid": 0.230}]
+    assert converged(h, 0.01, patience=2) is False
+
+
+def test_patience_below_one_is_an_error():
+    with pytest.raises(ValueError):
+        converged(FLAT3, 0.01, patience=0)
+
+
+def test_has_converged_uses_the_config_patience():
+    st = state(history=JUMP_THEN_FLAT)
+    assert has_converged(st, cfg(converge_on="wflow", converge_patience=1)) is True
+    assert has_converged(st, cfg(converge_on="wflow", converge_patience=2)) is False

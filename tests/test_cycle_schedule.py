@@ -280,10 +280,17 @@ def test_a_failure_in_one_job_still_raises(wflow, monkeypatch):
 # ==== the clean scoring run is optional (it costs a full wflow simulation)
 
 
-def test_scoring_every_second_cycle_is_the_default():
-    """Half the clean runs, and `rel_tol` still works on alternate cycles."""
+def test_scoring_every_cycle_is_the_default():
+    """With `converge_on: "wflow"` every cycle needs a score, so the rule
+    compares consecutive cycles and can stop on any of them."""
     cfg = CycleConfig()
-    assert cfg.score_every == 2
+    assert cfg.score_every == 1
+    assert [c for c in range(cfg.n_cycles) if cfg.scores_cycle(c)] == list(range(cfg.n_cycles))
+
+
+def test_scoring_every_second_cycle():
+    """Half the clean runs, and `rel_tol` still works on alternate cycles."""
+    cfg = cfg_with(score_every=2)
     assert [c for c in range(cfg.n_cycles) if cfg.scores_cycle(c)] == [0, 2, 4, 6]
 
 
@@ -304,10 +311,10 @@ def test_a_negative_value_is_treated_as_off():
 def test_wflow_runs_saved_over_a_campaign():
     """The point of the switch: one wflow run per skipped cycle."""
     cfg = CycleConfig()
-    default = sum(cfg.scores_cycle(c) for c in range(cfg.n_cycles))
+    every_second = sum(cfg_with(score_every=2).scores_cycle(c) for c in range(cfg.n_cycles))
     every = sum(cfg_with(score_every=1).scores_cycle(c) for c in range(cfg.n_cycles))
     never = sum(cfg_with(score_every=0).scores_cycle(c) for c in range(cfg.n_cycles))
-    assert (default, every, never) == (4, 8, 0)
+    assert (every_second, every, never) == (4, 8, 0)
 
 
 def test_convergence_cannot_fire_without_scores():

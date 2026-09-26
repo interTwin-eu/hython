@@ -51,6 +51,8 @@ def loop(tmp_path, monkeypatch):
         touch(out)
 
     monkeypatch.setattr(rdc, "run_wflow", run_wflow)
+    # the stub outputs are empty files, not netCDF; the cut has its own tests
+    monkeypatch.setattr(rdc, "keep_top_layer", lambda out, cfg: None)
     monkeypatch.setattr(rdc, "score", lambda out, cfg: {"kge_valid": 0.2})
     monkeypatch.setattr(rdc, "score_baseline", lambda cfg: {"kge_valid": 0.1})
     monkeypatch.setattr(rdc, "relative_to_baseline", lambda new, base: {})

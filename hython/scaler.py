@@ -13,6 +13,21 @@ from hython.config import Config
 
 LOGGER = logging.getLogger(__name__)
 
+def _match_dtype(stats: xr.Dataset, data: xr.Dataset) -> xr.Dataset:
+    """Cast each statistic to the float type of the data it scales.
+
+    Statistics read from the YAML cache are float64. NumPy then promotes
+    float32 data to float64, which doubles the memory of every dataset built
+    with `is_train=False` (calibration valid and test: +10 GB on the 2017-2022
+    window). Statistics computed in the same run are float32 already.
+    Integer data is left alone.
+    """
+    return stats.assign({
+        v: stats[v].astype(data[v].dtype)
+        for v in stats.data_vars
+        if np.issubdtype(data[v].dtype, np.floating)
+    })
+
 def get_scaling_parameter(var_toscale, output_type = "numpy"):
     """Project inputs to custom range. Inputs are expected to be normalized, either
     by minmax or standard scaling"""
@@ -349,9 +364,9 @@ class Scaler:
                 scaled_data = sca.transform(data[var])
                 data = data.assign({v:scaled_data[v] for v in var})
             else:
-                scaled_data = sca.transform(data[var], 
-                                            stats_dist["center"][var],
-                                            stats_dist["scale"][var])
+                scaled_data = sca.transform(data[var],
+                                            _match_dtype(stats_dist["center"][var], data),
+                                            _match_dtype(stats_dist["scale"][var], data))
                 data = data.assign({v:scaled_data[v] for v in var})
 
         return data

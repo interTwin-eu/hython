@@ -809,7 +809,12 @@ class WflowSBMCal(BaseDataset):
 
             
         if not self.cfg.data_lazy_load: # loading in memory
-            self.xd = self.xd.load()
+            # With a warm-up, the period forcing is only read to compute the
+            # scaling statistics. Valid and test take those from the cache
+            # (is_train False), so loading it held one more full-map copy
+            # (4-6 GB) until the warm-up sequence replaced it.
+            if self.warmup_steps == 0 or is_train:
+                self.xd = self.xd.load()
             self.xs = self.xs.load()
             self.y = self.y.load()
             self.mask = self.mask.load()

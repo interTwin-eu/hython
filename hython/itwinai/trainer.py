@@ -379,7 +379,10 @@ class RNNDistributedTrainer(TorchTrainer):
 
             if avg_val_loss < best_loss:
                 best_loss = avg_val_loss
-                best_model = self.model.state_dict()
+                # A copy: `state_dict()` returns the live tensors, which the
+                # optimizer keeps updating, so without it the restore after
+                # the loop loaded the last epoch, not the best.
+                best_model = deepcopy(self.model.state_dict())
                 self.logging(best_model)
 
             if patience and patience > 0:
