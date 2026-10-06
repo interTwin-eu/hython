@@ -4,7 +4,9 @@ What must change before `run_dpl_cycle.py` can run more than one cycle.
 **Status 2026-09-22:** A1, A2, H1-H5 and H7-H12 are done; H6 is deferred;
 H13 (warm starts, pretraining) is done. Everything not yet committed is
 listed in "Next steps" below. What is left before production is a few
-decisions (see "Before production").
+decisions (see "Before production"). **2026-09-26:** E1 (more perturbed
+runs at cycle 0, for surrogate sensitivity) is proposed, not run.
+**2026-09-27:** E2 (a log scale for KsatVer and f) is proposed, not run.
 
 Two places need work. **A1 and A2** are in `run_dpl_cycle.py`. **H1 to H7** are
 in `hython` (`/home/iferrario/dev/hython`). A1 came first because it decides
@@ -2231,6 +2233,202 @@ nothing.
 Not done: a log scale for KsatVer and f in the network's output (they span
 3-4 orders of magnitude; the linear scale puts 90% of a priori KsatVer in the
 bottom 14% of its range). Discussed, not decided.
+
+---
+
+## E1 — do more perturbed runs at cycle 0 improve the surrogate's sensitivity?
+
+**Status: proposed 2026-09-26, not run.** Run it after the clean rerun
+(launched 2026-09-26 15:05) finishes. The user decides the open points at
+the end.
+
+**Why.** A reviewer can say: "the surrogate is not sensitive enough to
+the parameters, so add more perturbed wflow runs". This experiment answers
+that with data. It tests only the surrogate, not the whole dPL.
+
+**Design.** Give the reviewer's claim the best chance to be true: the
+8-run arm keeps the same number of cells per run, so it gets strictly more
+data. If it has half the cells per run, a null result can be explained as
+"too few places", and it proves nothing.
+
+| | Arm A | Arm B |
+|---|---|---|
+| Perturbed wflow runs | 4 (the current cycle-0 runs) | 8 = the same 4 + 4 new |
+| New runs | - | a separate draw, different seed, same method and jitter as cycle 0, around the a priori values |
+| `train_rows_target` | 22000 | 44000 (same cells per run) |
+| All other settings | same | same |
+| Result to compare | the cycle-0 surrogate | the cycle-0 surrogate |
+
+Two draws of 4 are not a true Latin hypercube of 8. That is acceptable
+here.
+
+Do not use runs 4-7 of `emo1_*_cycle_8runs_lastepoch.zarr`. They were
+jittered around the buggy `theta_cal`, not around the a priori values.
+
+**How to score.** Measure the per-parameter fidelity of each surrogate on
+the article's one-parameter-at-a-time wflow runs (`emo1/review/`, the P_p
+runs). Neither surrogate saw these runs. Use the same cells and days for
+both arms. Do not score on the archive's own runs: arm B was trained on
+them, so it would win for the wrong reason.
+
+Script: `smoke_runs/diagnostics/per_param_fidelity.py` (CEPH,
+`hydrologic_data/surrogate_temp/`). It reads
+`loop_train_multicycle/model_sequence/CudaLSTM_<c>.pt`. **First run: on
+the clean rerun's surrogates, once that run finishes** (no GPU sharing).
+No per-parameter number exists yet for any dPL surrogate. The earlier
+slopes of 0.73-0.79 are joint (all five parameters change together), come
+from the old last-epoch surrogates, and are measured on archive runs. The
+article's KsatVer slope of 0.27 comes from a different surrogate. Neither
+can be compared with a per-parameter slope.
+
+**Range check (done 2026-09-26, `diagnostics/spread_check.py`).** Each P_p
+run is the a priori map with one parameter set to the article's calibrated
+value. Compared with the 4 cycle-0 runs, in scaled space (0 = lower bound,
+1 = upper bound):
+
+| Parameter | a priori p50 | P_p p50 | outside, same cell | outside, anywhere on the map |
+|---|---|---|---|---|
+| KsatVer | 0.071 | 0.014 | 83% | 31% (all below) |
+| Sl | 0.31 | 0.023 | 67% | 34% (mostly below) |
+| f | 0.23 | 0.12 | 46% | 0.6% |
+| c (top layer) | 0.45 | 0.74 | 41% | 10% (above) |
+| RootingDepth | 0.085 | 0.37 | 23% | 0.6% |
+
+For KsatVer and Sl, the P_p runs extrapolate. Cause: `perturb()` works on
+a linear scale for all parameters, and a shift below the lower bound is
+folded back upward. So the cycle-0 runs raise KsatVer (median ~1480 mm/d,
+a priori ~570). The surrogate input is also linear (`BoundedScaler`), and
+so was the article's. Proposed, only if per-parameter fidelity shows that
+KsatVer/f are weak: (A) a log scale for the surrogate input, the parameter
+network output and `unscale_parameters`; this reuses runs 0-3 and needs no
+new wflow runs. (B) a log-scale cycle-0 draw, which needs new runs. Test A
+before B, and do one full rerun at the end.
+
+**Cost (estimates).**
+
+| Step | Time |
+|---|---|
+| 4 new wflow runs | ~80 min (~20 min each) |
+| Train arm B | ~4-4.4 min/epoch, up to ~5 h at the 70-epoch limit |
+| Arm A | reuse the cycle-0 surrogate of the clean rerun (same settings) |
+| Fidelity on the P_p runs, both arms | short |
+
+Epoch time grows about linearly with the training rows. It is a bit less
+than 2x because validation has its own fixed budget
+(`valid_rows_target: 6000`). The ~2.2 min/epoch base comes from cycle 1 of
+the earlier production run, which was warm-started. The clean rerun gives
+the true cycle-0 time. Memory is not a problem: the dynamic store grows
+from ~1.6 GB to ~3.2 GB.
+
+A cheaper variant keeps the cost per epoch the same: 44000 rows and
+`frac_time: 0.05`. The rows test (H9) showed that fewer start days and more
+cells keep the skill. But this changes two settings, so arm A must also be
+retrained with `frac_time: 0.05`.
+
+**What makes the answer reliable.**
+1. **Decide now what to do for each result.** If B is clearly better, the
+   reviewer is right. Then either the main result moves to 8 runs, or the
+   paper reports it as a limitation.
+2. **Training noise.** One surrogate for each arm is one sample. Training
+   has diverged at random epochs before (cycles 3 and 4 of the first
+   production run). If the difference between the arms is small, train
+   each arm again with a second seed (~7.5 h more). "No improvement" is
+   believable only if the difference between arms is smaller than the
+   difference between seeds.
+3. **Range, not only the number of runs.** A reviewer can also ask for
+   wider perturbations. Check if the P_p runs use parameter values outside
+   the range of the cycle-0 perturbations. If so, part of the fidelity loss
+   is extrapolation, and more runs inside the same range will not fix it.
+   This check needs only files that already exist.
+
+**Open (the user).** Rows: 44000 at `frac_time` 0.1, or 44000 at 0.05 with
+arm A retrained. Only the cycle-0 comparison, or also a full dPL with 8
+runs to see the effect on the final wflow KGE (a different, slower
+question). A second seed from the start, or only if the difference is small.
+
+---
+
+## E2 — does a log scale for KsatVer and f improve the surrogate's sensitivity?
+
+**Status: proposed 2026-09-27, not run, no code written.** A separate
+experiment from E1. E1 asks "more runs?"; E2 asks "the wrong scale?". Run
+it after the clean rerun and after the first per-parameter fidelity run
+(that run gives the arm A number). The user decides the open points at the
+end.
+
+**Why.** KsatVer (1-8000 mm/d) spans ~3.9 orders of magnitude and f
+(1e-5 - 0.01) spans 3. The code treats all five parameters on a linear
+scale, in three places:
+
+1. `perturb()` (`run_dpl_cycle.py`) adds the offset and the jitter in
+   linear [0, 1] space. For KsatVer a jitter of 0.05 is ~400 mm/d: 8x at a
+   cell with 50, 13% at a cell with 3000. Shifts below the lower bound are
+   folded back upward. Result: the cycle-0 runs raise KsatVer (median
+   ~1480, a priori ~570) and almost never go low. See the E1 range check:
+   the P_p runs are outside the cycle-0 range for 31% of KsatVer values,
+   all of them below.
+2. The surrogate input (`BoundedScaler`, bounds from `scaling_static_range`)
+   is linear. 90% of a priori KsatVer is in the bottom 14% of the range, so
+   the network sees little variation where most cells are.
+3. The parameter network output and `unscale_parameters()` are linear.
+   The calibrated KsatVer (~50) is 0.006 in scaled space.
+
+**Design.** Change only KsatVer and f (see "Open" for the others). Same
+training settings as the clean rerun's cycle 0 in every arm.
+
+| | Arm A | Arm B | Arm C |
+|---|---|---|---|
+| Change | none | log scale for the surrogate input, the network output and `unscale_parameters` | B + a log-scale cycle-0 draw |
+| wflow runs | the 4 cycle-0 runs | the same 4 runs | 4 new runs, perturbed in log space |
+| New wflow runs | - | none | 4 (~80 min) |
+| Surrogate | the clean rerun's cycle 0 (reused) | trained new | trained new |
+
+B separates "how the network sees the values" from "which values wflow
+was run at". C is the only arm that changes the second. Test B before C.
+
+**How to score.** As E1: per-parameter fidelity on the P_p runs
+(`emo1/review/`), same cells and days for every arm, with
+`smoke_runs/diagnostics/per_param_fidelity.py`. For C, also rerun
+`diagnostics/spread_check.py`: the share of P_p values outside the cycle-0
+range should drop.
+
+**Decide now what to do for each result.**
+- B better than A: the scale of the input is the problem. Use log scaling
+  in production; the existing runs stay valid.
+- B ≈ A, C better: the sampled range is the problem. The cycle-0 runs must
+  be redrawn.
+- Neither better: the scale is not why KsatVer/f are weak. Report it.
+
+A follow-up (not part of E2): calibrate once with the better surrogate and
+check whether KsatVer still goes to ~50 (it did in every step, 3b-3h).
+
+**Code to write (none exists).**
+1. `perturb()`: a per-parameter scale. Proposed `CycleConfig.log_params`
+   (default empty = today's behaviour). In log space:
+   u = (log x - log lo) / (log hi - log lo).
+2. `hython.scaler`: a log version of `BoundedScaler` for the named
+   parameters. Scaler caches must be recomputed (new file names, so the
+   linear ones stay).
+3. `unscale_parameters()` (`hython/itwinai/inference.py`): invert the log
+   for the same parameters.
+4. `pretrain_transfer()`: its targets must be in the same space.
+5. Check the bounds clamp in `read_theta` and in the staticmaps writer.
+6. Tests for each round trip (scale -> unscale gives the input back).
+
+**Cost (estimates).** B: one cycle-0 surrogate training (the clean
+rerun's cycle 0 gives the time). C: ~80 min wflow + one training.
+
+**Open (the user).**
+- Which parameters. KsatVer and f are clear. RootingDepth (5-3000, ~2.8
+  orders of magnitude, a priori p50 at 0.085 scaled) is also a candidate.
+  Sl (one order of magnitude) and c are not, but Sl is outside the cycle-0
+  range for 34% of P_p values; that is a range question, not a scale one.
+- Jitter and offset in log space. The same numbers mean something
+  different there: jitter 0.05 = ~0.2 orders of magnitude for KsatVer
+  (about x1.6); the cycle-0 LHS offset of +-0.45 = +-1.8 orders of
+  magnitude.
+- Whether to combine with E1 (8 runs in log space) or keep them apart.
+- Only the surrogate comparison, or also a full dPL with the winner.
 
 ---
 

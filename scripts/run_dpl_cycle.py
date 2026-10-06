@@ -73,6 +73,10 @@ WD_SURROGATE = Path("/mnt/CEPH_PROJECTS/InterTwin/hydrologic_data/surrogate_inpu
 WD_RUN = Path("/mnt/CEPH_PROJECTS/InterTwin/hython_model_run")
 WD_CONFIG = Path(__file__).resolve().parent / "config"
 WD_CYCLE = Path(__file__).resolve().parent / "outputs" / "dpl_cycles"
+# Where each run's staticmaps, TOML and outputs go (`<WD_OUT>/run_default`).
+# The model itself (forcing, staticmaps.nc, julia project) stays in WD_WFLOW.
+# A side campaign redirects this so it never overwrites production outputs.
+WD_OUT = WD_WFLOW
 
 # The two archive stores live in pool_archive, which owns their layout.
 # `DYNAMIC_ARCHIVE` holds the forcing *and* the target, because that is what
@@ -157,10 +161,23 @@ class CycleConfig:
     # surrogate each cycle, so their difference is a weak signal.
     converge_on: str = "wflow"
 
-    # How many consecutive steps must each change by less than `rel_tol`
+    # Absolute threshold on the KGE change between consecutive cycles. When
+    # set, it replaces `rel_tol`; None goes back to `rel_tol`. `abs_tol: 0`
+    # disables stopping, like `rel_tol: 0`.
+    #
+    # Set 2026-09-28 (user) to 0.02 after the clean rerun: valid KGE rose
+    # 0.052 from the a priori to cycle 0 and 0.010 from cycle 0 to 1, then
+    # moved -0.011 to +0.014 per cycle up to cycle 6 without a trend. With
+    # `rel_tol` 0.01 and patience 2 that noise (2-4% relative) never let the
+    # loop stop, so it ran to `n_cycles`. 0.02 sits just above the noise; on
+    # that run it stops after cycle 1, the best valid cycle.
+    abs_tol: float | None = 0.02
+
+    # How many consecutive steps must each change by less than the threshold
     # before the loop stops. 1 is the plain Ahmad rule; 2 keeps two scores
     # that land close together by chance from stopping the loop.
-    converge_patience: int = 2
+    # Set to 1 on 2026-09-28 with `abs_tol` 0.02 (user).
+    converge_patience: int = 1
 
     seed: int = 42
     skip_wflow: bool = False
@@ -524,7 +541,8 @@ def run_wflow(static: Path, out_nc: Path, cfg: CycleConfig) -> None:
         data["endtime"] = cfg.wflow_endtime
     data["csv"]["path"] = str(out_nc.with_suffix(".csv"))
 
-    run_toml = WD_WFLOW / f"wflow_sbm_{out_nc.stem}.toml"
+    # beside `run_default`, so the template's relative `dir_output` resolves there
+    run_toml = out_nc.parent.parent / f"wflow_sbm_{out_nc.stem}.toml"
     with open(run_toml, "w") as f:
         toml.dump(data, f)
 
@@ -904,7 +922,7 @@ def prune_cycle_outputs(cycle: int, cfg: CycleConfig) -> None:
     if cycle < 1 or not cfg.prune_outputs:
         return
 
-    run_dir = WD_WFLOW / "run_default"
+    run_dir = WD_OUT / "run_default"
     targets = [run_dir / f"output_cycle{cycle}_m{m}.nc"
                for m in range(cfg.members_for(cycle))]
     targets.append(run_dir / f"output_cycle{cycle}_cal.nc")
@@ -1055,11 +1073,15 @@ def relative_to_baseline(current: dict, baseline: dict) -> dict:
     return out
 
 
-def converged(history: list, rel_tol: float, keys=WFLOW_KEYS, patience: int = 1) -> bool:
+def converged(history: list, rel_tol: float, keys=WFLOW_KEYS, patience: int = 1,
+              abs_tol: float | None = None) -> bool:
     """Ahmad 2025: stop when every tracked quantity improves by less than
     `rel_tol`, on each of the last `patience` steps. Needs `patience + 1`
     entries; a missing key is skipped rather than assumed converged, and if
-    none of the keys are present the answer is False."""
+    none of the keys are present the answer is False.
+
+    With `abs_tol` set, the test is the absolute change (< `abs_tol`) and
+    `rel_tol` is not used."""
     if patience < 1:
         raise ValueError(f"patience must be >= 1, got {patience}")
     if len(history) < patience + 1:
@@ -1071,8 +1093,13 @@ def converged(history: list, rel_tol: float, keys=WFLOW_KEYS, patience: int = 1)
             if key not in prev or key not in curr:
                 continue
             seen = True
+            change = abs(prev[key] - curr[key])
+            if abs_tol is not None:
+                if change >= abs_tol:
+                    return False
+                continue
             denom = abs(prev[key])
-            if denom > 0 and abs(prev[key] - curr[key]) / denom >= rel_tol:
+            if denom > 0 and change / denom >= rel_tol:
                 return False
         if not seen:
             return False
@@ -1082,9 +1109,9 @@ def converged(history: list, rel_tol: float, keys=WFLOW_KEYS, patience: int = 1)
 def has_converged(state: "CycleState", cfg: CycleConfig) -> bool:
     """Whether the loop should stop, by whichever signal `converge_on` names."""
     wflow = converged(state.history, cfg.rel_tol, keys=WFLOW_KEYS,
-                      patience=cfg.converge_patience)
+                      patience=cfg.converge_patience, abs_tol=cfg.abs_tol)
     surrogate = converged(state.cal_metrics, cfg.rel_tol, keys=SURROGATE_KEYS,
-                          patience=cfg.converge_patience)
+                          patience=cfg.converge_patience, abs_tol=cfg.abs_tol)
 
     if cfg.converge_on == "surrogate":
         return surrogate
@@ -1136,8 +1163,8 @@ def score_cycle(n: int, theta_path: Path, state: "CycleState", cfg: CycleConfig,
 
     Scores the uncalibrated baseline first if that has not been done.
     """
-    eval_static = WD_WFLOW / f"staticmaps_cycle{n}_cal.nc"
-    eval_out = WD_WFLOW / "run_default" / f"output_cycle{n}_cal.nc"
+    eval_static = WD_OUT / f"staticmaps_cycle{n}_cal.nc"
+    eval_out = WD_OUT / "run_default" / f"output_cycle{n}_cal.nc"
     write_staticmaps(read_theta(theta_path), eval_static)
     if not cfg.skip_wflow:
         run_wflow(eval_static, eval_out, cfg)
@@ -1199,8 +1226,8 @@ def main(cfg: CycleConfig | None = None) -> None:
             for m, member in wave:
                 if m < state.members_done:
                     continue  # ingested before a crash; see CycleState
-                static_nc = WD_WFLOW / f"staticmaps_cycle{n}_m{m}.nc"
-                out_nc = WD_WFLOW / "run_default" / f"output_cycle{n}_m{m}.nc"
+                static_nc = WD_OUT / f"staticmaps_cycle{n}_m{m}.nc"
+                out_nc = WD_OUT / "run_default" / f"output_cycle{n}_m{m}.nc"
                 write_staticmaps(member, static_nc)
                 jobs.append((m, static_nc, out_nc))
 

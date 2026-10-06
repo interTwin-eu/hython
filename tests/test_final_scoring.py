@@ -17,6 +17,7 @@ def loop(tmp_path, monkeypatch):
     (wflow / "run_default").mkdir(parents=True)
     xr.Dataset({"x": ("a", [1.0])}).to_netcdf(wflow / "staticmaps.nc")
     monkeypatch.setattr(rdc, "WD_WFLOW", wflow)
+    monkeypatch.setattr(rdc, "WD_OUT", wflow)
     monkeypatch.setattr(rdc, "WD_CYCLE", tmp_path / "cycles")
 
     log = {"wflow": [], "ingested": [], "converge_after": None}

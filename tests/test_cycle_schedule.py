@@ -85,6 +85,7 @@ class FakeRun:
 @pytest.fixture
 def wflow(tmp_path, monkeypatch):
     monkeypatch.setattr(run_dpl_cycle, "WD_WFLOW", tmp_path)
+    monkeypatch.setattr(run_dpl_cycle, "WD_OUT", tmp_path)
     (tmp_path / "wflow_sbm_workflow.toml").write_text(
         'starttime = "2016-12-31T00:00:00"\n[input]\npath_static = "x.nc"\n'
         '[output]\npath = "y.nc"\n[csv]\npath = "y.csv"\n'
@@ -98,14 +99,14 @@ def test_the_shared_template_is_never_modified(wflow, monkeypatch):
     template = wflow / "wflow_sbm_workflow.toml"
     before = template.read_text()
     monkeypatch.setattr(run_dpl_cycle.sp, "run", FakeRun(0))
-    run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "o.nc", CycleConfig())
+    run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "run_default" / "o.nc", CycleConfig())
     assert template.read_text() == before
 
 
 def test_compression_is_set_on_the_per_run_toml(wflow, monkeypatch):
     import tomllib
     monkeypatch.setattr(run_dpl_cycle.sp, "run", FakeRun(0))
-    run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "o.nc", CycleConfig())
+    run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "run_default" / "o.nc", CycleConfig())
     written = tomllib.loads((wflow / "wflow_sbm_o.toml").read_text())
     assert written["output"]["compressionlevel"] == 1
 
@@ -113,14 +114,14 @@ def test_compression_is_set_on_the_per_run_toml(wflow, monkeypatch):
 def test_a_run_that_works_is_not_repeated(wflow, monkeypatch):
     fake = FakeRun(0)
     monkeypatch.setattr(run_dpl_cycle.sp, "run", fake)
-    run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "o.nc", CycleConfig())
+    run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "run_default" / "o.nc", CycleConfig())
     assert fake.calls == 1
 
 
 def test_a_flaky_run_is_retried_and_succeeds(wflow, monkeypatch):
     fake = FakeRun(1)
     monkeypatch.setattr(run_dpl_cycle.sp, "run", fake)
-    run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "o.nc", CycleConfig())
+    run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "run_default" / "o.nc", CycleConfig())
     assert fake.calls == 2
 
 
@@ -130,7 +131,7 @@ def test_a_run_that_never_works_still_raises(wflow, monkeypatch):
     fake = FakeRun(99)
     monkeypatch.setattr(run_dpl_cycle.sp, "run", fake)
     with pytest.raises(sp.CalledProcessError):
-        run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "o.nc", CycleConfig())
+        run_dpl_cycle.run_wflow(wflow / "s.nc", wflow / "run_default" / "o.nc", CycleConfig())
     assert fake.calls == CycleConfig().wflow_retries + 1
 
 
@@ -141,6 +142,7 @@ def test_a_run_that_never_works_still_raises(wflow, monkeypatch):
 def run_dir(tmp_path, monkeypatch):
     """A run_default holding outputs for cycles 0-3."""
     monkeypatch.setattr(run_dpl_cycle, "WD_WFLOW", tmp_path)
+    monkeypatch.setattr(run_dpl_cycle, "WD_OUT", tmp_path)
     d = tmp_path / "run_default"
     d.mkdir()
     cfg = CycleConfig()

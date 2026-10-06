@@ -81,7 +81,13 @@ def test_wflow_is_the_default():
     """Changed 2026-09-25: the surrogate signal stopped production after cycle
     1 while the wflow score was still rising."""
     assert CycleConfig().converge_on == "wflow"
-    assert CycleConfig().converge_patience == 2
+
+
+def test_default_threshold_is_absolute_0_02_patience_1():
+    """Set 2026-09-28 after the clean rerun never stopped on rel_tol 0.01
+    with patience 2."""
+    assert CycleConfig().abs_tol == 0.02
+    assert CycleConfig().converge_patience == 1
 
 
 def test_rel_tol_zero_disables_stopping():
@@ -158,3 +164,55 @@ def test_has_converged_uses_the_config_patience():
     st = state(history=JUMP_THEN_FLAT)
     assert has_converged(st, cfg(converge_on="wflow", converge_patience=1)) is True
     assert has_converged(st, cfg(converge_on="wflow", converge_patience=2)) is False
+
+
+# ==== absolute threshold
+
+
+def test_abs_tol_replaces_rel_tol():
+    """0.004 is 2% relative but under 0.02 absolute."""
+    h = [{"kge_valid": 0.200}, {"kge_valid": 0.204}]
+    assert converged(h, 0.01) is False
+    assert converged(h, 0.01, abs_tol=0.02) is True
+
+
+def test_abs_tol_is_strict():
+    h = [{"kge_valid": 0.30}, {"kge_valid": 0.33}]
+    assert converged(h, 0.01, abs_tol=0.02) is False
+
+
+def test_abs_tol_counts_drops_as_change():
+    h = [{"kge_valid": 0.33}, {"kge_valid": 0.30}]
+    assert converged(h, 0.01, abs_tol=0.02) is False
+
+
+def test_abs_tol_zero_disables_stopping():
+    assert converged(FLAT, 0.01, abs_tol=0.0) is False
+
+
+def test_abs_tol_none_falls_back_to_rel_tol():
+    assert has_converged(state(history=FLAT), cfg(abs_tol=None, rel_tol=0.01)) is True
+    assert has_converged(state(history=FLAT), cfg(abs_tol=None, rel_tol=0.0)) is False
+
+
+def test_abs_tol_applies_to_the_surrogate_signal():
+    st = state(cal=[{"kgecell": 0.440}, {"kgecell": 0.450}])
+    assert has_converged(st, cfg(converge_on="surrogate", abs_tol=0.02)) is True
+    assert has_converged(st, cfg(converge_on="surrogate", abs_tol=0.005)) is False
+
+
+# Clean rerun 2026-09-26/28, median per-cell KGE on the validation period.
+CLEAN_RERUN = [0.3689, 0.3792, 0.3720, 0.3713, 0.3620, 0.3764, 0.3719]
+
+
+def test_clean_rerun_stops_after_cycle_1_with_the_defaults():
+    """Replay: with the defaults the loop would have stopped after cycle 1.
+    The old setting (rel_tol 0.01, patience 2) never stopped it."""
+    c = CycleConfig()
+    hist = [{"kge_valid": k} for k in CLEAN_RERUN]
+    first = next(n for n in range(1, len(hist) + 1)
+                 if has_converged(state(history=hist[:n]), c))
+    assert first - 1 == 1
+    old = cfg(abs_tol=None, rel_tol=0.01, converge_patience=2)
+    assert not any(has_converged(state(history=hist[:n]), old)
+                   for n in range(1, len(hist) + 1))
