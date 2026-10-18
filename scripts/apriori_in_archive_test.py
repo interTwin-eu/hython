@@ -62,7 +62,7 @@ PROD_RUN = Path("/mnt/CEPH_PROJECTS/InterTwin/hython_model_run/loop_train_multic
 SEQ = PROD_RUN / "model_sequence"
 BASELINE = pa.WD_WFLOW / "run_default" / "output_baseline_apriori.nc"
 SURR_AP_C1 = Path("/mnt/CEPH_PROJECTS/A_DROP/pilot5/article/dpl_c1/surrogate_2022_apriori_c1.nc")
-ENV_BIN = Path("/home/iferrario/.local/miniforge/envs/emulator/bin")
+ENV_BIN = Path("/mnt/CEPH_PROJECTS/A_DROP/pilot5/dev/conda/emulator/bin")
 
 RUNS_C1 = 5                                           # cycle 1 trained on runs 0-4
 ROWS_TRAIN, ROWS_VALID = 26400, 7200                  # 22,000 / 6,000 x 6/5

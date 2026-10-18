@@ -41,7 +41,7 @@ ROOT = Path("/mnt/CEPH_PROJECTS/A_DROP/pilot5/article/dpl_apriori")
 STATIC, DYNAMIC = ROOT / "archive" / "static.zarr", ROOT / "archive" / "dynamic.zarr"
 PROD_STATE = Path(__file__).resolve().parent / "outputs" / "dpl_cycles" / "state.json"
 BASELINE = pa.WD_WFLOW / "run_default" / "output_baseline_apriori.nc"
-ENV_BIN = Path("/home/iferrario/.local/miniforge/envs/emulator/bin")
+ENV_BIN = Path("/mnt/CEPH_PROJECTS/A_DROP/pilot5/dev/conda/emulator/bin")
 
 N_LHS = 4  # production runs 0-3 are cycle 0 members 0-3
 

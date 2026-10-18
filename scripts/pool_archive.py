@@ -63,7 +63,7 @@ repeats across runs and within a run.
 
 **Run this with the emulator environment**, not a bare `python`:
 
-    EMU=/home/iferrario/.local/miniforge/envs/emulator/bin/python
+    EMU=/mnt/CEPH_PROJECTS/A_DROP/pilot5/dev/conda/emulator/bin/python
 
 A bare `python` here resolves to a different project's env (xarray 2026 /
 zarr 3) and writes a zarr **v3** store, which the emulator environment
